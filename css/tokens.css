@@ -1,0 +1,68 @@
+/* Sistema de diseño "Corazón Remendado": pastel goth / creepy cute.
+   Todo color, tipografía, radio y sombra sale de aquí. */
+:root {
+  /* Paleta base */
+  --pink-pastel: #F3C6DA;
+  --pink-dust: #DFA1BD;
+  --magenta: #A52E69;
+  --magenta-lit: #E0679D;
+  --lavender: #C9B9E8;
+  --lilac-grey: #8F83A8;
+  --cream-pink: #FFF5F8;
+  --paper: #FFF9F1;
+  --plum: #38202F;
+  --plum-black: #19131B;
+  --burgundy: #6B1E3F;
+  --silver: #D9B8C4;
+
+  /* Semánticos: cambian con el tema claro/oscuro */
+  --bg: #FFF5F8;
+  --surface: #FFFFFF;
+  --surface-2: #FBEAF1;
+  --ink: #2A1A24;
+  --ink-soft: #6F5B67;
+  --edge: rgba(56, 32, 47, 0.14);
+  --accent: #A52E69;
+  --on-accent: #FFF5F8;
+  --paper-ink: #2A1A24;
+  --paper-soft: #7A6672;
+
+  /* Estados de ánimo: ninguno es un "rojo de error" */
+  --m-radiante: #F3A8C8;
+  --m-tranquila: #A9C8D8;
+  --m-normal: #E3D6DD;
+  --m-cansada: #C9B9E8;
+  --m-ansiosa: #E6B8A8;
+  --m-triste: #9A93C0;
+  --m-enfadada: #C46A8A;
+
+  /* Tipografías */
+  --font-display: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-pixel: "Silkscreen", "Courier New", monospace;
+
+  /* Forma */
+  --r-card: 18px;
+  --r-ctl: 12px;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 22px rgba(56, 32, 47, 0.08);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .22 0 0 0 0 .13 0 0 0 0 .18 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  --sidebar-w: 272px;
+  --content-max: 1060px;
+}
+
+/* Tema oscuro: automático según el sistema, salvo que se fuerce el claro */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1B141E; --surface: #271D2B; --surface-2: #31253A;
+    --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
+    --accent: #E57AA9; --on-accent: #19131B;
+    --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1B141E; --surface: #271D2B; --surface-2: #31253A;
+  --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
+  --accent: #E57AA9; --on-accent: #19131B;
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}

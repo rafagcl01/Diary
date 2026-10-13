@@ -1,0 +1,10 @@
+{
+  "name": "diario-rpg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diario personal con progresión RPG. Aplicación estática sin dependencias.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
