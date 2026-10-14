@@ -371,9 +371,14 @@ button.chip[aria-pressed="true"] { background: var(--pink-pastel); border-color:
 .emo-selected { margin: 0; }
 .emo-dialog { width: min(580px, calc(100% - 32px)); max-height: 88vh; overflow: auto; }
 .emo-dialog h4 { margin: 14px 0 8px; font-family: var(--font-display); font-weight: 400; font-size: 1.25rem; }
-.emo-list { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 10px 0 14px; }
-.emo-item { display: inline-flex; align-items: center; gap: 4px; }
-.emo-toggle .ic { width: 1.1em; height: 1.1em; }
+.emo-drop { border: 1px solid var(--line, #d9c9d6); border-radius: 12px; padding: 6px 12px; margin: 10px 0 14px; }
+.emo-drop summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+.emo-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; max-height: 40vh; overflow-y: auto; }
+.emo-item { display: block; }
+.emo-opt { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 6px; border-radius: 8px; cursor: pointer; }
+.emo-opt:hover { background: rgba(127,127,127,.12); }
+.emo-opt input { width: 20px; height: 20px; }
+.emo-opt .ic { width: 1.2em; height: 1.2em; }
 .symbols { margin: 0 0 14px; padding: 10px 12px 12px; border: 1.5px dashed var(--edge); border-radius: 14px; }
 .symbols legend { padding: 0 6px; font-weight: 700; }
 .symbol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }

@@ -74,8 +74,9 @@
 
           '<dialog class="confirm emo-dialog" id="emo-dialog" aria-labelledby="emo-title">' +
             '<h3 id="emo-title">Emociones de la entrada <span id="emo-n"></span></h3>' +
-            '<p class="soft">Elige las que quieras. Son aparte del estado de ánimo: no cambian el porcentaje.</p>' +
-            '<ul class="emo-list" id="emo-list"></ul>' +
+            '<p class="soft">Marca las que quieras y pulsa Aceptar. Son aparte del estado de ánimo: no cambian el porcentaje.</p>' +
+            '<details class="emo-drop" id="emo-drop" open><summary id="emo-sum">Emociones guardadas</summary>' +
+              '<ul class="emo-list" id="emo-list"></ul></details>' +
             '<div id="emo-form" hidden>' +
               '<h4 id="emo-form-title">Nueva emoción</h4>' +
               '<label class="field"><span>Nombre</span><input id="emo-name" type="text" maxlength="' + D.EMOTION_LIMITS.name + '" autocomplete="off" placeholder="Por ejemplo, Nostalgia"></label>' +
@@ -83,7 +84,7 @@
               '<div class="btn-row"><button type="button" class="btn" id="emo-save">Guardar emoción</button><button type="button" class="btn secondary" id="emo-cancel">Cancelar</button></div>' +
             '</div>' +
             '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
-            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Crear una emoción nueva</button><button type="button" class="btn" id="emo-done">Hecho</button></div>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Añadir emoción nueva</button><button type="button" class="btn secondary" id="emo-edit" disabled>Editar la seleccionada</button><button type="button" class="btn" id="emo-done">Aceptar</button></div>' +
           '</dialog>' +
           '<dialog class="confirm ppl-dialog" id="ppl-dialog" aria-labelledby="ppl-title">' +
             '<h3 id="ppl-title">Personas de la entrada <span id="ppl-n"></span></h3>' +
@@ -163,19 +164,21 @@
         }
 
         // ---- Emociones: elegir varias, crear y editar desde aquí ----
-        var activeId = null, editingEmotion = null, formSymbol = null;
+        var activeId = null, editingEmotion = null, formSymbol = null, staged = [];
         function emoSay(text, kind) { var m = $('#emo-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
         function activeBlock() { var i = blockIndex(activeId); return i >= 0 ? blocks[i] : null; }
 
         function paintEmoList() {
-          var b = activeBlock(), chosen = b ? b.emotions : [];
+          var chosen = staged;
           if (!emoRepo) { $('#emo-list').innerHTML = '<li class="soft">Conecta tus datos para usar emociones. <a href="#/ajustes">Conectar mis datos</a></li>'; return; }
           if (!emoLoaded) { $('#emo-list').innerHTML = '<li class="soft">No se pudieron cargar tus emociones ahora mismo.</li>'; return; }
           $('#emo-list').innerHTML = library.length ? library.map(function (e) {
-            return '<li class="emo-item"><button type="button" class="chip emo-toggle" data-emo-toggle="' + esc(e.id) + '" aria-pressed="' + (chosen.indexOf(e.id) >= 0) + '">' +
-              icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></button>' +
-              '<button type="button" class="mini" data-emo-edit="' + esc(e.id) + '" aria-label="Editar la emoción ' + esc(e.name) + '">Editar</button></li>';
-          }).join('') : '<li class="soft">Todavía no tienes emociones. Crea la primera.</li>';
+            return '<li class="emo-item"><label class="emo-opt"><input type="checkbox" data-emo-check="' + esc(e.id) + '"' + (chosen.indexOf(e.id) >= 0 ? ' checked' : '') + '>' +
+              icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></label></li>';
+          }).join('') : '<li class="soft">Todavía no tienes emociones. Añade la primera.</li>';
+          var n = chosen.length;
+          $('#emo-sum').textContent = 'Emociones guardadas · ' + (n === 1 ? '1 seleccionada' : n + ' seleccionadas');
+          $('#emo-edit').disabled = !(emoLoaded && n === 1 && byId[chosen[0]]);
         }
         function paintSymbols() {
           $('#emo-symbols').innerHTML = D.EMOTION_SYMBOLS.map(function (s) {
@@ -194,16 +197,21 @@
         function closeForm() { $('#emo-form').hidden = true; editingEmotion = null; formSymbol = null; }
         function openEmo(id) {
           activeId = id; closeForm(); emoSay('', 'info');
+          var cur = activeBlock(); staged = cur ? cur.emotions.slice() : [];
           $('#emo-n').textContent = String(blockIndex(id) + 1);
           $('#emo-new').disabled = !emoLoaded;
           paintEmoList();
           $('#emo-dialog').showModal();
         }
-        function toggleEmotion(emoId) {
-          var b = activeBlock(); if (!b) return;
-          var i = b.emotions.indexOf(emoId);
-          if (i >= 0) b.emotions.splice(i, 1); else b.emotions = D.uniqueEmotionIds(b.emotions.concat([emoId]));
-          paintEmotionChips(b.id); paintEmoList(); scheduleDraft();       // las emociones no tocan el porcentaje
+        function stageEmotion(emoId, on) {
+          var i = staged.indexOf(emoId);
+          if (on && i < 0) staged.push(emoId); else if (!on && i >= 0) staged.splice(i, 1);
+          paintEmoList();
+        }
+        function acceptEmotions() {                                  // aplica la selección a la entrada
+          var b = activeBlock();
+          if (b) { b.emotions = D.uniqueEmotionIds(staged.filter(function (x) { return byId[x]; })); paintEmotionChips(b.id); scheduleDraft(); }
+          $('#emo-dialog').close();                                  // las emociones no tocan el porcentaje
         }
         function saveEmotion() {
           if (!emoRepo) return;
@@ -213,12 +221,9 @@
           job.then(function (emotion) {
             return emoRepo.list().then(function (list) {
               library = list; byId = D.emotionMap(list);
-              if (!wasEditing) {                                   // una emoción nueva se añade enseguida a la entrada
-                var b = activeBlock();
-                if (b) { b.emotions = D.uniqueEmotionIds(b.emotions.concat([emotion.id])); scheduleDraft(); }
-              }
+              if (!wasEditing && staged.indexOf(emotion.id) < 0) staged.push(emotion.id);   // queda marcada; se aplica al Aceptar
               paintAllEmotionChips(); paintEmoList(); closeForm();
-              emoSay(wasEditing ? 'Emoción actualizada.' : 'Emoción creada y añadida a la entrada.', 'ok');
+              emoSay(wasEditing ? 'Emoción actualizada.' : 'Emoción creada y marcada. Pulsa Aceptar para añadirla.', 'ok');
             });
           }).catch(function (err) { emoSay(err && err.message ? err.message : 'No se pudo guardar la emoción.', 'error'); });
         }
@@ -246,6 +251,7 @@
           var t = e.target;
           if (t.id === 'e-fav') scheduleDraft();
           else if (t.name === 'emo-symbol') formSymbol = t.value;
+          else if (t.dataset && t.dataset.emoCheck) stageEmotion(t.dataset.emoCheck, !!t.checked);
         });
         view.addEventListener('focusout', function (e) {
           var t = e.target;
@@ -268,7 +274,7 @@
           if (!t || !t.closest) return;
           var mood = t.closest('[data-block-mood]'), rm = t.closest('[data-remove-tag]'), rmEmo = t.closest('[data-remove-emo]');
           var up = t.closest('[data-up]'), down = t.closest('[data-down]'), del = t.closest('[data-del]');
-          var open = t.closest('[data-emo-open]'), toggle = t.closest('[data-emo-toggle]'), edit = t.closest('[data-emo-edit]');
+          var open = t.closest('[data-emo-open]');
           if (mood) {
             var i = blockIndex(mood.dataset.blockMood); if (i < 0) return;
             blocks[i].mood = blocks[i].mood === mood.dataset.mood ? null : mood.dataset.mood;   // volver a pulsar lo quita
@@ -286,12 +292,11 @@
             return;
           }
           if (open) { openEmo(open.dataset.emoOpen); return; }
-          if (toggle) { toggleEmotion(toggle.dataset.emoToggle); return; }
-          if (edit) { var em = byId[edit.dataset.emoEdit]; if (em) openForm(em); return; }
+          if (t.closest('#emo-edit')) { var em = staged.length === 1 ? byId[staged[0]] : null; if (em) openForm(em); return; }
           if (t.closest('#emo-new')) { openForm(null); return; }
           if (t.closest('#emo-cancel')) { closeForm(); emoSay('', 'info'); return; }
           if (t.closest('#emo-save')) { saveEmotion(); return; }
-          if (t.closest('#emo-done')) { $('#emo-dialog').close(); return; }
+          if (t.closest('#emo-done')) { acceptEmotions(); return; }
           if (up || down) {
             var id = (up || down).dataset.up || (up || down).dataset.down, k = blockIndex(id), to = up ? k - 1 : k + 1;
             if (k < 0 || to < 0 || to >= blocks.length) return;
