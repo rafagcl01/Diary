@@ -371,7 +371,7 @@ button.chip[aria-pressed="true"] { background: var(--pink-pastel); border-color:
 .emo-selected { margin: 0; }
 .emo-dialog { width: min(580px, calc(100% - 32px)); max-height: 88vh; overflow: auto; }
 .emo-dialog h4 { margin: 14px 0 8px; font-family: var(--font-display); font-weight: 400; font-size: 1.25rem; }
-.emo-caps { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 14px; padding: 0; list-style: none; max-height: 40vh; overflow-y: auto; }
+.emo-caps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; padding: 14px; list-style: none; max-height: 40vh; overflow-y: auto; }   /* el relleno deja sitio al brillo, que si no se corta */
 .emo-cap { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px; border: 1.5px solid var(--edge); border-radius: 999px; background: transparent; color: inherit; font: inherit; cursor: pointer; transition: background .15s, box-shadow .15s, border-color .15s; }
 .emo-cap:hover { background: rgba(127,127,127,.12); }
 .emo-cap .ic { width: 1.1em; height: 1.1em; }
