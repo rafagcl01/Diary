@@ -122,10 +122,12 @@
     },
 
     // Una página leída: la fecha y el título dentro de la hoja, el porcentaje de ánimo arriba y cada entrada con su
-    // texto, su estado, sus emociones y sus etiquetas. `byId` es el mapa de emociones (puede faltar).
-    sheet: function (entry, byId) {
+    // texto, su estado, sus emociones, sus personas y sus etiquetas. `byId` es el mapa de emociones y `peopleById` el de
+    // personas (pueden faltar). Las personas son enlaces a su ficha; los controles de vínculo solo existen en el editor.
+    sheet: function (entry, byId, peopleById) {
       var blocks = entry.blocks.map(function (b) {
-        var meta = (b.mood ? moodTag(b.mood) : '') + emotionList(b.emotions, byId, 'Emociones de la entrada') + tagList(b.tags, 'Etiquetas de la entrada');
+        var meta = (b.mood ? moodTag(b.mood) : '') + emotionList(b.emotions, byId, 'Emociones de la entrada') +
+          (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') + tagList(b.tags, 'Etiquetas de la entrada');
         return '<section class="block-read">' + (b.text ? paragraphs(b.text) : '') + (meta ? '<div class="block-meta-read">' + meta + '</div>' : '') + '</section>';
       }).join('<hr class="stitch-line">');
       return '<article class="card paper sheet" aria-label="Página del día">' +

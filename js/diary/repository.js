@@ -154,6 +154,40 @@
         });
       },
 
+      // Quita a una persona de todas las entradas donde estaba vinculada (cuando se borra su ficha).
+      // Solo cambia el campo `people` de esas entradas: el texto, el ánimo, las emociones y las etiquetas no se tocan.
+      // Devuelve cuántos fragmentos se desvincularon.
+      unlinkPerson: function (personId) {
+        return load().then(function (c) {
+          guardLegacy(c);
+          var months = [];
+          c.list.forEach(function (e) {
+            if (e.blocks.some(function (b) { return (b.people || []).indexOf(personId) >= 0; })) {
+              var m = D.monthKey(e.day); if (months.indexOf(m) < 0) months.push(m);
+            }
+          });
+          var count = 0, now = new Date().toISOString();
+          return months.reduce(function (chain, month) {
+            return chain.then(function () {
+              return store.updateJson(pathFor(month), function (doc) {
+                ensureDoc(doc);
+                var entries = doc.entries.map(function (raw) {
+                  if (!raw || !Array.isArray(raw.blocks) || D.isLegacy(raw)) return raw;
+                  var touched = false;
+                  var blocks = raw.blocks.map(function (b) {
+                    if (!b || !Array.isArray(b.people) || b.people.indexOf(personId) < 0) return b;
+                    touched = true; count++;
+                    return Object.assign({}, b, { people: b.people.filter(function (id) { return id !== personId; }) });
+                  });
+                  return touched ? Object.assign({}, raw, { blocks: blocks, updatedAt: now }) : raw;   // updatedAt nuevo: otro dispositivo con la página abierta recibirá el aviso de "cambió"
+                });
+                return docOf(month, entries);
+              }, { message: 'Quita una persona de las entradas' });
+            });
+          }, Promise.resolve()).then(function () { return load(true); }).then(function () { return count; });
+        });
+      },
+
       // Pasa las entradas del formato antiguo al nuevo (una por día). No pierde texto; GitHub conserva el historial.
       migrateLegacy: function () {
         return load().then(function (c) {

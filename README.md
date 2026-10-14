@@ -16,8 +16,9 @@ js/sections.js      Lista de secciones: para añadir una, crea su vista, añade 
 js/prefs.js         Preferencias de interfaz (solo en este navegador)
 js/ui.js            Utilidades de interfaz (escape de HTML, cabeceras, estados vacíos, descargas)
 js/storage/         Capa de almacenamiento (ver abajo)
-js/diary/           Lógica del diario sin pantalla: páginas, estados de ánimo y porcentaje, emociones, búsqueda, calendario, estadísticas, repositorio y borradores
+js/diary/           Lógica del diario sin pantalla: páginas, estados de ánimo y porcentaje, emociones, personas, búsqueda, calendario, estadísticas, repositorio y borradores
 js/views/diary/     Pantallas del diario: cronología, lectura y editor de la página del día (y el porcentaje de ánimo)
+js/views/people/    Pantallas de Personas: lista, ficha (con historial) y formulario
 js/views/mood.js    Estadísticas de ánimo
 js/views/           Una vista por sección
 tests/              Pruebas automáticas (node --test) y un GitHub de mentira para probar sin red
@@ -233,3 +234,58 @@ Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta 
 - [ ] *Estado de ánimo*: reparto, calendario y 12 meses, sin ningún texto que trate un estado como un error.
 - [ ] **Eliminar** pide confirmación y la página desaparece de la lista.
 - [ ] Si tenías entradas antiguas: aparece el aviso de formato y tras *Actualizar formato* todo sigue ahí, una página por día.
+
+## Fase 4: personas
+
+Fichas de las personas de tu vida y vínculos con las entradas del diario. Todo es opcional y editable, y el sistema no puntúa ni ordena a nadie por "importancia": una ficha es un álbum, no un marcador.
+
+### La ficha
+Nombre (lo único obligatorio), **apodos**, **avatar** (la inicial o un símbolo de la galería), **relación**, **fecha aproximada en que la conociste** (un año, un mes o un día), **notas** (solo para ti), **etiquetas** y **recuerdos destacados**. Se crean y editan en *Personas*; también se puede crear una ficha mínima (nombre y relación) sin salir del editor del diario. La fotografía queda para una fase posterior, junto a los adjuntos.
+
+- **Historial:** en la ficha ves, en orden cronológico (y puedes invertirlo), cada entrada vinculada a esa persona con su fecha, **su texto completo** (el contexto original), con quién más estaba y el enlace *Abrir la página original*. Las entradas sin vínculo no aparecen.
+- **Recuerdos destacados:** *Destacar* en cualquier fragmento lo guarda arriba. Es solo una marca tuya.
+- **Lista:** orden alfabético; buscador por nombre, apodo, relación o etiqueta (sin importar tildes ni mayúsculas). Cada persona muestra cuántos fragmentos tiene, solo como información. Si quieres, puedes ordenar por quién tiene recuerdos más recientes; nunca por cantidad.
+- **Inicio:** *Personas recientes* muestra a quién has vinculado últimamente (por fecha, no por cantidad).
+
+### Vincular personas a las entradas
+En el editor, cada entrada tiene un botón **Personas**: un buscador sobre tus fichas (por nombre, apodo o relación), varias personas por entrada, y *Crear una ficha nueva* sin salir. Para quitar a alguien, la **×** de su etiqueta; **quitar un vínculo nunca borra el texto**.
+
+- **Un vínculo es un dato estructurado**, no texto en el párrafo: la entrada guarda el identificador de la persona (`"people": ["pe_0a1b2c3d"]`). **Renombrar a alguien no rompe ningún vínculo** (y no modifica ni un byte de `entries/*.json`).
+- **Sugerencias al escribir:** si el texto menciona un nombre o apodo de tus fichas, aparece una propuesta ("¿Hablas de Marcos? Vincular…"). **Nunca se vincula nada sin que lo confirmes.** Si un nombre puede ser de varias personas ("Lucía"), se muestran todas para que elijas o pulses *Ninguna*. Una sugerencia descartada no vuelve en esa sesión.
+- **Todo se detecta en tu navegador**: el texto de tus entradas no se envía a ningún servicio externo. No hay IA externa.
+- **Evitar ambigüedades:** dos fichas con el mismo nombre solo se admiten si **ambas** tienen una relación y es distinta ("Lucía, hermana" y "Lucía, compañera de trabajo"). Al crear una ficha, el editor avisa si ya existe alguien parecido. En todas las listas el nombre va acompañado de la relación.
+- **En la lectura** las personas aparecen como enlaces a su ficha; los controles de vínculo solo existen en el editor.
+- **Diario:** *Más filtros → Persona* muestra solo las páginas donde aparece.
+
+### Borrar una ficha
+Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **se quita su vínculo de las entradas**; los textos, el ánimo, las emociones y las etiquetas no se tocan. Esas páginas reciben una nueva fecha de modificación, así que otro dispositivo con la misma página abierta recibirá el aviso de que cambió en vez de pisarla. GitHub conserva el historial por si quieres recuperar algo.
+
+### Cómo se guardan
+`people.json` (nuevo, en el repositorio de datos; entra en las copias de seguridad):
+
+```json
+{ "version": 1, "people": [{
+  "id": "pe_0a1b2c3d", "name": "Marcos", "nicknames": ["Marqui"], "symbol": "moon", "met": "2019-05",
+  "relation": "amigo", "notes": "…", "tags": ["música"],
+  "highlights": [{ "day": "2026-10-10", "block": "b_01234567" }],
+  "createdAt": "…", "updatedAt": "…" }] }
+```
+
+`entries/AAAA-MM.json` añade `people` (lista de identificadores) a cada entrada. Los datos están **sin cifrar**, como el resto, en tu repositorio privado: las notas sobre otras personas viven ahí. Un `people.json` dañado se avisa y no se toca.
+
+### Límites conocidos
+- Hasta 500 fichas, 10 apodos por ficha, 20 personas por entrada y 50 recuerdos destacados por ficha. Notas de hasta 5 000 caracteres.
+- Los cambios en fichas desde dos dispositivos a la vez se fusionan por archivo (gana el último que guarda): para cambios simultáneos sobre la misma ficha, recarga antes de editar.
+- Una entrada borrada o desvinculada deja su recuerdo destacado "dormido" en la ficha (no se ve); si vuelves a vincularla, reaparece.
+- Las sugerencias solo reconocen nombres, apodos y nombres de pila de **tus fichas**, como palabras enteras; no entienden pronombres ni apodos que no hayas guardado.
+
+### Comprobaciones manuales de la fase 4
+- [ ] *Personas → Nueva persona*: solo con el nombre se guarda; con relación, apodo, fecha y avatar también.
+- [ ] Crear una segunda ficha "Lucía" sin relación avisa; con otra relación se admite.
+- [ ] En el editor, escribir "Quedé con Marcos…": aparece la propuesta y **no** se vincula hasta pulsar *Vincular*.
+- [ ] *Personas* → buscar por apodo, elegir a dos personas en la misma entrada, crear una ficha nueva desde el diálogo, quitar una con la ×.
+- [ ] Guardar y leer la página: las personas son enlaces; en la ficha aparece el fragmento completo con su fecha y *Abrir la página original*.
+- [ ] Renombrar una ficha: las entradas siguen vinculadas y muestran el nombre nuevo.
+- [ ] *Destacar* un fragmento lo sube a *Recuerdos destacados*.
+- [ ] Borrar una ficha: confirma, y las entradas conservan su texto y su ánimo.
+- [ ] *Diario → Más filtros → Persona* filtra; en el inicio aparece *Personas recientes*.

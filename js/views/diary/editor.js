@@ -9,8 +9,8 @@
     var d = new Date(iso);
     return isNaN(d) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
-  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null, emotions: [] }; }
-  function copyBlock(b) { return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood, emotions: (b.emotions || []).slice() }; }
+  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null, emotions: [], people: [] }; }
+  function copyBlock(b) { return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood, emotions: (b.emotions || []).slice(), people: (b.people || []).slice() }; }
   function shell(day, body) {
     return '<div class="view day-page"><article class="card paper sheet">' + H.sheetHead(day, '', '') + body + '</article></div>';
   }
@@ -32,7 +32,7 @@
     // day = "AAAA-MM-DD";  opts.addBlock = abrir con una entrada nueva al final, lista para escribir
     render: function (root, day, opts) {
       opts = opts || {};
-      var repo = D.repo(), emoRepo = D.emotions();
+      var repo = D.repo(), emoRepo = D.emotions(), pplRepo = D.people();
 
       if (!D.isDay(day) || day > D.today()) {
         root.innerHTML = '<div class="view day-page"><article class="card paper sheet"><h1 id="page-title" class="date-h1" tabindex="-1">No se puede escribir ahí</h1>' +
@@ -40,8 +40,8 @@
         return;
       }
 
-      // library = emociones de la biblioteca; null si no se pudieron cargar
-      function start(prev, library) {
+      // library = emociones de la biblioteca; null si no se pudieron cargar. peopleList = fichas de personas (igual)
+      function start(prev, library, peopleList) {
         var saved = prev ? { title: prev.title, favorite: prev.favorite, blocks: prev.blocks } : { title: '', favorite: false, blocks: [] };
         var draft = App.drafts.get(day);
         var useDraft = !!(draft && !App.drafts.isEmpty(draft));
@@ -85,6 +85,22 @@
             '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
             '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Crear una emoción nueva</button><button type="button" class="btn" id="emo-done">Hecho</button></div>' +
           '</dialog>' +
+          '<dialog class="confirm ppl-dialog" id="ppl-dialog" aria-labelledby="ppl-title">' +
+            '<h3 id="ppl-title">Personas de la entrada <span id="ppl-n"></span></h3>' +
+            '<p class="soft">Elige a quién se refiere esta entrada. Quitar a alguien no borra el texto.</p>' +
+            '<label class="searchbox"><span class="sr">Buscar entre tus fichas</span><input id="ppl-q" type="search" placeholder="Buscar por nombre, apodo o relación" autocomplete="off" spellcheck="false"></label>' +
+            '<ul class="ppl-list" id="ppl-list"></ul>' +
+            '<div id="ppl-form" hidden>' +
+              '<h4>Nueva ficha</h4>' +
+              '<label class="field"><span>Nombre</span><input id="ppl-name" type="text" maxlength="' + D.PEOPLE_LIMITS.name + '" autocomplete="off"></label>' +
+              '<label class="field"><span>Relación <small>(opcional)</small></span><input id="ppl-rel" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" placeholder="Por ejemplo, amiga"></label>' +
+              '<p class="soft" id="ppl-hint" role="status"></p>' +
+              '<div class="btn-row"><button type="button" class="btn" id="ppl-save">Crear y vincular</button><button type="button" class="btn secondary" id="ppl-cancel">Cancelar</button></div>' +
+              '<p class="soft">Los demás datos (apodos, fecha, notas…) los puedes añadir luego en su ficha.</p>' +
+            '</div>' +
+            '<p class="msg" id="ppl-msg" role="status" data-kind="info"></p>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="ppl-new">Crear una ficha nueva</button><button type="button" class="btn" id="ppl-done">Hecho</button></div>' +
+          '</dialog>' +
           '</div>';
 
         var view = root.querySelector('.editor-view');
@@ -93,7 +109,7 @@
         function focusSel(sel) { var el = q(sel); if (el && el.focus) el.focus(); }
         function blockIndex(id) { for (var i = 0; i < blocks.length; i++) if (blocks[i].id === id) return i; return -1; }
         function say(text, kind) { var m = $('#e-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
-        var busy = false, timer = null;
+        var busy = false, timer = null, picker = null;
 
         // El porcentaje sale SOLO de los estados de ánimo de las entradas.
         function refreshPercent() { P.paint($('#pct-slot'), D.dayMood({ blocks: blocks }), day, { fromZero: false }); }
@@ -116,10 +132,14 @@
                 }).join('') + '</div>' +
               '<div class="emo-row"><ul class="chips emo-selected" data-emolist="' + id + '" aria-label="Emociones de la entrada ' + n + '" aria-live="polite">' + emotionChips(b, n, byId) + '</ul>' +
                 '<button type="button" class="mini" data-emo-open="' + id + '" aria-haspopup="dialog">Emociones</button></div>' +
+              '<div class="ppl-row"><ul class="chips ppl-selected" data-pplist="' + id + '" aria-label="Personas de la entrada ' + n + '" aria-live="polite"></ul>' +
+                '<button type="button" class="mini" data-ppl-open="' + id + '" aria-haspopup="dialog">Personas</button></div>' +
+              '<div class="suggest" data-suggest="' + id + '" aria-live="polite"></div>' +
               '<div class="tags-input"><ul class="chips" data-taglist="' + id + '" aria-live="polite">' + tagChips(b, n) + '</ul>' +
                 '<input type="text" data-tag-input="' + id + '" autocomplete="off" aria-label="Añadir etiqueta a la entrada ' + n + '" placeholder="Etiqueta y pulsa Intro"></div>' +
               '</section>';
           }).join('');
+          if (picker) picker.refreshAll();
         }
         function paintTagList(id) {
           var i = blockIndex(id), list = q('[data-taglist="' + id + '"]');
@@ -212,6 +232,7 @@
         }
         function scheduleDraft() { clearTimeout(timer); timer = setTimeout(flushDraft, 500); }
 
+        picker = App.peoplePicker.attach({ view: view, $: $, repo: pplRepo, library: peopleList, getBlocks: function () { return blocks; }, onChange: scheduleDraft });
         paintBlocks();
         refreshPercent();
         if (opts.addBlock) focusSel('[data-text="' + blocks[blocks.length - 1].id + '"]');
@@ -281,7 +302,7 @@
           if (del) {
             var d = blockIndex(del.dataset.del);
             if (d < 0) return;
-            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar esta entrada? Su texto, su estado, sus emociones y sus etiquetas se perderán.')) return;
+            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar esta entrada? Su texto, su estado, sus emociones, sus personas y sus etiquetas se perderán.')) return;
             blocks.splice(d, 1);
             if (!blocks.length) blocks.push(newBlock());
             paintBlocks(); refreshPercent(); scheduleDraft(); return;
@@ -304,7 +325,7 @@
           commitPendingTags();
           var s = snapshot();
           var hasContent = s.title.trim() || s.blocks.some(D.blockHasContent);
-          if (!hasContent) { say('Escribe algo, elige un estado o una emoción, o añade una etiqueta en alguna entrada, o ponle un título a la página.', 'error'); focusSel('[data-text]'); return; }
+          if (!hasContent) { say('Escribe algo, elige un estado, una emoción o una persona, o añade una etiqueta en alguna entrada, o ponle un título a la página.', 'error'); focusSel('[data-text]'); return; }
           flushDraft();
           var r = D.repo();
           if (!r) { say('Conecta tus datos para guardar. Mientras tanto, tu texto sigue guardado como borrador en este navegador.', 'error'); return; }
@@ -321,11 +342,12 @@
         $('#e-save').addEventListener('click', save);
       }
 
-      if (!repo) { start(null, []); return; }
+      if (!repo) { start(null, [], []); return; }
       root.innerHTML = shell(day, '<div class="skeleton" style="margin: 14px 0"></div>');
       // Las emociones son un extra: si no se pueden cargar, se puede escribir igual (sin elegirlas).
       var emotions = emoRepo ? emoRepo.list().catch(function () { return null; }) : Promise.resolve(null);
-      Promise.all([repo.get(day), emotions]).then(function (r) { start(r[0], r[1]); }).catch(function (err) {
+      var peopleP = pplRepo ? pplRepo.list().catch(function () { return null; }) : Promise.resolve(null);
+      Promise.all([repo.get(day), emotions, peopleP]).then(function (r) { start(r[0], r[1], r[2]); }).catch(function (err) {
         root.innerHTML = shell(day, '<div class="msg" data-kind="error">No se pudo cargar. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>');
       });
     }

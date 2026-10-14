@@ -9,8 +9,8 @@ import { createFakeGithub } from './helpers/fake-github.js';
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const FILES = ['icons', 'prefs', 'ui', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
-  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/stats', 'views/diary/percent', 'views/diary/html', 'views/diary/list', 'views/diary/read', 'views/diary/editor',
-  'views/diary', 'views/mood', 'views/home'];
+  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/html', 'views/diary/list', 'views/diary/read', 'views/people/html', 'views/diary/people-picker', 'views/diary/editor',
+  'views/diary', 'views/people/list', 'views/people/card', 'views/people/form', 'views/people', 'views/mood', 'views/home'];
 
 function load(extra = {}) {
   const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, setTimeout, clearTimeout, ...extra });
@@ -33,6 +33,8 @@ const fakeRoot = () => {
   };
   return { innerHTML: '', els, querySelector(sel) { return (els[sel] ??= make()); } };
 };
+// Como en un navegador: el evento llega a TODOS los manejadores registrados en el elemento.
+const fire = (el, type, ev) => (el.handlers[type] || []).forEach((h) => h(ev));
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const target = (map) => ({ closest: (sel) => map[sel] ?? null });
 const day = (d) => '2026-10-' + String(d).padStart(2, '0');
@@ -197,8 +199,8 @@ test('guardar desde el editor guarda los bloques con su ánimo y quita el borrad
   // escribir en el primer bloque y elegir un ánimo, como lo haría el navegador
   const id = /data-block-id="(b_[0-9a-f]{8})"/.exec(root.els['#e-blocks'].innerHTML)[1];
   const dataset = { text: id };
-  view.handlers.input[0]({ target: { dataset, value: 'Un día tranquilo' } });
-  view.handlers.click[0]({ target: target({ '[data-block-mood]': { dataset: { blockMood: id, mood: 'bien' } } }) });
+  fire(view, 'input', { target: { dataset, value: 'Un día tranquilo' } });
+  fire(view, 'click', { target: target({ '[data-block-mood]': { dataset: { blockMood: id, mood: 'bien' } } }) });
   root.querySelector('#e-title').value = 'Ayer';
   App.drafts.save('2026-10-12', { title: 'x', blocks: [{ text: 'x' }] });
   root.els['#e-save'].handlers.click[0]();
@@ -298,8 +300,8 @@ test('desde el editor: crear una emoción nueva, asignarla y guardar; el estado 
   const root = fakeRoot(); App.views.diary.render(root, { params: ['2026-10-12', 'editar'] }); await tick();
   const view = root.els['.editor-view'];
   const id = /data-block-id="(b_[0-9a-f]{8})"/.exec(root.els['#e-blocks'].innerHTML)[1];
-  const click = (map) => view.handlers.click[0]({ target: target(map) });
-  view.handlers.input[0]({ target: { dataset: { text: id }, value: 'Hoy ha ido bien' } });
+  const click = (map) => fire(view, 'click', { target: target(map) });
+  fire(view, 'input', { target: { dataset: { text: id }, value: 'Hoy ha ido bien' } });
   click({ '[data-block-mood]': { dataset: { blockMood: id, mood: 'bien' } } });
   const pctBefore = root.els['#pct-slot'].innerHTML;
   assert.match(pctBefore, /data-pct="75"/, 'Bien = 75 %');
@@ -309,7 +311,7 @@ test('desde el editor: crear una emoción nueva, asignarla y guardar; el estado 
   click({ '#emo-new': {} });
   root.els['#emo-name'].value = 'Nostalgia';
   const symbol = App.diary.EMOTION_SYMBOLS[0].id;
-  view.handlers.change[0]({ target: { id: 'emo-symbol-x', name: 'emo-symbol', value: symbol } });
+  fire(view, 'change', { target: { id: 'emo-symbol-x', name: 'emo-symbol', value: symbol } });
   click({ '#emo-save': {} });
   await tick(80);
   assert.match(root.els['#emo-msg'].textContent, /Emoción creada y añadida/);
@@ -317,7 +319,7 @@ test('desde el editor: crear una emoción nueva, asignarla y guardar; el estado 
   assert.equal(root.els['#pct-slot'].innerHTML, pctBefore, 'crear y asignar una emoción no cambia el porcentaje');
   // una segunda emoción y quitarla otra vez
   click({ '#emo-new': {} }); root.els['#emo-name'].value = 'Ilusión';
-  view.handlers.change[0]({ target: { id: 'x', name: 'emo-symbol', value: App.diary.EMOTION_SYMBOLS[1].id } });
+  fire(view, 'change', { target: { id: 'x', name: 'emo-symbol', value: App.diary.EMOTION_SYMBOLS[1].id } });
   click({ '#emo-save': {} }); await tick(80);
   assert.equal(root.els['#pct-slot'].innerHTML, pctBefore);
   click({ '#emo-done': {} });

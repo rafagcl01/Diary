@@ -1,5 +1,5 @@
 // Diario: la página de un día. La fecha y el título van dentro de la propia hoja, con el porcentaje de ánimo arriba,
-// y debajo todas las entradas del día en orden, cada una con su estado, sus emociones y sus etiquetas.
+// y debajo todas las entradas del día en orden, cada una con su estado, sus emociones, sus personas y sus etiquetas.
 (function (App) {
   var D = App.diary, H = App.diaryHtml, P = App.percentUi, esc = App.escapeHtml;
   App.diaryViews = App.diaryViews || {};
@@ -11,7 +11,7 @@
 
   App.diaryViews.read = {
     render: function (root, day) {
-      var repo = D.repo(), emoRepo = D.emotions();
+      var repo = D.repo(), emoRepo = D.emotions(), pplRepo = D.people();
       var back = '<p class="btn-row"><a class="btn secondary" href="#/diario">Volver al diario</a></p>';
 
       if (!repo) {
@@ -21,7 +21,7 @@
       }
       root.innerHTML = shell(day, '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>');
 
-      function paint(entry, list, byId) {
+      function paint(entry, list, byId, peopleById) {
         root.innerHTML = '<div class="view day-page read-view">' +
           H.pageNav(D.neighbors(list, day)) +
           '<div class="btn-row page-actions">' +
@@ -31,7 +31,7 @@
             '<button type="button" class="btn secondary" id="r-del">Eliminar la página</button>' +
           '</div>' +
           '<p class="msg" id="r-msg" role="status" data-kind="info"></p>' +
-          H.sheet(entry, byId) +
+          H.sheet(entry, byId, peopleById) +
           '<dialog class="confirm" id="r-dialog" aria-labelledby="r-dialog-title">' +
             '<h3 id="r-dialog-title">¿Eliminar esta página?</h3>' +
             '<p>Se borran todas las entradas de este día de tu repositorio de datos. GitHub conserva el historial de cambios, pero la aplicación no podrá recuperarlas.</p>' +
@@ -62,7 +62,8 @@
 
       // Las emociones son un extra: si no se pueden cargar, la página se muestra igual.
       var emotions = emoRepo ? emoRepo.list().catch(function () { return []; }) : Promise.resolve([]);
-      Promise.all([repo.list(), emotions]).then(function (r) {
+      var people = pplRepo ? pplRepo.list().catch(function () { return []; }) : Promise.resolve([]);
+      Promise.all([repo.list(), emotions, people]).then(function (r) {
         var list = r[0], entry = null;
         list.forEach(function (e) { if (e.day === day) entry = e; });
         if (!entry) {
@@ -70,7 +71,7 @@
             '<a class="btn secondary" href="#/diario">Volver al diario</a></p>');
           return;
         }
-        paint(entry, list, D.emotionMap(r[1]));
+        paint(entry, list, D.emotionMap(r[1]), D.personMap(r[2]));
       }).catch(function (err) {
         root.innerHTML = shell(day, '<div class="msg" data-kind="error">No se pudo cargar. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>' + back);
       });

@@ -77,7 +77,7 @@
           '<div class="three">' +
             '<article class="card"><h3>Misiones activas</h3><p>Ninguna activa. Tú decides cuándo empezar una.</p></article>' +
             '<article class="card" id="home-memories"><h3>Hace un año</h3><div id="home-memories-body"><p>Aparecerán recuerdos cuando tengas entradas de años anteriores.</p></div></article>' +
-            '<article class="card"><h3>Personas recientes</h3><p>Aquí verás con quién has compartido tus últimos recuerdos.</p></article>' +
+            '<article class="card" id="home-people"><h3>Personas recientes</h3><div id="home-people-body"><p>Aquí verás con quién has compartido tus últimos recuerdos.</p><p style="margin-top: 10px"><a href="#/personas" class="link">Ver personas</a></p></div></article>' +
           '</div>' +
 
           '<div class="badges88" aria-label="Detalles decorativos">' +
@@ -135,12 +135,23 @@
       var D = App.diary, esc = App.escapeHtml;
       if (!recent.isConnected && recent.isConnected !== undefined) return;
       if (!entries.length) {
-        recent.innerHTML = '<p class="soft">Todavía no has escrito ninguna.</p><p style="margin-top: 10px"><a class="btn secondary" href="#/diario/nueva">Escribir la primera</a></p>';
+        recent.innerHTML = '<p class="soft">Todavía no has escrito ninguna.</p><p style="margin-top: 10px"><a class="btn secondary" href="#/diario/hoy">Escribir la primera</a></p>';
       } else {
         recent.innerHTML = '<ul class="mini-list">' + entries.slice(0, 3).map(function (e) {
           return '<li><a href="#/diario/' + esc(e.day) + '"><b>' + esc(D.displayTitle(e)) + '</b><small class="soft">' + esc(D.formatLong(e.day)) + '</small></a></li>';
         }).join('') + '</ul><p style="margin-top: 10px"><a href="#/diario" class="link">Ver todo el diario</a></p>';
       }
+      // Personas con recuerdos recientes: por fecha del último fragmento (nunca por cantidad: no hay rankings de personas).
+      var ppl = D.people && D.people(), pbody = root.querySelector('#home-people-body');
+      if (ppl && pbody) ppl.list().then(function (people) {
+        var act = D.peopleActivity(entries);
+        var recentPeople = people.filter(function (p) { return act[p.id]; }).sort(function (a, b) { return act[a.id].last < act[b.id].last ? 1 : -1; }).slice(0, 3);
+        pbody.innerHTML = recentPeople.length
+          ? '<ul class="mini-list">' + recentPeople.map(function (p) {
+              return '<li><a href="#/personas/' + esc(p.id) + '"><b>' + esc(p.name) + '</b><small class="soft">' + esc(D.formatLong(act[p.id].last)) + '</small></a></li>';
+            }).join('') + '</ul><p style="margin-top: 10px"><a href="#/personas" class="link">Ver personas</a></p>'
+          : '<p class="soft">' + (people.length ? 'Cuando vincules una entrada a alguien, aparecerá aquí.' : 'Todavía no hay fichas.') + '</p><p style="margin-top: 10px"><a href="#/personas" class="link">Ver personas</a></p>';
+      }).catch(function () {});
       var md = D.today().slice(5, 10), year = D.today().slice(0, 4);
       var memories = entries.filter(function (e) { return e.day.slice(5, 10) === md && e.day.slice(0, 4) !== year && D.excerpt(e, 10); }).slice(0, 2);
       if (memories.length) {

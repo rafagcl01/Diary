@@ -4,7 +4,7 @@
   App.diaryViews = App.diaryViews || {};
 
   var SKELETON = '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 80%; margin-bottom: 14px"></div><div class="skeleton" style="width: 60%"></div>';
-  function emptyQuery() { return { text: '', tags: [], mood: '', favoritesOnly: false, day: '', from: '', to: '' }; }
+  function emptyQuery() { return { text: '', tags: [], mood: '', person: '', favoritesOnly: false, day: '', from: '', to: '' }; }
 
   App.diaryViews.list = {
     render: function (root) {
@@ -32,6 +32,7 @@
             '<div class="filters-grid">' +
               '<label class="field"><span>Desde</span><input id="f-from" type="date"></label>' +
               '<label class="field"><span>Hasta</span><input id="f-to" type="date"></label>' +
+              '<label class="field"><span>Persona</span><select id="f-person"><option value="">Cualquiera</option></select></label>' +
               '<button type="button" class="btn secondary" id="f-clear">Limpiar filtros</button>' +
             '</div>' +
             '<div class="mood-filter" role="group" aria-label="Filtrar por estado de ánimo">' +
@@ -50,7 +51,7 @@
 
       function filtersActive() {
         var q = state.q;
-        return !!(q.text.trim() || q.tags.length || q.mood || q.favoritesOnly || q.day || q.from || q.to);
+        return !!(q.text.trim() || q.tags.length || q.mood || q.person || q.favoritesOnly || q.day || q.from || q.to);
       }
       function paintDrafts() { $('#drafts').innerHTML = H.drafts(App.drafts.list()); }
       function paintLegacy() { $('#legacy').innerHTML = H.legacy(state.legacy); }
@@ -101,6 +102,17 @@
       function paintAll() { paintDrafts(); paintLegacy(); paintTags(); paintCal(); paintList(); }
       function setFilter(fn) { fn(state.q); state.shown = 40; paintTags(); paintCal(); paintList(); }
 
+      // El filtro por persona se rellena con tus fichas; si no se pueden cargar, simplemente queda en "Cualquiera".
+      function fillPeople() {
+        var pr = D.people(); if (!pr) return;
+        pr.list().then(function (people) {
+          var sel = $('#f-person'); if (!sel) return;
+          sel.innerHTML = '<option value="">Cualquiera</option>' + people.map(function (p) {
+            return '<option value="' + esc(p.id) + '"' + (state.q.person === p.id ? ' selected' : '') + '>' + esc(D.personLabel(p)) + '</option>';
+          }).join('');
+        }).catch(function () {});
+      }
+
       function load(force) {
         var repo = D.repo();
         state.error = ''; state.disconnected = !repo; state.loaded = !repo;
@@ -108,6 +120,7 @@
         if (!repo) return;
         repo.list(force).then(function (entries) {
           state.entries = entries; state.problems = repo.problems(); state.legacy = repo.legacy(); state.loaded = true;
+          fillPeople();
           if (state.firstLoad && entries.length) {
             var latest = D.parseDay(entries[0].day);
             if (latest) { state.y = latest.getFullYear(); state.m = latest.getMonth(); }
@@ -146,7 +159,7 @@
         }
         if (t.closest('#f-clear')) {
           state.q = emptyQuery();
-          $('#q').value = ''; $('#f-from').value = ''; $('#f-to').value = ''; $('#f-fav').setAttribute('aria-pressed', 'false');
+          $('#q').value = ''; $('#f-from').value = ''; $('#f-to').value = ''; $('#f-person').value = ''; $('#f-fav').setAttribute('aria-pressed', 'false');
           view.querySelectorAll('[data-mood-filter]').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
           state.shown = 40; paintTags(); paintCal(); paintList(); return;
         }
@@ -182,6 +195,7 @@
       });
       $('#f-from').addEventListener('change', function (e) { setFilter(function (q) { q.from = e.target.value; }); });
       $('#f-to').addEventListener('change', function (e) { setFilter(function (q) { q.to = e.target.value; }); });
+      $('#f-person').addEventListener('change', function (e) { setFilter(function (q) { q.person = e.target.value; }); });
 
       load(false);
     }

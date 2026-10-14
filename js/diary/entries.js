@@ -3,19 +3,22 @@
 // Modelo: UNA página por día (en el código, `entry`). Cada página tiene varias entradas (en el código,
 // `blocks`) y cada entrada lleva sus propias etiquetas y su estado de ánimo (opcional). Se guarda en entries/AAAA-MM.json:
 //   { day: "2026-10-13", title, favorite, createdAt, updatedAt,
-//     blocks: [{ id: "b_…", text, tags: [], mood: "bien" | null, emotions: ["em_…"] }] }
+//     blocks: [{ id: "b_…", text, tags: [], mood: "bien" | null, emotions: ["em_…"], people: ["pe_…"] }] }
 // `mood` es uno de cinco niveles (muy-bien … muy-mal) y es lo único que cuenta para el porcentaje de ánimo.
+// `people` son identificadores de personas (people.json); el vínculo es un dato estructurado, no texto en el párrafo.
 // `emotions` son identificadores de la biblioteca de emociones (emotions.json): son independientes del ánimo.
 // El día es la identidad de la página. Los campos desconocidos se conservan al editar.
 (function (App) {
   var D = (App.diary = App.diary || {});
 
-  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10 };
+  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10, people: 20 };
   var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
   var MOOD_RE = /^[a-z][a-z0-9-]{0,29}$/;
   var EMOTION_ID_RE = /^em_[0-9a-f]{8}$/;
   D.EMOTION_ID_RE = EMOTION_ID_RE;
+  var PERSON_ID_RE = /^pe_[0-9a-f]{8}$/;
+  D.PERSON_ID_RE = PERSON_ID_RE;
   function skipKey(k) { return k === '__proto__' || k === 'constructor' || k === 'prototype'; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function invalid(msg) { return App.storageError('invalid', msg); }
@@ -115,9 +118,18 @@
     return out.slice(0, LIMITS.emotions);
   };
 
+  // Personas vinculadas a una entrada: identificadores de people.json (no nombres), así que renombrar a alguien no rompe nada.
+  D.uniquePersonIds = function (list) {
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      if (typeof id === 'string' && PERSON_ID_RE.test(id) && !seen[id]) { seen[id] = true; out.push(id); }
+    });
+    return out.slice(0, LIMITS.people);
+  };
+
   // ---- Bloques ----
   D.blockHasContent = function (b) {
-    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length)));
+    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length) || (b.people && b.people.length)));
   };
 
   // Devuelve el bloque limpio (puede estar vacío). Conserva campos desconocidos.
@@ -134,6 +146,7 @@
     seenIds[out.id] = true;
     out.tags = D.uniqueTags(out.tags);
     out.emotions = D.uniqueEmotionIds(out.emotions);
+    out.people = D.uniquePersonIds(out.people);
     var mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
     if (mood !== null && !D.isKnownMood(mood)) {
       // Un estado que no es de los cinco (por ejemplo, de la versión anterior): se pasa a su nivel y se conserva el original.
@@ -251,7 +264,7 @@
   };
 
   // ---- Búsqueda ----
-  // q: { text, tags: [], mood, favoritesOnly, day: 'AAAA-MM-DD', from, to }   (todo opcional)
+  // q: { text, tags: [], mood, person: 'pe_…', favoritesOnly, day: 'AAAA-MM-DD', from, to }   (todo opcional)
   D.search = function (entries, q) {
     q = q || {};
     var terms = fold(q.text || '').split(/\s+/).filter(Boolean);
@@ -262,6 +275,7 @@
       if (q.to && e.day > q.to) return false;
       if (q.favoritesOnly && !e.favorite) return false;
       if (q.mood && !e.blocks.some(function (b) { return b.mood === q.mood; })) return false;
+      if (q.person && !e.blocks.some(function (b) { return (b.people || []).indexOf(q.person) >= 0; })) return false;
       if (wantTags.length) {
         var mine = D.entryTags(e).map(fold);
         if (!wantTags.every(function (t) { return mine.indexOf(t) >= 0; })) return false;
