@@ -1,37 +1,47 @@
-// Diario: escribir o editar el día. Una entrada por día, con varios bloques; cada bloque lleva
-// su texto, sus etiquetas y su estado de ánimo. Se guarda como borrador mientras escribes.
+// Diario: editar la página de un día. Es la misma hoja que se lee, con controles: cada entrada tiene su texto,
+// su estado de ánimo (uno de cinco), sus emociones (de tu biblioteca) y sus etiquetas, y se pueden reordenar.
+// Se guarda como borrador mientras escribes. Las emociones nunca intervienen en el porcentaje de ánimo.
 (function (App) {
-  var D = App.diary, H = App.diaryHtml, esc = App.escapeHtml;
+  var D = App.diary, H = App.diaryHtml, P = App.percentUi, esc = App.escapeHtml, icon = App.icon;
   App.diaryViews = App.diaryViews || {};
 
   function hhmm(iso) {
     var d = new Date(iso);
     return isNaN(d) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
-  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null }; }
-  function copyBlock(b) { return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood }; }
-  function page(title, note, body) { return '<div class="view">' + App.pageHeader(title, '', note) + body + '</div>'; }
+  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null, emotions: [] }; }
+  function copyBlock(b) { return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood, emotions: (b.emotions || []).slice() }; }
+  function shell(day, body) {
+    return '<div class="view day-page"><article class="card paper sheet">' + H.sheetHead(day, '', '') + body + '</article></div>';
+  }
 
   function tagChips(block, n) {
     return block.tags.map(function (t, i) {
-      return '<li class="chip">#' + esc(t) + ' <button type="button" class="chip-x" data-remove-tag="' + i + '" data-block="' + esc(block.id) + '" aria-label="Quitar etiqueta ' + esc(t) + ' del bloque ' + n + '">×</button></li>';
+      return '<li class="chip">#' + esc(t) + ' <button type="button" class="chip-x" data-remove-tag="' + i + '" data-block="' + esc(block.id) + '" aria-label="Quitar la etiqueta ' + esc(t) + ' de la entrada ' + n + '">×</button></li>';
+    }).join('');
+  }
+  function emotionChips(block, n, byId) {
+    return (block.emotions || []).map(function (id) {
+      var e = byId[id];
+      if (!e) return '';
+      return H.emotionChip(e, ' <button type="button" class="chip-x" data-remove-emo="' + esc(id) + '" data-block="' + esc(block.id) + '" aria-label="Quitar la emoción ' + esc(e.name) + ' de la entrada ' + n + '">×</button>');
     }).join('');
   }
 
   App.diaryViews.editor = {
-    // day = "AAAA-MM-DD";  opts.addBlock = abrir con un bloque nuevo al final
+    // day = "AAAA-MM-DD";  opts.addBlock = abrir con una entrada nueva al final, lista para escribir
     render: function (root, day, opts) {
       opts = opts || {};
-      var repo = D.repo();
-      var longDate = esc(D.formatLong(day));
+      var repo = D.repo(), emoRepo = D.emotions();
 
       if (!D.isDay(day) || day > D.today()) {
-        root.innerHTML = page('No se puede escribir ahí', longDate,
-          '<p class="soft">' + (D.isDay(day) ? 'Ese día todavía no ha llegado.' : 'Esa fecha no es válida.') + '</p><p><a class="btn secondary" href="#/diario">Volver al diario</a></p>');
+        root.innerHTML = '<div class="view day-page"><article class="card paper sheet"><h1 id="page-title" class="date-h1" tabindex="-1">No se puede escribir ahí</h1>' +
+          '<p class="soft">' + (D.isDay(day) ? 'Ese día todavía no ha llegado.' : 'Esa fecha no es válida.') + '</p><p class="btn-row"><a class="btn secondary" href="#/diario">Volver al diario</a></p></article></div>';
         return;
       }
 
-      function start(prev) {
+      // library = emociones de la biblioteca; null si no se pudieron cargar
+      function start(prev, library) {
         var saved = prev ? { title: prev.title, favorite: prev.favorite, blocks: prev.blocks } : { title: '', favorite: false, blocks: [] };
         var draft = App.drafts.get(day);
         var useDraft = !!(draft && !App.drafts.isEmpty(draft));
@@ -39,23 +49,42 @@
         var blocks = begin.blocks.map(copyBlock);
         if (!blocks.length || (opts.addBlock && D.blockHasContent(blocks[blocks.length - 1]))) blocks.push(newBlock());
         var backHref = prev ? '#/diario/' + esc(day) : '#/diario';
+        var emoLoaded = !!emoRepo && library !== null;
+        library = library || [];
+        var byId = D.emotionMap(library);
 
-        root.innerHTML = '<div class="view editor-view">' +
-          App.pageHeader(prev ? 'Editar entrada' : 'Nueva entrada', '', longDate) +
+        root.innerHTML = '<div class="view day-page editor-view">' +
           '<div class="editbar"><a class="btn secondary" href="' + backHref + '">Volver</a>' +
             '<span id="e-draft" class="soft draft-status" role="status" aria-live="polite"></span></div>' +
           (repo ? '' : '<p class="msg" data-kind="info">Todavía no hay datos conectados. Puedes escribir: el texto se guarda como borrador en este navegador y podrás guardarlo en cuanto conectes. <a href="#/ajustes">Conectar mis datos</a></p>') +
           (useDraft ? '<p class="msg" id="e-restored" data-kind="info">Has recuperado un borrador de las ' + esc(hhmm(draft.updatedAt)) + '. <button type="button" class="btn secondary" id="e-discard">Descartar borrador</button></p>' : '') +
           '<article class="card paper sheet editor">' +
-            '<label class="field"><span>Título del día (opcional)</span>' +
-              '<input id="e-title" type="text" maxlength="' + D.LIMITS.title + '" autocomplete="off" value="' + esc(begin.title) + '"></label>' +
+            '<header class="sheet-head"><div class="sheet-titles">' +
+              '<h1 id="page-title" class="date-h1" tabindex="-1">' + esc(D.formatLong(day)) + '</h1>' +
+              '<label class="field title-field"><span class="sr">Título de la página (opcional)</span>' +
+                '<input id="e-title" class="title-input" type="text" maxlength="' + D.LIMITS.title + '" autocomplete="off" placeholder="Título de la página (opcional)" value="' + esc(begin.title) + '"></label>' +
+            '</div><div class="pct-slot" id="pct-slot"></div></header>' +
             '<div id="e-blocks"></div>' +
-            '<p class="btn-row"><button type="button" class="btn secondary" id="e-add">Añadir bloque</button></p>' +
-            '<p class="soft" id="e-hint">Cada bloque es un momento del día, con su ánimo y sus etiquetas. Si sales sin guardar, tu texto queda como borrador.</p>' +
-            '<label class="checkline"><input id="e-fav" type="checkbox"' + (begin.favorite ? ' checked' : '') + '><span>Marcar el día como favorito</span></label>' +
+            '<p class="btn-row"><button type="button" class="btn secondary" id="e-add">Añadir entrada</button></p>' +
+            '<p class="soft" id="e-hint">Cada entrada es un momento del día. Se añaden hacia abajo, en el orden en que las escribes, y puedes cambiarlo con Subir y Bajar. El porcentaje de arriba es la media de los estados de ánimo; las emociones no cuentan en él. Si sales sin guardar, tu texto queda como borrador.</p>' +
+            '<label class="checkline"><input id="e-fav" type="checkbox"' + (begin.favorite ? ' checked' : '') + '><span>Marcar la página como favorita</span></label>' +
           '</article>' +
           '<div class="btn-row"><button type="button" class="btn" id="e-save">Guardar</button><a class="btn secondary" href="' + backHref + '">Cancelar</a></div>' +
           '<p class="msg" id="e-msg" role="status" data-kind="info"></p>' +
+
+          '<dialog class="confirm emo-dialog" id="emo-dialog" aria-labelledby="emo-title">' +
+            '<h3 id="emo-title">Emociones de la entrada <span id="emo-n"></span></h3>' +
+            '<p class="soft">Elige las que quieras. Son aparte del estado de ánimo: no cambian el porcentaje.</p>' +
+            '<ul class="emo-list" id="emo-list"></ul>' +
+            '<div id="emo-form" hidden>' +
+              '<h4 id="emo-form-title">Nueva emoción</h4>' +
+              '<label class="field"><span>Nombre</span><input id="emo-name" type="text" maxlength="' + D.EMOTION_LIMITS.name + '" autocomplete="off" placeholder="Por ejemplo, Nostalgia"></label>' +
+              '<fieldset class="symbols"><legend>Símbolo</legend><div class="symbol-grid" id="emo-symbols"></div></fieldset>' +
+              '<div class="btn-row"><button type="button" class="btn" id="emo-save">Guardar emoción</button><button type="button" class="btn secondary" id="emo-cancel">Cancelar</button></div>' +
+            '</div>' +
+            '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Crear una emoción nueva</button><button type="button" class="btn" id="emo-done">Hecho</button></div>' +
+          '</dialog>' +
           '</div>';
 
         var view = root.querySelector('.editor-view');
@@ -66,32 +95,42 @@
         function say(text, kind) { var m = $('#e-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
         var busy = false, timer = null;
 
+        // El porcentaje sale SOLO de los estados de ánimo de las entradas.
+        function refreshPercent() { P.paint($('#pct-slot'), D.dayMood({ blocks: blocks }), day, { fromZero: false }); }
+
         function paintBlocks() {
           $('#e-blocks').innerHTML = blocks.map(function (b, i) {
             var n = i + 1, id = esc(b.id);
-            return '<section class="block" data-block-id="' + id + '" aria-label="Bloque ' + n + '">' +
-              '<div class="block-head"><h2 class="block-title">Bloque ' + n + '</h2><div class="block-tools">' +
-                '<button type="button" class="mini" data-up="' + id + '"' + (i === 0 ? ' disabled' : '') + ' aria-label="Subir el bloque ' + n + '">Subir</button>' +
-                '<button type="button" class="mini" data-down="' + id + '"' + (i === blocks.length - 1 ? ' disabled' : '') + ' aria-label="Bajar el bloque ' + n + '">Bajar</button>' +
-                '<button type="button" class="mini" data-del="' + id + '" aria-label="Quitar el bloque ' + n + '">Quitar</button>' +
+            return '<section class="block" data-block-id="' + id + '" aria-label="Entrada ' + n + '">' +
+              '<div class="block-head"><h2 class="block-title">Entrada ' + n + '</h2><div class="block-tools">' +
+                '<button type="button" class="mini" data-up="' + id + '"' + (i === 0 ? ' disabled' : '') + ' aria-label="Subir la entrada ' + n + '">Subir</button>' +
+                '<button type="button" class="mini" data-down="' + id + '"' + (i === blocks.length - 1 ? ' disabled' : '') + ' aria-label="Bajar la entrada ' + n + '">Bajar</button>' +
+                '<button type="button" class="mini" data-del="' + id + '" aria-label="Quitar la entrada ' + n + '">Quitar</button>' +
               '</div></div>' +
-              '<label class="field"><span class="sr">Texto del bloque ' + n + '</span>' +
+              '<label class="field"><span class="sr">Texto de la entrada ' + n + '</span>' +
                 '<textarea data-text="' + id + '" rows="5" placeholder="Qué ha pasado, cómo ha ido…">' + esc(b.text) + '</textarea></label>' +
-              '<div class="mood-pick" role="radiogroup" aria-label="Estado de ánimo del bloque ' + n + '">' +
+              '<div class="mood-pick" role="radiogroup" aria-label="Estado de ánimo de la entrada ' + n + '">' +
                 D.MOODS.map(function (m) {
                   return '<button type="button" role="radio" class="mood-btn small" data-block-mood="' + id + '" data-mood="' + m.id + '" aria-checked="' + (b.mood === m.id) + '">' +
                     H.face(m.id) + '<span>' + esc(m.label) + '</span></button>';
                 }).join('') + '</div>' +
+              '<div class="emo-row"><ul class="chips emo-selected" data-emolist="' + id + '" aria-label="Emociones de la entrada ' + n + '" aria-live="polite">' + emotionChips(b, n, byId) + '</ul>' +
+                '<button type="button" class="mini" data-emo-open="' + id + '" aria-haspopup="dialog">Emociones</button></div>' +
               '<div class="tags-input"><ul class="chips" data-taglist="' + id + '" aria-live="polite">' + tagChips(b, n) + '</ul>' +
-                '<input type="text" data-tag-input="' + id + '" autocomplete="off" aria-label="Añadir etiqueta al bloque ' + n + '" placeholder="Etiqueta y pulsa Intro"></div>' +
+                '<input type="text" data-tag-input="' + id + '" autocomplete="off" aria-label="Añadir etiqueta a la entrada ' + n + '" placeholder="Etiqueta y pulsa Intro"></div>' +
               '</section>';
           }).join('');
         }
-
         function paintTagList(id) {
           var i = blockIndex(id), list = q('[data-taglist="' + id + '"]');
           if (list && i >= 0) list.innerHTML = tagChips(blocks[i], i + 1);
         }
+        function paintEmotionChips(id) {
+          var i = blockIndex(id), list = q('[data-emolist="' + id + '"]');
+          if (list && i >= 0) list.innerHTML = emotionChips(blocks[i], i + 1, byId);
+        }
+        function paintAllEmotionChips() { blocks.forEach(function (b) { paintEmotionChips(b.id); }); }
+
         function addTags(id, raw) {
           var i = blockIndex(id); if (i < 0) return;
           var next = D.uniqueTags(blocks[i].tags.concat(String(raw).split(',')));
@@ -103,6 +142,68 @@
           view.querySelectorAll('[data-tag-input]').forEach(function (inp) { if (inp.value.trim()) addTags(inp.dataset.tagInput, inp.value); });
         }
 
+        // ---- Emociones: elegir varias, crear y editar desde aquí ----
+        var activeId = null, editingEmotion = null, formSymbol = null;
+        function emoSay(text, kind) { var m = $('#emo-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
+        function activeBlock() { var i = blockIndex(activeId); return i >= 0 ? blocks[i] : null; }
+
+        function paintEmoList() {
+          var b = activeBlock(), chosen = b ? b.emotions : [];
+          if (!emoRepo) { $('#emo-list').innerHTML = '<li class="soft">Conecta tus datos para usar emociones. <a href="#/ajustes">Conectar mis datos</a></li>'; return; }
+          if (!emoLoaded) { $('#emo-list').innerHTML = '<li class="soft">No se pudieron cargar tus emociones ahora mismo.</li>'; return; }
+          $('#emo-list').innerHTML = library.length ? library.map(function (e) {
+            return '<li class="emo-item"><button type="button" class="chip emo-toggle" data-emo-toggle="' + esc(e.id) + '" aria-pressed="' + (chosen.indexOf(e.id) >= 0) + '">' +
+              icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></button>' +
+              '<button type="button" class="mini" data-emo-edit="' + esc(e.id) + '" aria-label="Editar la emoción ' + esc(e.name) + '">Editar</button></li>';
+          }).join('') : '<li class="soft">Todavía no tienes emociones. Crea la primera.</li>';
+        }
+        function paintSymbols() {
+          $('#emo-symbols').innerHTML = D.EMOTION_SYMBOLS.map(function (s) {
+            return '<label class="symbol"><input type="radio" name="emo-symbol" value="' + s.id + '"' + (formSymbol === s.id ? ' checked' : '') + '>' +
+              '<span class="symbol-box">' + icon(s.id) + '</span><span class="sr">' + esc(s.label) + '</span></label>';
+          }).join('');
+        }
+        function openForm(emotion) {
+          editingEmotion = emotion ? emotion.id : null; formSymbol = emotion ? emotion.symbol : null;
+          $('#emo-form-title').textContent = emotion ? 'Editar emoción' : 'Nueva emoción';
+          $('#emo-name').value = emotion ? emotion.name : '';
+          paintSymbols(); emoSay('', 'info');
+          $('#emo-form').hidden = false;
+          if ($('#emo-name').focus) $('#emo-name').focus();
+        }
+        function closeForm() { $('#emo-form').hidden = true; editingEmotion = null; formSymbol = null; }
+        function openEmo(id) {
+          activeId = id; closeForm(); emoSay('', 'info');
+          $('#emo-n').textContent = String(blockIndex(id) + 1);
+          $('#emo-new').disabled = !emoLoaded;
+          paintEmoList();
+          $('#emo-dialog').showModal();
+        }
+        function toggleEmotion(emoId) {
+          var b = activeBlock(); if (!b) return;
+          var i = b.emotions.indexOf(emoId);
+          if (i >= 0) b.emotions.splice(i, 1); else b.emotions = D.uniqueEmotionIds(b.emotions.concat([emoId]));
+          paintEmotionChips(b.id); paintEmoList(); scheduleDraft();       // las emociones no tocan el porcentaje
+        }
+        function saveEmotion() {
+          if (!emoRepo) return;
+          var wasEditing = editingEmotion, input = { name: $('#emo-name').value, symbol: formSymbol };
+          emoSay('Guardando…', 'info');
+          var job = wasEditing ? emoRepo.update(wasEditing, input) : emoRepo.create(input);
+          job.then(function (emotion) {
+            return emoRepo.list().then(function (list) {
+              library = list; byId = D.emotionMap(list);
+              if (!wasEditing) {                                   // una emoción nueva se añade enseguida a la entrada
+                var b = activeBlock();
+                if (b) { b.emotions = D.uniqueEmotionIds(b.emotions.concat([emotion.id])); scheduleDraft(); }
+              }
+              paintAllEmotionChips(); paintEmoList(); closeForm();
+              emoSay(wasEditing ? 'Emoción actualizada.' : 'Emoción creada y añadida a la entrada.', 'ok');
+            });
+          }).catch(function (err) { emoSay(err && err.message ? err.message : 'No se pudo guardar la emoción.', 'error'); });
+        }
+
+        // ---- Borrador ----
         function snapshot() { return { title: $('#e-title').value, favorite: $('#e-fav').checked, blocks: blocks.map(copyBlock) }; }
         function flushDraft() {
           clearTimeout(timer); timer = null;
@@ -112,13 +213,19 @@
         function scheduleDraft() { clearTimeout(timer); timer = setTimeout(flushDraft, 500); }
 
         paintBlocks();
+        refreshPercent();
+        if (opts.addBlock) focusSel('[data-text="' + blocks[blocks.length - 1].id + '"]');
 
         view.addEventListener('input', function (e) {
           var t = e.target;
           if (t.dataset && t.dataset.text) { var i = blockIndex(t.dataset.text); if (i >= 0) blocks[i].text = t.value; scheduleDraft(); }
           else if (t.id === 'e-title') scheduleDraft();
         });
-        view.addEventListener('change', function (e) { if (e.target.id === 'e-fav') scheduleDraft(); });
+        view.addEventListener('change', function (e) {
+          var t = e.target;
+          if (t.id === 'e-fav') scheduleDraft();
+          else if (t.name === 'emo-symbol') formSymbol = t.value;
+        });
         view.addEventListener('focusout', function (e) {
           var t = e.target;
           if (t.dataset && t.dataset.tagInput && t.value.trim()) addTags(t.dataset.tagInput, t.value);
@@ -132,23 +239,38 @@
               var i = blockIndex(t.dataset.tagInput);
               if (i >= 0 && blocks[i].tags.length) { blocks[i].tags.pop(); paintTagList(t.dataset.tagInput); scheduleDraft(); }
             }
-          } else if (t.dataset && t.dataset.text && (e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+          } else if (t.id === 'emo-name' && e.key === 'Enter') { e.preventDefault(); saveEmotion(); }
+          else if (t.dataset && t.dataset.text && (e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
         });
         view.addEventListener('click', function (e) {
           var t = e.target;
           if (!t || !t.closest) return;
-          var mood = t.closest('[data-block-mood]'), rm = t.closest('[data-remove-tag]'), up = t.closest('[data-up]'), down = t.closest('[data-down]'), del = t.closest('[data-del]');
+          var mood = t.closest('[data-block-mood]'), rm = t.closest('[data-remove-tag]'), rmEmo = t.closest('[data-remove-emo]');
+          var up = t.closest('[data-up]'), down = t.closest('[data-down]'), del = t.closest('[data-del]');
+          var open = t.closest('[data-emo-open]'), toggle = t.closest('[data-emo-toggle]'), edit = t.closest('[data-emo-edit]');
           if (mood) {
             var i = blockIndex(mood.dataset.blockMood); if (i < 0) return;
             blocks[i].mood = blocks[i].mood === mood.dataset.mood ? null : mood.dataset.mood;   // volver a pulsar lo quita
             view.querySelectorAll('[data-block-mood="' + mood.dataset.blockMood + '"]').forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.mood === blocks[i].mood)); });
-            scheduleDraft(); return;
+            refreshPercent(); scheduleDraft(); return;
           }
           if (rm) {
             var j = blockIndex(rm.dataset.block);
             if (j >= 0) { blocks[j].tags.splice(Number(rm.dataset.removeTag), 1); paintTagList(rm.dataset.block); scheduleDraft(); }
             return;
           }
+          if (rmEmo) {
+            var k2 = blockIndex(rmEmo.dataset.block);
+            if (k2 >= 0) { blocks[k2].emotions = blocks[k2].emotions.filter(function (x) { return x !== rmEmo.dataset.removeEmo; }); paintEmotionChips(rmEmo.dataset.block); scheduleDraft(); }
+            return;
+          }
+          if (open) { openEmo(open.dataset.emoOpen); return; }
+          if (toggle) { toggleEmotion(toggle.dataset.emoToggle); return; }
+          if (edit) { var em = byId[edit.dataset.emoEdit]; if (em) openForm(em); return; }
+          if (t.closest('#emo-new')) { openForm(null); return; }
+          if (t.closest('#emo-cancel')) { closeForm(); emoSay('', 'info'); return; }
+          if (t.closest('#emo-save')) { saveEmotion(); return; }
+          if (t.closest('#emo-done')) { $('#emo-dialog').close(); return; }
           if (up || down) {
             var id = (up || down).dataset.up || (up || down).dataset.down, k = blockIndex(id), to = up ? k - 1 : k + 1;
             if (k < 0 || to < 0 || to >= blocks.length) return;
@@ -159,10 +281,10 @@
           if (del) {
             var d = blockIndex(del.dataset.del);
             if (d < 0) return;
-            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar este bloque? Su texto, su ánimo y sus etiquetas se perderán.')) return;
+            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar esta entrada? Su texto, su estado, sus emociones y sus etiquetas se perderán.')) return;
             blocks.splice(d, 1);
             if (!blocks.length) blocks.push(newBlock());
-            paintBlocks(); scheduleDraft(); return;
+            paintBlocks(); refreshPercent(); scheduleDraft(); return;
           }
           if (t.closest('#e-add')) {
             var nb = newBlock(); blocks.push(nb); paintBlocks(); scheduleDraft();
@@ -182,7 +304,7 @@
           commitPendingTags();
           var s = snapshot();
           var hasContent = s.title.trim() || s.blocks.some(D.blockHasContent);
-          if (!hasContent) { say('Escribe algo, elige un ánimo o añade una etiqueta en algún bloque, o ponle un título al día.', 'error'); focusSel('[data-text]'); return; }
+          if (!hasContent) { say('Escribe algo, elige un estado o una emoción, o añade una etiqueta en alguna entrada, o ponle un título a la página.', 'error'); focusSel('[data-text]'); return; }
           flushDraft();
           var r = D.repo();
           if (!r) { say('Conecta tus datos para guardar. Mientras tanto, tu texto sigue guardado como borrador en este navegador.', 'error'); return; }
@@ -199,10 +321,12 @@
         $('#e-save').addEventListener('click', save);
       }
 
-      if (!repo) { start(null); return; }
-      root.innerHTML = page('Cargando…', longDate, '<div class="skeleton" style="margin: 14px 0"></div>');
-      repo.get(day).then(start).catch(function (err) {
-        root.innerHTML = page('No se pudo cargar', longDate, '<div class="msg" data-kind="error">' + esc(err.message || 'Inténtalo de nuevo.') + '</div>');
+      if (!repo) { start(null, []); return; }
+      root.innerHTML = shell(day, '<div class="skeleton" style="margin: 14px 0"></div>');
+      // Las emociones son un extra: si no se pueden cargar, se puede escribir igual (sin elegirlas).
+      var emotions = emoRepo ? emoRepo.list().catch(function () { return null; }) : Promise.resolve(null);
+      Promise.all([repo.get(day), emotions]).then(function (r) { start(r[0], r[1]); }).catch(function (err) {
+        root.innerHTML = shell(day, '<div class="msg" data-kind="error">No se pudo cargar. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>');
       });
     }
   };

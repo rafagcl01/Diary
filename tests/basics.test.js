@@ -9,8 +9,8 @@ import vm from 'node:vm';
 const files = [
   'icons.js', 'prefs.js', 'ui.js', 'router.js',
   'storage/errors.js', 'storage/github-adapter.js', 'storage/store.js', 'storage/connection.js',
-  'diary/entries.js', 'diary/repository.js', 'diary/drafts.js', 'diary/stats.js',
-  'views/home.js', 'views/diary/html.js', 'views/diary/list.js', 'views/diary/read.js', 'views/diary/editor.js', 'views/diary.js', 'views/people.js', 'views/mood.js',
+  'diary/entries.js', 'diary/repository.js', 'diary/drafts.js', 'diary/emotions.js', 'diary/stats.js',
+  'views/home.js', 'views/diary/percent.js', 'views/diary/html.js', 'views/diary/list.js', 'views/diary/read.js', 'views/diary/editor.js', 'views/diary.js', 'views/people.js', 'views/mood.js',
   'views/character.js', 'views/quests.js', 'views/collection.js', 'views/settings.js',
   'sections.js',
 ];
@@ -84,13 +84,13 @@ test('las preferencias válidas se conservan', () => {
   assert.deepEqual([prefs.motion, prefs.theme, prefs.name], ['off', 'dark', 'Ana']);
 });
 
-test('el inicio ofrece las siete caras de ánimo como botones, sin dar más peso a unas que a otras', () => {
+test('el inicio ofrece las cinco caras de ánimo como botones, sin dar más peso a unas que a otras', () => {
   const App = loadApp();
   const root = fakeRoot();
   App.views.home.render(root);
-  const faces = root.innerHTML.match(/class="face m-[a-z]+"/g) || [];
-  assert.equal(faces.length, 7);
-  assert.equal((root.innerHTML.match(/role="radio"/g) || []).length, 7);
+  const faces = root.innerHTML.match(/class="face m-[a-z-]+"/g) || [];
+  assert.equal(faces.length, 5);
+  assert.equal((root.innerHTML.match(/role="radio"/g) || []).length, 5);
   assert.match(root.innerHTML, /href="#\/diario\/hoy"/, 'el acceso principal lleva a escribir hoy');
   assert.match(root.innerHTML, /href="#\/animo"/);
 });

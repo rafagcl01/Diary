@@ -43,13 +43,13 @@
                 '<p class="prompt">Querido diario, hoy…</p>' +
                 '<div class="actions">' +
                   '<span class="btn">' + icon('book') + 'Escribir una entrada</span>' +
-                  '<span class="soft hint">Dos líneas valen lo mismo que dos páginas.</span>' +
+                  '<span class="soft hint">Dos líneas valen lo mismo que dos folios.</span>' +
                 '</div>' +
               '</a>' +
 
               '<section class="card stitched mood-card" aria-labelledby="home-mood-title">' +
                 '<h3 id="home-mood-title">¿Cómo te sientes hoy?</h3>' +
-                '<p class="soft">Se apunta como un bloque en la entrada de hoy, sin escribir nada si prefieres.</p>' +
+                '<p class="soft">Se añade como una entrada nueva en la página de hoy, sin escribir nada si prefieres.</p>' +
                 '<div class="moods" role="radiogroup" aria-label="Estado de ánimo">' + moodButtons() + '</div>' +
                 '<div class="btn-row"><button type="button" class="btn" id="home-mood-save">Apuntar en el diario de hoy</button></div>' +
                 '<p class="msg" id="home-mood-msg" role="status" data-kind="info"></p>' +
@@ -117,7 +117,7 @@
       if (!repo) { say('Conecta tus datos para guardar tu ánimo. <a href="#/ajustes">Conectar mis datos</a>', 'error'); return; }
       save.disabled = true; say('Guardando…', 'info');
       repo.appendBlock(D.today(), { text: '', tags: [], mood: chosen }).then(function () {
-        say('Apuntado en la entrada de hoy. <a href="#/diario/' + D.today() + '/editar/nuevo">Añadir un texto</a>', 'ok');
+        say('Apuntado en la página de hoy. <a href="#/diario/' + D.today() + '/editar/nuevo">Escribir una entrada</a>', 'ok');
         chosen = null;
         card.querySelectorAll('[data-m]').forEach(function (b) { b.setAttribute('aria-checked', 'false'); });
         save.disabled = false;

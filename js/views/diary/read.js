@@ -1,48 +1,51 @@
-// Diario: lectura de la entrada de un día (cada bloque con su texto, su ánimo y sus etiquetas).
+// Diario: la página de un día. La fecha y el título van dentro de la propia hoja, con el porcentaje de ánimo arriba,
+// y debajo todas las entradas del día en orden, cada una con su estado, sus emociones y sus etiquetas.
 (function (App) {
-  var D = App.diary, H = App.diaryHtml, esc = App.escapeHtml;
+  var D = App.diary, H = App.diaryHtml, P = App.percentUi, esc = App.escapeHtml;
   App.diaryViews = App.diaryViews || {};
 
-  function page(title, note, body) { return '<div class="view">' + App.pageHeader(title, '', note) + App.lace() + body + '</div>'; }
+  // Hoja con la fecha arriba y un cuerpo cualquiera (carga, avisos, errores).
+  function shell(day, body) {
+    return '<div class="view day-page"><article class="card paper sheet">' + H.sheetHead(day, '', '') + body + '</article></div>';
+  }
 
   App.diaryViews.read = {
     render: function (root, day) {
-      var repo = D.repo();
-      var back = '<p><a class="btn secondary" href="#/diario">Volver al diario</a></p>';
-      var longDate = esc(D.formatLong(day));
+      var repo = D.repo(), emoRepo = D.emotions();
+      var back = '<p class="btn-row"><a class="btn secondary" href="#/diario">Volver al diario</a></p>';
 
       if (!repo) {
-        root.innerHTML = page('Entrada del día', longDate,
-          '<section class="card stitched empty"><div class="empty-icon">' + App.icon('book') + '</div><h2>Conecta tus datos para leer esta entrada</h2>' +
-          '<p>Las entradas viven en tu repositorio privado de GitHub.</p><a class="btn secondary" href="#/ajustes">Conectar mis datos</a></section>');
+        root.innerHTML = shell(day, '<h2 class="sheet-note">Conecta tus datos para leer esta página</h2>' +
+          '<p class="soft">Tu diario vive en tu repositorio privado de GitHub.</p><p class="btn-row"><a class="btn secondary" href="#/ajustes">Conectar mis datos</a></p>');
         return;
       }
-      root.innerHTML = page('Cargando…', longDate, '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>');
+      root.innerHTML = shell(day, '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>');
 
-      function paint(entry) {
-        root.innerHTML = '<div class="view read-view">' +
-          App.pageHeader(esc(D.displayTitle(entry)), '', entry.title ? longDate : '') +
+      function paint(entry, list, byId) {
+        root.innerHTML = '<div class="view day-page read-view">' +
+          H.pageNav(D.neighbors(list, day)) +
           '<div class="btn-row page-actions">' +
-            '<a class="btn secondary" href="#/diario">Volver al diario</a>' +
-            '<a class="btn" href="#/diario/' + esc(entry.day) + '/editar/nuevo">Añadir bloque</a>' +
-            '<a class="btn secondary" href="#/diario/' + esc(entry.day) + '/editar">Editar</a>' +
-            '<button type="button" class="btn secondary" id="r-fav" aria-pressed="' + entry.favorite + '">' + (entry.favorite ? 'Quitar de favoritos' : 'Marcar como favorito') + '</button>' +
-            '<button type="button" class="btn secondary" id="r-del">Eliminar</button>' +
+            '<a class="btn" href="#/diario/' + esc(day) + '/editar/nuevo">Escribir una entrada</a>' +
+            '<a class="btn secondary" href="#/diario/' + esc(day) + '/editar">Editar la página</a>' +
+            '<button type="button" class="btn secondary" id="r-fav" aria-pressed="' + entry.favorite + '">' + (entry.favorite ? 'Quitar de favoritas' : 'Marcar como favorita') + '</button>' +
+            '<button type="button" class="btn secondary" id="r-del">Eliminar la página</button>' +
           '</div>' +
           '<p class="msg" id="r-msg" role="status" data-kind="info"></p>' +
-          H.sheet(entry) +
+          H.sheet(entry, byId) +
           '<dialog class="confirm" id="r-dialog" aria-labelledby="r-dialog-title">' +
-            '<h3 id="r-dialog-title">¿Eliminar este día?</h3>' +
-            '<p>Se borran todos los bloques de este día de tu repositorio de datos. GitHub conserva el historial de cambios, pero la aplicación no podrá recuperarlos.</p>' +
+            '<h3 id="r-dialog-title">¿Eliminar esta página?</h3>' +
+            '<p>Se borran todas las entradas de este día de tu repositorio de datos. GitHub conserva el historial de cambios, pero la aplicación no podrá recuperarlas.</p>' +
             '<div class="btn-row"><button type="button" class="btn" id="r-confirm">Eliminar</button><button type="button" class="btn secondary" id="r-cancel">Cancelar</button></div>' +
           '</dialog></div>';
 
         function $(sel) { return root.querySelector(sel); }
         function say(text, kind) { var m = $('#r-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
+        P.paint($('#pct-slot'), D.dayMood(entry), day, { fromZero: true });
 
         $('#r-fav').addEventListener('click', function () {
           say('Guardando…', 'info');
-          repo.save(Object.assign({}, entry, { favorite: !entry.favorite }), { base: entry.updatedAt }).then(paint)
+          repo.save(Object.assign({}, entry, { favorite: !entry.favorite }), { base: entry.updatedAt })
+            .then(function (updated) { return repo.list().then(function (l) { paint(updated, l, byId); }); })
             .catch(function (err) { say(err.message, 'error'); });
         });
         $('#r-del').addEventListener('click', function () { $('#r-dialog').showModal(); });
@@ -50,22 +53,26 @@
         $('#r-confirm').addEventListener('click', function () {
           $('#r-dialog').close();
           say('Eliminando…', 'info');
-          repo.remove(entry.day).then(function () {
-            App.drafts.remove(entry.day);
+          repo.remove(day).then(function () {
+            App.drafts.remove(day);
             location.hash = '#/diario';
           }).catch(function (err) { say(err.message, 'error'); });
         });
       }
 
-      repo.get(day).then(function (entry) {
+      // Las emociones son un extra: si no se pueden cargar, la página se muestra igual.
+      var emotions = emoRepo ? emoRepo.list().catch(function () { return []; }) : Promise.resolve([]);
+      Promise.all([repo.list(), emotions]).then(function (r) {
+        var list = r[0], entry = null;
+        list.forEach(function (e) { if (e.day === day) entry = e; });
         if (!entry) {
-          root.innerHTML = page('No hay entrada este día', longDate,
-            '<p class="soft">Todavía no escribiste nada ese día.</p><p class="btn-row"><a class="btn" href="#/diario/' + esc(day) + '/editar">Escribir ese día</a><a class="btn secondary" href="#/diario">Volver al diario</a></p>');
+          root.innerHTML = shell(day, '<h2 class="sheet-note">Todavía no hay nada escrito este día</h2><p class="btn-row"><a class="btn" href="#/diario/' + esc(day) + '/editar">Escribir ese día</a>' +
+            '<a class="btn secondary" href="#/diario">Volver al diario</a></p>');
           return;
         }
-        paint(entry);
+        paint(entry, list, D.emotionMap(r[1]));
       }).catch(function (err) {
-        root.innerHTML = page('No se pudo cargar', longDate, '<div class="msg" data-kind="error">' + esc(err.message || 'Inténtalo de nuevo.') + '</div>' + back);
+        root.innerHTML = shell(day, '<div class="msg" data-kind="error">No se pudo cargar. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>' + back);
       });
     }
   };

@@ -16,7 +16,8 @@
       id: typeof b.id === 'string' && /^b_[0-9a-f]{8}$/.test(b.id) ? b.id : D.newBlockId(),
       text: typeof b.text === 'string' ? b.text.slice(0, D.LIMITS.text) : '',
       tags: Array.isArray(b.tags) ? b.tags.filter(function (t) { return typeof t === 'string'; }).slice(0, D.LIMITS.tags) : [],
-      mood: typeof b.mood === 'string' && /^[a-z][a-z0-9-]{0,29}$/.test(b.mood) ? b.mood : null
+      mood: typeof b.mood === 'string' && /^[a-z][a-z0-9-]{0,29}$/.test(b.mood) ? b.mood : null,
+      emotions: D.uniqueEmotionIds(b.emotions)
     };
   }
   function clean(key, d) {
@@ -30,7 +31,7 @@
     };
   }
   function isEmpty(d) {
-    return !d || (!d.title.trim() && !d.blocks.some(function (b) { return D.blockHasContent({ text: b.text, tags: b.tags, mood: b.mood }); }));
+    return !d || (!d.title.trim() && !d.blocks.some(function (b) { return D.blockHasContent({ text: b.text, tags: b.tags, mood: b.mood, emotions: b.emotions }); }));
   }
 
   // Lee los borradores del formato de la fase 3 y los pasa al nuevo (una caja de texto = un bloque).

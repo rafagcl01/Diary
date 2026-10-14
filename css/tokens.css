@@ -27,14 +27,12 @@
   --paper-ink: #2A1A24;
   --paper-soft: #7A6672;
 
-  /* Estados de ánimo: ninguno es un "rojo de error" */
-  --m-radiante: #F3A8C8;
-  --m-tranquila: #A9C8D8;
-  --m-normal: #E3D6DD;
-  --m-cansada: #C9B9E8;
-  --m-ansiosa: #E6B8A8;
-  --m-triste: #9A93C0;
-  --m-enfadada: #C46A8A;
+  /* Estados de ánimo: una escala pastel de rosa a azul lavanda (ninguno es un "rojo de error") */
+  --m-muy-bien: #F3A8C8;
+  --m-bien: #E9C4E0;
+  --m-neutro: #D9D2E9;
+  --m-mal: #B9C3E6;
+  --m-muy-mal: #8F9AD0;
 
   /* Tipografías */
   --font-display: "IM Fell English", "Iowan Old Style", Georgia, serif;

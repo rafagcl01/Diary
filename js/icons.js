@@ -23,14 +23,26 @@
     trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/><path d="M10.5 10.5v6M13.5 10.5v6"/>',
     'chev-l': '<path d="M14.5 6l-6 6 6 6"/>',
     'chev-r': '<path d="M9.5 6l6 6-6 6"/>',
-    // Caras de ánimo (los ojos y la boca; el círculo lo pone el CSS)
-    'f-radiante': '<path d="M7.5 11c.5-1.2 1.7-1.2 2.2 0M14.3 11c.5-1.2 1.7-1.2 2.2 0"/><path d="M8 14.5c1 2.5 6 2.5 8 0"/>',
-    'f-tranquila': '<path d="M7.5 11.2c.5 1 1.7 1 2.2 0M14.3 11.2c.5 1 1.7 1 2.2 0"/><path d="M9.5 15c1.4 1 3.6 1 5 0"/>',
-    'f-normal': '<circle cx="9" cy="11" r=".8"/><circle cx="15" cy="11" r=".8"/><path d="M9.5 15h5"/>',
-    'f-cansada': '<path d="M7.5 11h2.4M14.1 11h2.4"/><path d="M10 15.2c1.3-.6 2.7-.6 4 0"/>',
-    'f-ansiosa': '<circle cx="9" cy="11" r=".9"/><circle cx="15" cy="11" r=".9"/><path d="M8.5 15.2c.8-.8 1.6.8 2.4 0s1.6.8 2.4 0 1.6.8 2.4 0"/>',
-    'f-triste': '<circle cx="9" cy="11" r=".8"/><circle cx="15" cy="11" r=".8"/><path d="M9 16.2c1-1.5 5-1.5 6 0"/><path d="M15.6 12.6v1.9"/>',
-    'f-enfadada': '<path d="M7.3 9.2l3 1M16.7 9.2l-3 1"/><circle cx="9.3" cy="12" r=".8"/><circle cx="14.7" cy="12" r=".8"/><path d="M9.5 16c1.5-1 3.5-1 5 0"/>'
+    // Galería de símbolos para las emociones (línea fina, estética pastel goth / creepy cute)
+    ghost: '<path d="M6 20V11a6 6 0 0 1 12 0v9l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5z"/><path d="M9.5 11h.01M14.5 11h.01"/>',
+    skull: '<path d="M12 4c-4 0-7 2.8-7 6.5 0 2.2 1 3.8 2.5 4.8V19h9v-3.7c1.5-1 2.5-2.6 2.5-4.8C19 6.8 16 4 12 4z"/><path d="M9.5 11.5h.01M14.5 11.5h.01M10.5 19v-2.5M13.5 19v-2.5M12 14l-.8 1.5h1.6z"/>',
+    cat: '<path d="M5 9V4l4 3h6l4-3v5c1 1.5 1.5 3 1.5 4.5C20.5 18 17 20 12 20s-8.5-2-8.5-6.5C3.5 12 4 10.5 5 9z"/><path d="M9.5 13h.01M14.5 13h.01M11 16c.5.5 1.5.5 2 0"/>',
+    cross: '<path d="M12 3v18M7.5 8.5h9M10 21h4"/>',
+    candle: '<path d="M9 21h6V12H9z"/><path d="M12 12V9.5"/><path d="M12 3c1.5 1.8 2 3 2 4.2a2 2 0 0 1-4 0C10 6 10.5 4.8 12 3z"/>',
+    butterfly: '<path d="M12 7v11"/><path d="M12 10C9.5 4 4.5 4.5 5 8c.3 2.5 3.5 3.5 7 2z"/><path d="M12 10c2.5-6 7.5-5.5 7-2-.3 2.5-3.5 3.5-7 2z"/><path d="M12 13c-3 0-5.5 1.5-5 4 .5 2 3.5 1.5 5-1z"/><path d="M12 13c3 0 5.5 1.5 5 4-.5 2-3.5 1.5-5-1z"/><path d="M12 7c-.5-1-1-1.5-2-2M12 7c.5-1 1-1.5 2-2"/>',
+    cherry: '<circle cx="8" cy="17" r="3"/><circle cx="16" cy="16" r="3"/><path d="M8 14c0-4 2-7 5-9M16 13c0-4-1-6-3-8"/><path d="M13 5c2 0 4 .5 5.5 2-2 .5-4 0-5.5-2z"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17 18z"/>',
+    drop: '<path d="M12 3c3.5 4.5 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 2.5-6.5 6-11z"/>',
+    crown: '<path d="M4 18h16M4 18l-1-10 5 4 4-7 4 7 5-4-1 10"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>',
+    flower: '<circle cx="12" cy="12" r="2"/><circle cx="12" cy="6.5" r="2.5"/><circle cx="12" cy="17.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="12" r="2.5"/>',
+    umbrella: '<path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v6a2 2 0 0 1-4 0"/>',
+    // Caras de los cinco estados de ánimo (los ojos y la boca; el círculo lo pone el CSS)
+    'f-muy-bien': '<path d="M7.5 11c.5-1.2 1.7-1.2 2.2 0M14.3 11c.5-1.2 1.7-1.2 2.2 0"/><path d="M8 14.5c1 2.5 6 2.5 8 0"/>',
+    'f-bien': '<path d="M7.5 11.2c.5 1 1.7 1 2.2 0M14.3 11.2c.5 1 1.7 1 2.2 0"/><path d="M9.5 15c1.4 1 3.6 1 5 0"/>',
+    'f-neutro': '<circle cx="9" cy="11" r=".8"/><circle cx="15" cy="11" r=".8"/><path d="M9.5 15h5"/>',
+    'f-mal': '<circle cx="9" cy="11" r=".8"/><circle cx="15" cy="11" r=".8"/><path d="M9 16c1-1.3 5-1.3 6 0"/>',
+    'f-muy-mal': '<circle cx="9" cy="11" r=".8"/><circle cx="15" cy="11" r=".8"/><path d="M8.5 16.5c1-2 6-2 7 0"/><path d="M9 12.5v3M15 12.5v3"/>'
   };
 
   App.icon = function (name, extraClass) {

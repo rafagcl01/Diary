@@ -16,8 +16,8 @@ js/sections.js      Lista de secciones: para añadir una, crea su vista, añade 
 js/prefs.js         Preferencias de interfaz (solo en este navegador)
 js/ui.js            Utilidades de interfaz (escape de HTML, cabeceras, estados vacíos, descargas)
 js/storage/         Capa de almacenamiento (ver abajo)
-js/diary/           Lógica del diario sin pantalla: entradas, búsqueda, calendario, estadísticas, repositorio y borradores
-js/views/diary/     Pantallas del diario: cronología, lectura y editor por bloques
+js/diary/           Lógica del diario sin pantalla: páginas, estados de ánimo y porcentaje, emociones, búsqueda, calendario, estadísticas, repositorio y borradores
+js/views/diary/     Pantallas del diario: cronología, lectura y editor de la página del día (y el porcentaje de ánimo)
 js/views/mood.js    Estadísticas de ánimo
 js/views/           Una vista por sección
 tests/              Pruebas automáticas (node --test) y un GitHub de mentira para probar sin red
@@ -134,20 +134,45 @@ Las escrituras van de una en una. Si editas desde dos dispositivos y GitHub dete
 - Las fotos no se guardan aquí (fase posterior).
 
 
-## Fase 3: el diario (una entrada por día, con bloques)
+## Fase 3: el diario (una página por día, con entradas)
+
+Vocabulario: una **página** es un día; cada **entrada** es un momento de esa página (en los archivos se llama `blocks`).
 
 ### Cómo funciona
-- **Una entrada por día.** Cada entrada tiene un título opcional y **varios bloques**. Cada bloque lleva su propio texto, sus **etiquetas** y su **estado de ánimo** (opcional). Un bloque puede ser solo un ánimo, sin texto.
-- **El ánimo se apunta en los bloques.** La sección *Estado de ánimo* ya no registra nada: solo muestra estadísticas. Desde el inicio, *¿Cómo te sientes hoy?* añade con un toque un bloque (solo con ánimo) a la entrada de hoy.
-- **Las etiquetas hacen de actividades.** No hay una lista aparte de actividades ni emociones secundarias: si quieres anotar "paseo" o "dibujar", usa una etiqueta en el bloque.
-- **Escribir:** *Escribir hoy* (`#/diario/hoy`) abre el día con un bloque nuevo; también puedes escribir en otra fecha pasada. Los bloques se pueden añadir, subir, bajar y quitar. Ctrl+Intro guarda.
-- **Leer:** cada bloque con su texto, su ánimo (con su nombre, no solo color) y sus etiquetas. Los controles (editar, favorito, eliminar, añadir bloque) quedan fuera de la hoja.
-- **Cronología y calendario** por días, **búsqueda** por texto (sin importar tildes ni mayúsculas, en títulos, bloques y etiquetas), etiquetas, ánimo, favoritos, día y rango de fechas.
-- **Borradores:** el texto se guarda cada medio segundo en este navegador, con un borrador por día. Si cierras la pestaña, el diario muestra "Trabajo pendiente". Se puede escribir sin conexión con GitHub.
-- La cantidad de texto no da nada: el sistema de XP llega en la fase 6 y no mirará cuánto escribes.
+- **Una página por día.** Escribir añade una entrada **al final** de la página de ese día (las entradas se ordenan hacia abajo, en el orden en que las escribes). Para cambiar texto, estado, emociones, etiquetas o el orden de las entradas, abres la página de ese día y pulsas editar.
+- **Título y fecha dentro de la hoja.** La fecha (y el título, si lo hay) van en la cabecera de la propia página, junto al porcentaje de ánimo; no sobre ella. En el editor, el título se escribe ahí mismo.
+- **Cada entrada tiene** su texto, sus **etiquetas**, su **estado de ánimo** y sus **emociones** (todo opcional). Una entrada puede ser solo un estado, sin texto.
+- **El ánimo se apunta en las entradas.** La sección *Estado de ánimo* solo muestra estadísticas. Desde el inicio, *¿Cómo te sientes hoy?* añade con un toque una entrada (solo con estado) a la página de hoy.
+- **Escribir:** *Escribir hoy* abre la página de hoy; también puedes escribir en cualquier día pasado desde el calendario. Las entradas se pueden añadir, subir, bajar y quitar. Ctrl+Intro guarda.
+- **Leer:** cada entrada con su texto, su estado (con nombre, no solo color), sus emociones y sus etiquetas. Los controles quedan fuera de la hoja, con *Página anterior / siguiente*.
+- **Cronología y calendario**: cada día del calendario lleva a su página (o a escribirla). Hay **búsqueda** por texto (sin importar tildes ni mayúsculas), etiquetas, estado, favoritos, día y rango de fechas.
+- **Borradores:** el texto se guarda cada medio segundo en este navegador, un borrador por día. Se puede escribir sin conexión con GitHub.
+- La cantidad de texto no da nada: el sistema de XP no mirará cuánto escribes.
 
-### Cómo se guardan las entradas
-Un archivo por mes en el repositorio de datos: `entries/AAAA-MM.json`.
+### Estados de ánimo y porcentaje
+Hay cinco estados, con una escala lineal (Neutro es el centro):
+
+| Estado | Valor |
+|---|---|
+| Muy bien | 100 |
+| Bien | 75 |
+| Neutro | 50 |
+| Mal | 25 |
+| Muy mal | 0 |
+
+- **El porcentaje de la página es la media de los estados de sus entradas**, redondeada. Se ve arriba, dentro de la hoja, y también en la lista de páginas. Se actualiza con una pequeña animación (anillo y número) cuando cambia; con los efectos desactivados en Configuración o con "reducir movimiento" en el sistema, cambia al instante.
+- **Las entradas sin estado no cuentan** (no se tratan como Neutro): si una página tiene 3 entradas y 2 con estado, el porcentaje es la media de esas 2 y la hoja lo dice ("Media de 2 de 3 entradas con estado"). Si ninguna tiene estado **no hay porcentaje** (se muestra un guion, no un 0 %).
+- **Las emociones y las etiquetas nunca entran en el cálculo.**
+- Los siete ánimos de la versión anterior se convierten solos: radiante→Muy bien, tranquila→Bien, normal y cansada→Neutro, ansiosa, triste y enfadada→Mal. El original se conserva en el archivo (`legacyMood`).
+
+### Emociones personalizables
+- Son **independientes del estado**: puedes tener *Bien* + *Nostalgia* + *Ilusión*. Se eligen varias por entrada (hasta 10).
+- Se crean **desde el editor**: botón *Emociones* de la entrada → *Crear una emoción nueva* → nombre (hasta 30 caracteres) y un símbolo de una galería de 22 iconos (estilo pastel goth / creepy cute). Al crearla se añade a la entrada.
+- Quedan guardadas en `emotions.json` y se reutilizan en cualquier entrada. Se puede **editar el nombre y el símbolo** desde el mismo diálogo; el cambio se ve en todas las entradas que la usan. No se admiten dos emociones con el mismo nombre (sin importar tildes ni mayúsculas).
+- Si `emotions.json` no se puede cargar, se puede escribir igual (sin elegirlas).
+
+### Cómo se guardan los datos
+`entries/AAAA-MM.json`, un archivo por mes:
 
 ```json
 {
@@ -160,49 +185,51 @@ Un archivo por mes en el repositorio de datos: `entries/AAAA-MM.json`.
     "createdAt": "2026-10-13T19:30:12.000Z",
     "updatedAt": "2026-10-13T19:30:12.000Z",
     "blocks": [
-      { "id": "b_01234567", "text": "Quedé con Marcos.", "tags": ["amigos"], "mood": "radiante" },
-      { "id": "b_89abcdef", "text": "", "tags": [], "mood": "cansada" }
+      { "id": "b_01234567", "text": "Quedé con Marcos.", "tags": ["amigos"], "mood": "bien", "emotions": ["em_0a1b2c3d"] },
+      { "id": "b_89abcdef", "text": "", "tags": [], "mood": "mal", "emotions": [] }
     ]
   }]
 }
 ```
 
-- **El día es la identidad de la entrada** (no hay otro identificador). No se puede escribir en días que aún no han llegado.
-- **Cada bloque tiene un identificador propio** (`b_…`). En la fase 4 las personas se vincularán a esos identificadores, así que corregir un texto no rompe nada.
-- Los **ánimos** son: radiante, tranquila, normal, cansada, ansiosa, triste y enfadada. Su orden en el selector es solo ese; ninguno cuenta más ni menos que otro.
-- Los campos desconocidos se conservan al editar, para que una versión futura no pierda datos.
-- Un archivo de mes dañado se avisa, **no se toca** y no impide leer ni escribir los demás meses.
+`emotions.json`:
+
+```json
+{ "version": 1, "emotions": [{ "id": "em_0a1b2c3d", "name": "Nostalgia", "symbol": "moon", "createdAt": "...", "updatedAt": "..." }] }
+```
+
+- **El día es la identidad de la página.** No se puede escribir en días que aún no han llegado.
+- Cada entrada tiene un identificador propio (`b_…`); las emociones, otro (`em_…`). Cambiar el nombre de una emoción **no toca** `entries/*.json`.
+- Los campos desconocidos se conservan al editar. Un archivo de mes dañado se avisa, **no se toca** y no impide leer ni escribir los demás meses.
 
 ### Dos dispositivos a la vez
-- Si editas el **mismo día** desde dos dispositivos y el otro ya guardó cambios, la aplicación **se niega a pisarlos** (te avisa y tu texto sigue como borrador). Recarga para ver la versión nueva y vuelve a añadir lo tuyo.
-- *Añadir un ánimo con un toque* (inicio) no tiene ese problema: se suma al día sin pisar nada.
-- Días distintos se fusionan sin problema.
+- Si editas la **misma página** desde dos dispositivos y el otro ya guardó cambios, la aplicación **se niega a pisarlos** (te avisa y tu texto sigue como borrador). Recarga y vuelve a añadir lo tuyo.
+- *Apuntar un estado con un toque* (inicio) no tiene ese problema: se suma a la página sin pisar nada.
 
-### Formato antiguo (si ya habías escrito entradas en la versión anterior)
-Antes había varias entradas por día, con fecha y hora y etiquetas de entrada. Si el diario detecta ese formato, muestra *Actualizar el formato del diario* y **bloquea guardar** hasta que lo aceptes. La actualización une las entradas de cada día en una (cada texto antiguo pasa a ser un bloque, ordenados por la hora a la que los escribiste), copia las etiquetas de la entrada a todos sus bloques y no pierde texto; GitHub conserva el historial. **Antes de actualizar, descarga una copia** en Configuración. Los borradores de la versión anterior también se convierten solos.
+### Formato antiguo
+Si el diario detecta entradas con el formato anterior (varias por día), muestra *Actualizar el formato del diario* y **bloquea guardar** hasta que lo aceptes. La actualización une cada día en una página (cada texto antiguo pasa a ser una entrada, ordenadas por la hora, con las etiquetas de la entrada antigua) y no pierde texto; GitHub conserva el historial. **Descarga una copia antes** en Configuración.
 
 ### Estadísticas de ánimo
-La sección *Estado de ánimo* solo muestra números calculados con tus bloques:
-- **Mes:** cuántos bloques con ánimo, en cuántos días, el reparto (con el número escrito y el porcentaje) y un calendario donde cada día se colorea con el ánimo que más aparece (si empatan, el del último bloque del día).
-- **Mes a mes:** los últimos 12 meses en columnas; pulsa una para ver ese mes.
-- **Etiquetas y ánimo:** para las etiquetas con al menos 5 bloques con ánimo, qué ánimo aparece más en ellos, comparado con el total. Solo se muestra si hay al menos 15 bloques con ánimo en los últimos 12 meses.
-- Son **asociaciones, no causas**, no hay diagnósticos ni juicios sobre qué ánimo es "mejor" y con pocos datos no se saca ninguna pista.
+Solo muestran números calculados con tus entradas: reparto del mes, calendario (cada día con el estado que más aparece), **ánimo medio** (media de los porcentajes de las páginas), los últimos 12 meses, y pistas por etiqueta (solo con al menos 15 entradas con estado en 12 meses y 5 por etiqueta). Son asociaciones, no causas, y las emociones no intervienen.
 
 ### Privacidad de los borradores
-Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta que guardas la entrada o los descartas (como máximo 20). En un ordenador compartido, descártalos al terminar.
+Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta que guardas o los descartas (máximo 20). En un ordenador compartido, descártalos al terminar.
 
 ### Límites conocidos
-- Cada mes debe pesar menos de ~850 KB de texto; si lo supera, la aplicación se niega a guardar y lo explica. Un bloque admite hasta 20 000 caracteres y una entrada hasta 200 bloques.
+- Cada mes debe pesar menos de ~850 KB de texto; si lo supera, la aplicación se niega a guardar y lo explica. Una entrada admite hasta 20 000 caracteres y una página hasta 200 entradas. Hasta 200 emociones.
 - Sin conexión no se puede leer ni editar lo ya guardado (solo escribir borradores).
-- La búsqueda por personas llega con la fase 4; las fotos, más adelante.
+- Personas llega en la fase 4.
 
 ### Comprobaciones manuales de la fase 3
-- [ ] Con los datos conectados: **Escribir hoy**, escribir en un bloque, elegir un ánimo, añadir una etiqueta, **Añadir bloque** y **Guardar**: se abre la lectura con los dos bloques.
-- [ ] Recarga y la entrada sigue ahí (y existe `entries/AAAA-MM.json` en GitHub).
-- [ ] En el inicio, elegir un ánimo y **Apuntar en el diario de hoy** añade un bloque a la entrada de hoy.
-- [ ] **Escribir en esa fecha** con un día pasado crea esa entrada; un día futuro no se puede.
+- [ ] **Escribir hoy**, escribe, elige *Bien*, añade una emoción nueva desde *Emociones* (nombre + símbolo) y **Guardar**: la página muestra la fecha y el título dentro de la hoja, un 75 % y la emoción.
+- [ ] **Añadir entrada** con *Mal*: el porcentaje pasa a 50 % con una pequeña animación.
+- [ ] Edita el nombre de la emoción: el porcentaje no cambia. Quita la emoción de la entrada: tampoco.
+- [ ] En la lista de páginas aparece el porcentaje de cada día; una página sin estados no muestra ninguno.
+- [ ] Recarga: todo sigue ahí (existen `entries/AAAA-MM.json` y `emotions.json` en GitHub).
+- [ ] En el inicio, elegir un estado y **Apuntar en el diario de hoy** añade una entrada a la página de hoy.
+- [ ] Cada día pasado del calendario abre su página; los futuros no se pueden pulsar.
 - [ ] Escribe algo, cierra la pestaña y reábrela: aparece "Trabajo pendiente".
-- [ ] La búsqueda encuentra "música" aunque escribas "MUSICA"; el calendario, las etiquetas, el filtro de ánimo y favoritos filtran.
-- [ ] *Estado de ánimo*: con varios ánimos apuntados se ven el reparto, el calendario y los 12 meses, sin ningún texto que juzgue un ánimo.
-- [ ] **Eliminar** pide confirmación y el día desaparece de la lista.
-- [ ] Si tenías entradas antiguas: aparece el aviso de formato, y tras *Actualizar formato* todo sigue ahí, una entrada por día.
+- [ ] La búsqueda encuentra "música" aunque escribas "MUSICA".
+- [ ] *Estado de ánimo*: reparto, calendario y 12 meses, sin ningún texto que trate un estado como un error.
+- [ ] **Eliminar** pide confirmación y la página desaparece de la lista.
+- [ ] Si tenías entradas antiguas: aparece el aviso de formato y tras *Actualizar formato* todo sigue ahí, una página por día.

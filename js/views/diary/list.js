@@ -18,7 +18,7 @@
       root.innerHTML = '<div class="view diary-view">' +
         App.pageHeader('Diario', '', 'cuaderno privado') +
         '<div class="btn-row page-actions">' +
-          '<a class="btn" href="#/diario/hoy">Escribir hoy</a>' +
+          '<a class="btn" href="#/diario/hoy">Escribir una entrada hoy</a>' +
           '<label class="otherday"><span class="sr">Escribir en otra fecha</span><input id="other-day" type="date" max="' + todayKey + '"></label>' +
           '<button type="button" class="btn secondary" id="other-go">Escribir en esa fecha</button>' +
         '</div>' +
@@ -59,10 +59,10 @@
         var selected = state.q.tags.map(D.fold);
         $('#tags').innerHTML = D.allTags(state.entries).slice(0, 12).map(function (t) {
           return '<button type="button" class="chip" data-tag="' + esc(t.tag) + '" aria-pressed="' + (selected.indexOf(D.fold(t.tag)) >= 0) + '">#' + esc(t.tag) + ' <small>' + t.count + '</small></button>';
-        }).join('') + (state.q.day ? '<button type="button" class="chip" data-clear-day aria-label="Quitar filtro de día">Día ' + esc(state.q.day.split('-').reverse().join('/')) + ' ×</button>' : '');
+        }).join('');
       }
       function paintCal() {
-        $('#cal-wrap').innerHTML = H.calendar(D.monthGrid(state.y, state.m, state.entries), state.q.day, todayKey);
+        $('#cal-wrap').innerHTML = H.calendar(D.monthGrid(state.y, state.m, state.entries), todayKey);
       }
 
       function paintList() {
@@ -70,8 +70,8 @@
         if (state.disconnected) {
           summary.textContent = '';
           box.innerHTML = '<section class="card stitched empty"><div class="empty-icon">' + App.icon('book') + '</div>' +
-            '<h2>Conecta tus datos para ver tus entradas</h2>' +
-            '<p>Tus entradas viven en tu repositorio privado de GitHub. Puedes escribir ya: el texto se guarda como borrador en este navegador hasta que conectes.</p>' +
+            '<h2>Conecta tus datos para ver tus páginas</h2>' +
+            '<p>Tu diario vive en tu repositorio privado de GitHub. Puedes escribir ya: el texto se guarda como borrador en este navegador hasta que conectes.</p>' +
             '<a class="btn secondary" href="#/ajustes">Conectar mis datos</a></section>';
           return;
         }
@@ -85,14 +85,14 @@
         if (!state.entries.length) {
           summary.textContent = '';
           box.innerHTML = '<section class="card stitched empty"><div class="empty-icon">' + App.icon('book') + '</div>' +
-            '<h2>Todavía no hay entradas</h2><p>Cuando quieras, empieza con un bloque de dos líneas. Valen lo mismo que dos páginas.</p>' +
+            '<h2>Todavía no hay páginas</h2><p>Cuando quieras, empieza con una entrada de dos líneas. Valen lo mismo que dos folios.</p>' +
             '<a class="btn" href="#/diario/hoy">Escribir hoy</a></section>';
           return;
         }
         var found = D.search(state.entries, state.q);
         summary.textContent = filtersActive()
-          ? (found.length ? 'Mostrando ' + found.length + ' de ' + state.entries.length + ' días.' : 'Ningún día coincide con esos filtros.')
-          : state.entries.length + (state.entries.length === 1 ? ' día con entrada.' : ' días con entrada.');
+          ? (found.length ? 'Mostrando ' + found.length + ' de ' + state.entries.length + ' páginas.' : 'Ninguna página coincide con esos filtros.')
+          : state.entries.length + (state.entries.length === 1 ? ' página.' : ' páginas.');
         box.innerHTML = (state.problems.length
           ? '<p class="msg" data-kind="error">Hay ' + state.problems.length + ' archivo(s) del diario que no se pueden leer del todo. No se ha tocado nada; puedes revisarlos en GitHub.</p>' : '') +
           (found.length ? H.list(found, state.shown) : '');
@@ -122,8 +122,7 @@
       view.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
-        var day = t.closest('[data-day]'), nav = t.closest('[data-nav]'), tag = t.closest('[data-tag]'), mood = t.closest('[data-mood-filter]');
-        if (day) { setFilter(function (q) { q.day = q.day === day.dataset.day ? '' : day.dataset.day; }); return; }
+        var nav = t.closest('[data-nav]'), tag = t.closest('[data-tag]'), mood = t.closest('[data-mood-filter]');
         if (nav) {
           state.m += Number(nav.dataset.nav);
           if (state.m < 0) { state.m = 11; state.y--; } else if (state.m > 11) { state.m = 0; state.y++; }
@@ -141,7 +140,6 @@
           view.querySelectorAll('[data-mood-filter]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.moodFilter === state.q.mood)); });
           return;
         }
-        if (t.closest('[data-clear-day]')) { setFilter(function (q) { q.day = ''; }); return; }
         if (t.closest('#f-fav')) {
           setFilter(function (q) { q.favoritesOnly = !q.favoritesOnly; });
           $('#f-fav').setAttribute('aria-pressed', String(state.q.favoritesOnly)); return;

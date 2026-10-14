@@ -1,34 +1,65 @@
 // Lógica pura del diario (sin pantalla ni red): validar entradas y bloques, búsqueda y calendario.
 //
-// Modelo: UNA entrada por día. Cada entrada tiene varios bloques y cada bloque lleva sus propias
-// etiquetas y su estado de ánimo (opcional). Se guarda en entries/AAAA-MM.json:
+// Modelo: UNA página por día (en el código, `entry`). Cada página tiene varias entradas (en el código,
+// `blocks`) y cada entrada lleva sus propias etiquetas y su estado de ánimo (opcional). Se guarda en entries/AAAA-MM.json:
 //   { day: "2026-10-13", title, favorite, createdAt, updatedAt,
-//     blocks: [{ id: "b_…", text, tags: [], mood: "tranquila" | null }] }
-// El día es la identidad de la entrada. Los campos desconocidos se conservan al editar.
+//     blocks: [{ id: "b_…", text, tags: [], mood: "bien" | null, emotions: ["em_…"] }] }
+// `mood` es uno de cinco niveles (muy-bien … muy-mal) y es lo único que cuenta para el porcentaje de ánimo.
+// `emotions` son identificadores de la biblioteca de emociones (emotions.json): son independientes del ánimo.
+// El día es la identidad de la página. Los campos desconocidos se conservan al editar.
 (function (App) {
   var D = (App.diary = App.diary || {});
 
-  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40 };
+  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10 };
   var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
   var MOOD_RE = /^[a-z][a-z0-9-]{0,29}$/;
+  var EMOTION_ID_RE = /^em_[0-9a-f]{8}$/;
+  D.EMOTION_ID_RE = EMOTION_ID_RE;
   function skipKey(k) { return k === '__proto__' || k === 'constructor' || k === 'prototype'; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function invalid(msg) { return App.storageError('invalid', msg); }
 
   D.LIMITS = LIMITS;
 
-  // Los estados de ánimo disponibles. El orden es solo el del selector: no significa mejor ni peor.
+  // Los cinco estados de ánimo, de más a menos, con su valor en una escala de 0 a 100.
+  // Es una escala lineal con el punto medio en "Neutro" (50 %): Muy bien 100, Bien 75, Neutro 50, Mal 25, Muy mal 0.
   D.MOODS = [
-    { id: 'radiante', label: 'Radiante' }, { id: 'tranquila', label: 'Tranquila' }, { id: 'normal', label: 'Normal' },
-    { id: 'cansada', label: 'Cansada' }, { id: 'ansiosa', label: 'Ansiosa' }, { id: 'triste', label: 'Triste' },
-    { id: 'enfadada', label: 'Enfadada' }
+    { id: 'muy-bien', label: 'Muy bien', value: 100 }, { id: 'bien', label: 'Bien', value: 75 },
+    { id: 'neutro', label: 'Neutro', value: 50 }, { id: 'mal', label: 'Mal', value: 25 },
+    { id: 'muy-mal', label: 'Muy mal', value: 0 }
   ];
+  // Los siete estados de la versión anterior se pasan al nivel más cercano; el original se conserva en `legacyMood`.
+  var LEGACY_MOODS = { radiante: 'muy-bien', tranquila: 'bien', normal: 'neutro', cansada: 'neutro', ansiosa: 'mal', triste: 'mal', enfadada: 'mal' };
+  D.LEGACY_MOODS = LEGACY_MOODS;
   D.moodLabel = function (id) {
     for (var i = 0; i < D.MOODS.length; i++) if (D.MOODS[i].id === id) return D.MOODS[i].label;
     return String(id);
   };
   D.isKnownMood = function (id) { return D.MOODS.some(function (m) { return m.id === id; }); };
+  D.moodValue = function (id) {
+    for (var i = 0; i < D.MOODS.length; i++) if (D.MOODS[i].id === id) return D.MOODS[i].value;
+    return null;
+  };
+  D.moodIndex = function (id) {
+    for (var i = 0; i < D.MOODS.length; i++) if (D.MOODS[i].id === id) return i;
+    return D.MOODS.length;
+  };
+
+  // Media de una lista de valores (0-100), redondeada; null si no hay ninguno.
+  D.averageOf = function (values) {
+    if (!values.length) return null;
+    return Math.round(values.reduce(function (a, b) { return a + b; }, 0) / values.length);
+  };
+
+  // Porcentaje de ánimo de una página: la media de los estados de sus entradas.
+  // Las entradas SIN estado no cuentan (no se tratan como "neutro": eso falsearía la media);
+  // si ninguna tiene estado, no hay porcentaje (null). Las emociones y las etiquetas no intervienen.
+  D.dayMood = function (entry) {
+    var blocks = (entry && entry.blocks) || [], values = [];
+    blocks.forEach(function (b) { var v = D.moodValue(b && b.mood); if (v !== null) values.push(v); });
+    return { percent: D.averageOf(values), rated: values.length, total: blocks.length };
+  };
 
   // ---- Identificadores ----
   D.newBlockId = function () {
@@ -76,30 +107,48 @@
     return out.slice(0, LIMITS.tags);
   };
 
+  D.uniqueEmotionIds = function (list) {
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      if (typeof id === 'string' && EMOTION_ID_RE.test(id) && !seen[id]) { seen[id] = true; out.push(id); }
+    });
+    return out.slice(0, LIMITS.emotions);
+  };
+
   // ---- Bloques ----
-  D.blockHasContent = function (b) { return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood)); };
+  D.blockHasContent = function (b) {
+    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length)));
+  };
 
   // Devuelve el bloque limpio (puede estar vacío). Conserva campos desconocidos.
   D.sanitizeBlock = function (input, seenIds) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('Hay un bloque con un formato inesperado.');
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('Hay una entrada con un formato inesperado.');
     var out = {};
     Object.keys(input).forEach(function (k) { if (!skipKey(k)) out[k] = input[k]; });
     var text = out.text === undefined || out.text === null ? '' : out.text;
-    if (typeof text !== 'string') throw invalid('Hay un bloque con un formato inesperado.');
+    if (typeof text !== 'string') throw invalid('Hay una entrada con un formato inesperado.');
     out.text = text.trim();
-    if (out.text.length > LIMITS.text) throw invalid('Un bloque es demasiado largo (máximo ' + LIMITS.text + ' caracteres).');
+    if (out.text.length > LIMITS.text) throw invalid('Una entrada es demasiado larga (máximo ' + LIMITS.text + ' caracteres).');
     seenIds = seenIds || {};
     out.id = typeof out.id === 'string' && BLOCK_ID_RE.test(out.id) && !seenIds[out.id] ? out.id : D.newBlockId();
     seenIds[out.id] = true;
     out.tags = D.uniqueTags(out.tags);
-    out.mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
+    out.emotions = D.uniqueEmotionIds(out.emotions);
+    var mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
+    if (mood !== null && !D.isKnownMood(mood)) {
+      // Un estado que no es de los cinco (por ejemplo, de la versión anterior): se pasa a su nivel y se conserva el original.
+      if (typeof out.legacyMood !== 'string') out.legacyMood = mood;
+      mood = LEGACY_MOODS[mood] || null;
+    }
+    out.mood = mood;
+    if (out.legacyMood !== undefined && (typeof out.legacyMood !== 'string' || !MOOD_RE.test(out.legacyMood))) delete out.legacyMood;
     return out;
   };
 
   // ---- Entradas ----
   // Devuelve la entrada limpia o lanza un error con un mensaje claro. Los bloques vacíos se descartan.
   D.sanitizeEntry = function (input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('La entrada no es válida.');
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('La página no es válida.');
     var out = {};
     Object.keys(input).forEach(function (k) { if (!skipKey(k)) out[k] = input[k]; });
 
@@ -108,7 +157,7 @@
     if (out.title.length > LIMITS.title) throw invalid('El título es demasiado largo (máximo ' + LIMITS.title + ' caracteres).');
 
     var blocks = Array.isArray(out.blocks) ? out.blocks : [];
-    if (blocks.length > LIMITS.blocks) throw invalid('La entrada tiene demasiados bloques (máximo ' + LIMITS.blocks + ').');
+    if (blocks.length > LIMITS.blocks) throw invalid('La página tiene demasiadas entradas (máximo ' + LIMITS.blocks + ').');
     var seen = {};
     out.blocks = blocks.map(function (b) { return D.sanitizeBlock(b, seen); }).filter(D.blockHasContent);
 
@@ -117,7 +166,7 @@
     out.createdAt = typeof out.createdAt === 'string' && !isNaN(Date.parse(out.createdAt)) ? out.createdAt : now;
     out.updatedAt = typeof out.updatedAt === 'string' && !isNaN(Date.parse(out.updatedAt)) ? out.updatedAt : now;
 
-    if (!out.title && out.blocks.length === 0) throw invalid('Escribe algo, elige un ánimo o añade una etiqueta en algún bloque, o ponle un título al día.');
+    if (!out.title && out.blocks.length === 0) throw invalid('Escribe algo, elige un ánimo o añade una etiqueta en alguna entrada, o ponle un título a la página.');
     return out;
   };
 
@@ -191,6 +240,16 @@
     return out;
   };
 
+  // Páginas vecinas: el día anterior y el siguiente que tienen página (para "pasar la página").
+  D.neighbors = function (entries, day) {
+    var prev = null, next = null;
+    entries.forEach(function (e) {
+      if (e.day < day && (prev === null || e.day > prev)) prev = e.day;
+      if (e.day > day && (next === null || e.day < next)) next = e.day;
+    });
+    return { prev: prev, next: next };
+  };
+
   // ---- Búsqueda ----
   // q: { text, tags: [], mood, favoritesOnly, day: 'AAAA-MM-DD', from, to }   (todo opcional)
   D.search = function (entries, q) {
@@ -216,7 +275,7 @@
   };
   D.byDayDesc = function (a, b) { return a.day < b.day ? 1 : a.day > b.day ? -1 : 0; };
 
-  // Etiquetas más usadas (cuenta bloques)
+  // Etiquetas más usadas (cuenta entradas)
   D.allTags = function (entries) {
     var counts = {}, names = {};
     entries.forEach(function (e) {
