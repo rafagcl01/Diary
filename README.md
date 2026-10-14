@@ -170,9 +170,9 @@ Hay cinco estados, con una escala lineal (Neutro es el centro):
 Según el porcentaje de la página, la hoja tiene un aspecto distinto (solo ambiente: no da ni quita puntos y no toca ningún dato):
 - **Más de 75 %:** dibujos grises casi negros y muy suaves en los márgenes y esquinas (corazón con alas, rosa, corazones).
 - **De 50 a 75 %:** la hoja de siempre.
-- **De 25 a 49 %:** bordes rotos: mordidas en pico hacia dentro en los cuatro lados y dos esquinas dobladas.
+- **De 25 a 49 %:** bordes rotos: unas pocas mordidas en pico hacia dentro y una esquina doblada.
 - **Menos de 25 %:** lo mismo, más ovillos de rayones gruesos y oscuros en las esquinas y el margen.
-Una página sin estados de ánimo queda como la normal. Los dibujos van detrás del texto, con poca opacidad y sin capturar clics. En el editor cambia en directo al elegir el estado. En navegadores muy antiguos sin soporte de máscaras CSS, los bordes se ven rectos.
+Todos los dibujos y garabatos tienen el mismo grosor de trazo. Una página sin estados de ánimo queda como la normal. Los dibujos van detrás del texto, con poca opacidad y sin capturar clics. En el editor cambia en directo al elegir el estado. En navegadores muy antiguos sin soporte de máscaras CSS, los bordes se ven rectos.
 
 ### Emociones personalizables
 - Son **independientes del estado**: puedes tener *Bien* + *Nostalgia* + *Ilusión*. Se eligen varias por entrada (hasta 10).
@@ -256,8 +256,8 @@ Nombre (lo único obligatorio), **apodos**, **avatar** (la inicial o un símbolo
 - **Inicio:** *Personas recientes* muestra a quién has vinculado últimamente (por fecha, no por cantidad).
 
 ### Relaciones, cumpleaños, foto y emociones (ampliación)
-- **Relaciones:** varias por persona, en **cápsulas** como las emociones (pulsar marca, pulsar otra vez quita). Se ofrecen unas básicas y todas las que ya usas en otras fichas; se pueden añadir nuevas con Intro. Las fichas antiguas con una sola relación se convierten solas. Dos personas con el mismo nombre solo se admiten si no comparten ninguna relación.
-- **Cumpleaños:** día y mes (el año es opcional). Se ve en la tarjeta y en la ficha, y se puede buscar por el mes.
+- **Relaciones:** varias por persona. Las elegidas se ven como **cápsulas** iguales a las de las emociones (pulsar una la quita) y un círculo **«+»** despliega las relaciones que ya existen (las básicas y las que usas en otras fichas) y una casilla para crear una nueva con Intro. Las fichas antiguas con una sola relación se convierten solas. Dos personas con el mismo nombre solo se admiten si no comparten ninguna relación.
+- **Cumpleaños:** día y mes (el año es opcional). El día y el año se escriben a mano (sin flechas) y el mes es un desplegable propio, con esquinas suaves y colores pastel, que también se maneja con el teclado (flechas, Intro, Esc). Se ve en la tarjeta y en la ficha, y se puede buscar por el mes.
 - **Foto:** se elige una imagen, se recorta al centro y se reduce a 160 px (JPEG) en tu navegador, y se guarda **dentro de `people.json`** (unos 2–10 KB cada una). Para no pasarse del tamaño que GitHub maneja bien, `people.json` no puede superar ~800 KB: si lo alcanzas, pide quitar alguna foto. La foto no sale de tu repositorio de datos.
 - **Emociones en sus recuerdos:** en la ficha, el reparto porcentual de las emociones marcadas en las entradas vinculadas a esa persona (suma 100 %). Solo describe lo que escribiste; no es una nota para la persona, y no cambia ningún porcentaje de ánimo.
 

@@ -29,6 +29,12 @@
       img.src = url;
     });
   }
+  // Relaciones elegidas (mismo formato que las emociones) + el círculo "+" que despliega las demás
+  function relSelected(chosen, open) {
+    return chosen.map(function (r) {
+      return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="true" aria-label="Quitar la relación ' + esc(r) + '"><span>' + esc(r) + '</span></button></li>';
+    }).join('') + '<li><button type="button" class="plus-btn" id="p-rel-plus" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="p-rel-panel" aria-label="Añadir o quitar relaciones"><span aria-hidden="true">+</span></button></li>';
+  }
   function relCaps(lib, chosen) {
     return lib.length ? lib.map(function (r) {
       return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="' + (chosen.map(D.fold).indexOf(D.fold(r)) >= 0) + '"><span>' + esc(r) + '</span></button></li>';
@@ -76,13 +82,20 @@
             '<div class="field"><span id="nick-l">Apodos</span><ul class="chips" id="p-nicks" aria-live="polite">' + chipList(nicks, 'nick') + '</ul>' +
               '<input id="p-nick" type="text" maxlength="' + D.PEOPLE_LIMITS.nickname + '" autocomplete="off" aria-labelledby="nick-l" placeholder="Un apodo y pulsa Intro"></div>' +
             '<div class="field"><span id="rel-l">Relaciones <small>(opcional, puedes marcar varias)</small></span>' +
-              '<ul class="emo-caps" id="p-rels" aria-labelledby="rel-l">' + relCaps(lib, rels) + '</ul>' +
-              '<div class="inline-add"><input id="p-rel-new" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" aria-label="Nueva relación" placeholder="Otra relación y pulsa Intro"></div>' +
-              '<small>Pulsa una cápsula para marcarla y otra vez para quitarla. Si tienes a dos personas con el mismo nombre, las relaciones son lo que las distingue.</small></div>' +
+              '<ul class="emo-caps" id="p-rels-sel" aria-labelledby="rel-l">' + relSelected(rels, false) + '</ul>' +
+              '<div class="rel-panel" id="p-rel-panel" hidden>' +
+                '<p class="soft">Relaciones que ya existen. Pulsa para marcarlas o quitarlas.</p>' +
+                '<ul class="emo-caps" id="p-rels" aria-label="Relaciones existentes">' + relCaps(lib, rels) + '</ul>' +
+                '<div class="inline-add"><input id="p-rel-new" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" aria-label="Crear una relación nueva" placeholder="Crear una nueva y pulsa Intro"></div></div>' +
+              '<small>Si tienes a dos personas con el mismo nombre, las relaciones son lo que las distingue.</small></div>' +
             '<div class="field"><span id="bd-l">Cumpleaños <small>(opcional; el año también)</small></span>' +
               '<div class="bday-row" role="group" aria-labelledby="bd-l">' +
-                '<input id="p-bd-d" type="number" min="1" max="31" inputmode="numeric" placeholder="Día" aria-label="Día" value="' + esc(bDay) + '">' +
-                '<select id="p-bd-m" aria-label="Mes"><option value="">Mes</option>' + MONTHS.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (bMonth === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
+                '<input id="p-bd-d" type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="Día" aria-label="Día" value="' + esc(bDay) + '">' +
+                '<div class="dd" id="p-bd-dd"><input type="hidden" id="p-bd-m" value="' + (bMonth || '') + '">' +
+                  '<button type="button" class="dd-btn" id="p-bd-mbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="p-bd-mlist" aria-label="Mes"><span id="p-bd-mtxt">' + (bMonth ? MONTHS[bMonth - 1] : 'Mes') + '</span></button>' +
+                  '<ul class="dd-list" id="p-bd-mlist" role="listbox" aria-label="Mes" hidden>' +
+                    ['Sin indicar'].concat(MONTHS).map(function (m, i) { return '<li role="presentation"><button type="button" class="dd-opt" role="option" data-month="' + (i || '') + '" aria-selected="' + ((bMonth || 0) === i) + '">' + m + '</button></li>'; }).join('') +
+                  '</ul></div>' +
                 '<input id="p-bd-y" type="text" inputmode="numeric" maxlength="4" placeholder="Año" aria-label="Año (opcional)" value="' + esc(bYear) + '"></div></div>' +
             '<div class="field"><span id="ph-l">Foto <small>(opcional)</small></span>' +
               '<div class="photo-row"><span id="p-photo-prev"></span>' +
@@ -116,7 +129,21 @@
         function toggleRel(r, on) {
           var i = rels.map(D.fold).indexOf(D.fold(r));
           if (on && i < 0) rels.push(r); else if (!on && i >= 0) rels.splice(i, 1);
+          paintRels();
+        }
+        var relOpen = false;
+        function paintRels() {
           $('#p-rels').innerHTML = relCaps(lib, rels);
+          $('#p-rels-sel').innerHTML = relSelected(rels, relOpen);
+          $('#p-rel-panel').hidden = !relOpen;
+        }
+        function setMonth(n) {
+          $('#p-bd-m').value = n ? String(n) : '';
+          $('#p-bd-mtxt').textContent = n ? MONTHS[n - 1] : 'Mes';
+          if (view.querySelectorAll) view.querySelectorAll('.dd-opt').forEach(function (o) { o.setAttribute('aria-selected', String((+o.dataset.month || 0) === (n || 0))); });
+        }
+        function monthList(open) {
+          $('#p-bd-mlist').hidden = !open; $('#p-bd-mbtn').setAttribute('aria-expanded', String(open));
         }
         function addRel(raw) {
           var r = String(raw).replace(/\s+/g, ' ').trim(); if (!r) return;
@@ -139,9 +166,22 @@
         view.addEventListener('keydown', function (e) {
           var t = e.target;
           if (t.id === 'p-rel-new' && (e.key === 'Enter' || e.key === ',')) { e.preventDefault(); addRel(t.value); return; }
+          var opts = view.querySelectorAll ? Array.prototype.slice.call(view.querySelectorAll('.dd-opt')) : [];
+          if (t.id === 'p-bd-mbtn' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault(); monthList(true);
+            var cur = opts.filter(function (o) { return o.getAttribute('aria-selected') === 'true'; })[0] || opts[0]; if (cur && cur.focus) cur.focus(); return;
+          }
+          if (t.classList && t.classList.contains && t.classList.contains('dd-opt')) {
+            var at = opts.indexOf(t);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var nx = opts[(at + (e.key === 'ArrowDown' ? 1 : opts.length - 1)) % opts.length]; if (nx) nx.focus(); return; }
+            if (e.key === 'Escape') { e.preventDefault(); monthList(false); $('#p-bd-mbtn').focus(); return; }
+          }
           if ((t.id === 'p-nick' || t.id === 'p-tag') && (e.key === 'Enter' || e.key === ',')) {
             e.preventDefault(); commitInputs();
           }
+        });
+        view.addEventListener('input', function (e) {
+          var t = e.target; if (t && (t.id === 'p-bd-d' || t.id === 'p-bd-y') && /\D/.test(t.value)) t.value = t.value.replace(/\D/g, '');   // solo números, a mano
         });
         view.addEventListener('focusout', function (e) { if (e.target && (e.target.id === 'p-nick' || e.target.id === 'p-tag')) commitInputs(); });
         view.addEventListener('change', function (e) { if (e.target && e.target.name === 'p-symbol') symbol = e.target.value || null; });
@@ -152,6 +192,11 @@
         });
         view.addEventListener('click', function (e) {
           var t = e.target; if (!t || !t.closest) return;
+          var mo = t.closest('[data-month]');
+          if (mo) { setMonth(+mo.dataset.month || 0); monthList(false); $('#p-bd-mbtn').focus(); return; }
+          if (t.closest('#p-bd-mbtn')) { monthList($('#p-bd-mlist').hidden); return; }
+          if (!t.closest('.dd')) monthList(false);
+          if (t.closest('#p-rel-plus')) { relOpen = !relOpen; paintRels(); if (relOpen && $('#p-rel-new').focus) $('#p-rel-new').focus(); return; }
           var rc = t.closest('[data-rel-toggle]');
           if (rc) { toggleRel(rc.dataset.relToggle, rc.getAttribute('aria-pressed') !== 'true'); return; }
           if (t.closest('#p-photo-rm')) { photo = ''; paintPhoto(); return; }

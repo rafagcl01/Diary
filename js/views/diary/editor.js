@@ -66,7 +66,6 @@
             '</div><div class="pct-slot" id="pct-slot"></div></header>' +
             '<div id="e-blocks"></div>' +
             '<p class="btn-row"><button type="button" class="btn secondary" id="e-add">Añadir entrada</button></p>' +
-            '<p class="soft" id="e-hint">Cada entrada es un momento del día. Se añaden hacia abajo, en el orden en que las escribes, y puedes cambiarlo con Subir y Bajar. El porcentaje de arriba es la media de los estados de ánimo; las emociones no cuentan en él. Si sales sin guardar, tu texto queda como borrador.</p>' +
             '<label class="checkline"><input id="e-fav" type="checkbox"' + (begin.favorite ? ' checked' : '') + '><span>Marcar la página como favorita</span></label>' +
           '</article>' +
           '<div class="btn-row"><button type="button" class="btn" id="e-save">Guardar</button><a class="btn secondary" href="' + backHref + '">Cancelar</a></div>' +
@@ -114,6 +113,9 @@
         // El porcentaje sale SOLO de los estados de ánimo de las entradas.
         function refreshPercent() { var m = D.dayMood({ blocks: blocks }); P.paint($('#pct-slot'), m, day, { fromZero: false }); deco.update(q('.sheet'), m.percent); }
 
+        // Las cajas de texto crecen solas con lo que escribes: sin barra de desplazamiento interna
+        function grow(el) { if (el && el.style) { el.style.height = 'auto'; el.style.height = (el.scrollHeight + 3) + 'px'; } }
+        function growAll() { if (view.querySelectorAll) view.querySelectorAll('[data-text]').forEach(grow); }
         function paintBlocks() {
           $('#e-blocks').innerHTML = blocks.map(function (b, i) {
             var n = i + 1, id = esc(b.id);
@@ -140,6 +142,7 @@
               '</section>';
           }).join('');
           if (picker) picker.refreshAll();
+          growAll();
         }
         function paintTagList(id) {
           var i = blockIndex(id), list = q('[data-taglist="' + id + '"]');
@@ -238,11 +241,16 @@
         picker = App.peoplePicker.attach({ view: view, $: $, repo: pplRepo, library: peopleList, getBlocks: function () { return blocks; }, onChange: scheduleDraft });
         paintBlocks();
         refreshPercent();
+        if (typeof window.addEventListener === 'function') {      // al cambiar el ancho, el texto se recoloca: reajustar alturas
+          var onResize = function () { if (view.isConnected === false) window.removeEventListener('resize', onResize); else growAll(); };
+          window.addEventListener('resize', onResize);
+          if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) document.fonts.ready.then(growAll);
+        }
         if (opts.addBlock) focusSel('[data-text="' + blocks[blocks.length - 1].id + '"]');
 
         view.addEventListener('input', function (e) {
           var t = e.target;
-          if (t.dataset && t.dataset.text) { var i = blockIndex(t.dataset.text); if (i >= 0) blocks[i].text = t.value; scheduleDraft(); }
+          if (t.dataset && t.dataset.text) { var i = blockIndex(t.dataset.text); if (i >= 0) blocks[i].text = t.value; grow(t); scheduleDraft(); }
           else if (t.id === 'e-title') scheduleDraft();
         });
         view.addEventListener('change', function (e) {

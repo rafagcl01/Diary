@@ -378,3 +378,14 @@ test('la hoja cambia según el porcentaje: más de 75 dibujos, 50–75 normal, 2
   App.sheetDeco.update(sheet, 10); assert.equal(sheet.attrs['data-tier'], 'rough'); assert.match(box.innerHTML, /d-tangle/);
   App.sheetDeco.update(sheet, 60); assert.equal(box.innerHTML, '');
 });
+
+test('el editor no muestra el texto explicativo y las cajas crecen solas al escribir', async () => {
+  const { App } = await connected();
+  const root = fakeRoot(); App.views.diary.render(root, { params: ['2026-10-12', 'editar'] }); await tick();
+  const view = root.els['.editor-view'];
+  assert.doesNotMatch(view.innerHTML, /e-hint|Cada entrada es un momento|Cambiar el orden|Si sales sin guardar/);
+  const id = /data-block-id="(b_[0-9a-f]{8})"/.exec(root.els['#e-blocks'].innerHTML)[1];
+  const ta = { dataset: { text: id }, value: 'x\n'.repeat(30), scrollHeight: 640, style: {} };
+  fire(view, 'input', { target: ta });
+  assert.equal(ta.style.height, '643px', 'la altura sigue al contenido, sin scroll interno');
+});

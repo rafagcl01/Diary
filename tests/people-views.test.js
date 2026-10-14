@@ -390,3 +390,29 @@ test('el formulario: relaciones en cápsulas (varias, nuevas con Intro), cumplea
   bad.els['#p-save'].handlers.click[0](); await tick(60);
   assert.match(bad.querySelector('#p-msg').textContent, /día y el mes/);
 });
+
+test('formulario: el "+" despliega las relaciones, el mes es un desplegable propio y el día solo admite números', async () => {
+  const { App, fake } = await connected();
+  const root = render(App, ['nueva']); await tick(60);
+  const view = root.els['.people-view'];
+  const h = view.innerHTML;
+  assert.match(h, /id="p-rel-plus"[^>]*aria-expanded="false"/); assert.match(h, /id="p-rel-panel" hidden/);
+  assert.doesNotMatch(h, /type="number"/, 'sin flechas en el día'); assert.doesNotMatch(h, /<select/, 'sin el desplegable nativo');
+  const click = (map) => fire(view, 'click', { target: target(map) });
+  click({ '#p-rel-plus': {} });
+  assert.equal(root.querySelector('#p-rel-panel').hidden, false); assert.match(root.querySelector('#p-rels-sel').innerHTML, /aria-expanded="true"/);
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'familia' }, getAttribute: () => 'false' } });
+  assert.match(root.querySelector('#p-rels-sel').innerHTML, /data-rel-toggle="familia" aria-pressed="true"/, 'las elegidas salen como cápsulas de emoción');
+  click({ '#p-rel-plus': {} }); assert.equal(root.querySelector('#p-rel-panel').hidden, true);
+  // día: solo dígitos
+  const day = { id: 'p-bd-d', value: '1a4x' }; fire(view, 'input', { target: day }); assert.equal(day.value, '14');
+  // mes: abrir, elegir, cerrar; "Sin indicar" lo quita
+  click({ '#p-bd-mbtn': {} }); assert.equal(root.querySelector('#p-bd-mlist').hidden, false);
+  click({ '[data-month]': { dataset: { month: '5' } } });
+  assert.equal(root.querySelector('#p-bd-m').value, '5'); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'mayo'); assert.equal(root.querySelector('#p-bd-mlist').hidden, true);
+  root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14';
+  root.els['#p-save'].handlers.click[0](); await tick(80);
+  const saved = JSON.parse(fake.state.files.get('people.json')).people[0];
+  assert.equal(saved.birthday, '05-14'); assert.deepEqual(plain(saved.relations), ['familia']);
+  click({ '[data-month]': { dataset: { month: '' } } }); assert.equal(root.querySelector('#p-bd-m').value, ''); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'Mes');
+});
