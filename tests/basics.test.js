@@ -9,7 +9,8 @@ import vm from 'node:vm';
 const files = [
   'icons.js', 'prefs.js', 'ui.js', 'router.js',
   'storage/errors.js', 'storage/github-adapter.js', 'storage/store.js', 'storage/connection.js',
-  'views/home.js', 'views/diary.js', 'views/people.js', 'views/mood.js',
+  'diary/entries.js', 'diary/repository.js', 'diary/drafts.js',
+  'views/home.js', 'views/diary/html.js', 'views/diary/list.js', 'views/diary/read.js', 'views/diary/editor.js', 'views/diary.js', 'views/people.js', 'views/mood.js',
   'views/character.js', 'views/quests.js', 'views/collection.js', 'views/settings.js',
   'sections.js',
 ];
@@ -89,7 +90,7 @@ test('el inicio muestra las siete caras de ánimo sin dar más peso a unas que a
   App.views.home.render(root);
   const faces = root.innerHTML.match(/class="face m-[a-z]+"/g) || [];
   assert.equal(faces.length, 7);
-  assert.match(root.innerHTML, /href="#\/diario"/);
+  assert.match(root.innerHTML, /href="#\/diario\/nueva"/, 'el acceso principal lleva a escribir');
   assert.match(root.innerHTML, /href="#\/animo"/);
 });
 
@@ -100,7 +101,8 @@ test('index.html: scripts existentes, en orden y sin módulos', () => {
   for (const s of srcs) assert.ok(fs.existsSync(new URL(`../${s}`, import.meta.url)), s);
   assert.ok(srcs.indexOf('js/icons.js') < srcs.indexOf('js/ui.js'));
   assert.ok(srcs.indexOf('js/views/home.js') < srcs.indexOf('js/sections.js'));
-  const order = ['js/storage/errors.js', 'js/storage/github-adapter.js', 'js/storage/store.js', 'js/storage/connection.js', 'js/views/home.js'];
+  const order = ['js/storage/errors.js', 'js/storage/github-adapter.js', 'js/storage/store.js', 'js/storage/connection.js',
+    'js/diary/entries.js', 'js/diary/repository.js', 'js/diary/drafts.js', 'js/views/home.js', 'js/views/diary/html.js', 'js/views/diary/editor.js', 'js/views/diary.js', 'js/sections.js'];
   assert.deepEqual(order.map((x) => srcs.indexOf(x)), order.map((x) => srcs.indexOf(x)).sort((a, b) => a - b));
   assert.ok(srcs.indexOf('js/storage/connection.js') >= 0);
   assert.equal(srcs[srcs.length - 1], 'js/main.js');

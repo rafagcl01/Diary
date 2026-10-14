@@ -42,7 +42,7 @@
 
           '<div class="home-grid">' +
             '<div class="stack">' +
-              '<a class="card paper hero glint" href="#/diario">' +
+              '<a class="card paper hero glint" href="#/diario/nueva">' +
                 icon('bow', 'bow') +
                 '<p class="pixel soft">hoja en blanco</p>' +
                 '<p class="prompt">Querido diario, hoy…</p>' +
@@ -50,7 +50,6 @@
                   '<span class="btn">' + icon('book') + 'Escribir una entrada</span>' +
                   '<span class="soft hint">Dos líneas valen lo mismo que dos páginas.</span>' +
                 '</div>' +
-                '<span class="tag">Pronto</span>' +
               '</a>' +
 
               '<a class="card stitched mood-card glint" href="#/animo">' +
@@ -59,6 +58,7 @@
                 '<p class="soft">Sin escribir nada, si prefieres.</p>' +
                 '<div class="row" aria-hidden="true">' + faces + '</div>' +
               '</a>' +
+              '<article class="card" id="home-recent"><h3>Entradas recientes</h3><div id="home-recent-body"><p class="soft">Conecta tus datos para ver aquí tus últimas entradas.</p></div></article>' +
             '</div>' +
 
             '<aside class="card dark" aria-label="Tu personaje">' +
@@ -78,7 +78,7 @@
 
           '<div class="three">' +
             '<article class="card"><h3>Misiones activas</h3><p>Ninguna activa. Tú decides cuándo empezar una.</p></article>' +
-            '<article class="card"><h3>Hace un año</h3><p>Aparecerán recuerdos cuando tengas entradas de años anteriores.</p></article>' +
+            '<article class="card" id="home-memories"><h3>Hace un año</h3><div id="home-memories-body"><p>Aparecerán recuerdos cuando tengas entradas de años anteriores.</p></div></article>' +
             '<article class="card"><h3>Personas recientes</h3><p>Aquí verás con quién has compartido tus últimos recuerdos.</p></article>' +
           '</div>' +
 
@@ -86,6 +86,37 @@
             '<span class="b88">solo para mí</span><span class="b88">sin anuncios</span><span class="b88">hecho a mano</span><span class="b88">★ 2026 ★</span>' +
           '</div>' +
         '</div>';
+
+      fillDiary(root);
     }
   };
+
+  // Rellena "Entradas recientes" y "Hace un año" si hay datos conectados (no bloquea la pantalla).
+  function fillDiary(root) {
+    var repo = App.diary && App.diary.repo ? App.diary.repo() : null;
+    if (!repo) return;
+    var recent = root.querySelector('#home-recent-body'), memo = root.querySelector('#home-memories-body');
+    recent.innerHTML = '<div class="skeleton" style="margin: 8px 0"></div><div class="skeleton" style="width: 70%"></div>';
+    repo.list().then(function (entries) {
+      var D = App.diary, esc = App.escapeHtml;
+      if (!recent.isConnected && recent.isConnected !== undefined) return;
+      if (!entries.length) {
+        recent.innerHTML = '<p class="soft">Todavía no has escrito ninguna.</p><p style="margin-top: 10px"><a class="btn secondary" href="#/diario/nueva">Escribir la primera</a></p>';
+      } else {
+        recent.innerHTML = '<ul class="mini-list">' + entries.slice(0, 3).map(function (e) {
+          return '<li><a href="#/diario/' + esc(e.id) + '"><b>' + esc(D.displayTitle(e)) + '</b><small class="soft">' + esc(D.formatLong(e.date)) + '</small></a></li>';
+        }).join('') + '</ul><p style="margin-top: 10px"><a href="#/diario" class="link">Ver todo el diario</a></p>';
+      }
+      var md = D.nowLocal().slice(5, 10), year = D.nowLocal().slice(0, 4);
+      var memories = entries.filter(function (e) { return e.date.slice(5, 10) === md && e.date.slice(0, 4) !== year; }).slice(0, 2);
+      if (memories.length) {
+        memo.innerHTML = memories.map(function (e) {
+          return '<a class="memory" href="#/diario/' + esc(e.id) + '"><span class="margin-note">' + esc(D.formatLong(e.date)) + '</span>' +
+            '<span>' + esc(D.excerpt(e, 130)) + '</span></a>';
+        }).join('');
+      }
+    }).catch(function () {
+      recent.innerHTML = '<p class="soft">No se pudieron cargar tus entradas ahora mismo.</p>';
+    });
+  }
 })(window.App = window.App || {});

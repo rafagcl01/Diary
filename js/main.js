@@ -96,7 +96,7 @@
   function show(section, opts) {
     mount.replaceChildren();
     mount.dataset.view = section.id;
-    section.view.render(mount);
+    section.view.render(mount, { params: opts.params || [] });
     document.title = section.label + ' - Mi diario';
 
     document.querySelectorAll('[data-route]').forEach(function (a) {

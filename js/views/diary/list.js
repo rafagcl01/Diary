@@ -1,0 +1,166 @@
+// Diario: cronología, búsqueda, filtros y calendario.
+(function (App) {
+  var D = App.diary, H = App.diaryHtml, esc = App.escapeHtml;
+  App.diaryViews = App.diaryViews || {};
+
+  var SKELETON = '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 80%; margin-bottom: 14px"></div><div class="skeleton" style="width: 60%"></div>';
+
+  App.diaryViews.list = {
+    render: function (root) {
+      var now = new Date();
+      var state = {
+        entries: [], problems: [], loaded: false, error: '', disconnected: false, shown: 40, firstLoad: true,
+        y: now.getFullYear(), m: now.getMonth(),
+        q: { text: '', tags: [], favoritesOnly: false, day: '', from: '', to: '' }
+      };
+      var todayKey = D.dayKey(D.nowLocal());
+
+      root.innerHTML = '<div class="view diary-view">' +
+        App.pageHeader('Diario', '', 'cuaderno privado') +
+        '<div class="page-actions"><a class="btn" href="#/diario/nueva">Nueva entrada</a></div>' +
+        App.lace() +
+        '<div id="drafts"></div>' +
+        '<div class="toolbar">' +
+          '<label class="searchbox"><span class="sr">Buscar en el diario</span>' +
+            '<input id="q" type="search" placeholder="Buscar en el diario" autocomplete="off" spellcheck="false"></label>' +
+          '<button type="button" class="chip" id="f-fav" aria-pressed="false">Favoritas</button>' +
+          '<details class="more-filters"><summary>Más filtros</summary>' +
+            '<div class="filters-grid">' +
+              '<label class="field"><span>Desde</span><input id="f-from" type="date"></label>' +
+              '<label class="field"><span>Hasta</span><input id="f-to" type="date"></label>' +
+              '<button type="button" class="btn secondary" id="f-clear">Limpiar filtros</button>' +
+            '</div></details>' +
+        '</div>' +
+        '<div id="tags" class="chips tagbar"></div>' +
+        '<p id="summary" class="soft summary" role="status"></p>' +
+        '<div class="diary-grid"><div id="list"></div><aside id="cal-wrap" aria-label="Calendario"></aside></div>' +
+        '</div>';
+
+      var view = root.querySelector('.diary-view');
+      function $(sel) { return root.querySelector(sel); }
+
+      function filtersActive() {
+        var q = state.q;
+        return !!(q.text.trim() || q.tags.length || q.favoritesOnly || q.day || q.from || q.to);
+      }
+      function results() { return D.search(state.entries, state.q); }
+
+      function paintDrafts() { $('#drafts').innerHTML = H.drafts(App.drafts.list()); }
+
+      function paintTags() {
+        var all = D.allTags(state.entries).slice(0, 12);
+        var selected = state.q.tags.map(D.fold);
+        $('#tags').innerHTML = all.map(function (t) {
+          var on = selected.indexOf(D.fold(t.tag)) >= 0;
+          return '<button type="button" class="chip" data-tag="' + esc(t.tag) + '" aria-pressed="' + on + '">#' + esc(t.tag) + ' <small>' + t.count + '</small></button>';
+        }).join('') + (state.q.day ? '<button type="button" class="chip" data-clear-day aria-label="Quitar filtro de día">Día ' + esc(state.q.day.split('-').reverse().join('/')) + ' ×</button>' : '');
+      }
+
+      function paintCal() {
+        $('#cal-wrap').innerHTML = H.calendar(D.monthGrid(state.y, state.m, state.entries), state.q.day, todayKey);
+      }
+
+      function paintList() {
+        var box = $('#list'), summary = $('#summary');
+        if (state.disconnected) {
+          summary.textContent = '';
+          box.innerHTML = '<section class="card stitched empty"><div class="empty-icon">' + App.icon('book') + '</div>' +
+            '<h2>Conecta tus datos para ver tus entradas</h2>' +
+            '<p>Tus entradas viven en tu repositorio privado de GitHub. Puedes escribir ya: el texto se guarda como borrador en este navegador hasta que conectes.</p>' +
+            '<a class="btn secondary" href="#/ajustes">Conectar mis datos</a></section>';
+          return;
+        }
+        if (state.error) {
+          summary.textContent = '';
+          box.innerHTML = '<div class="msg" data-kind="error">No se pudieron cargar tus entradas. ' + esc(state.error) + '</div>' +
+            '<p style="margin-top: 14px"><button type="button" class="btn secondary" id="retry">Reintentar</button></p>';
+          return;
+        }
+        if (!state.loaded) { summary.textContent = ''; box.innerHTML = SKELETON; return; }
+
+        var found = results();
+        if (!state.entries.length) {
+          summary.textContent = '';
+          box.innerHTML = '<section class="card stitched empty"><div class="empty-icon">' + App.icon('book') + '</div>' +
+            '<h2>Todavía no hay entradas</h2><p>Cuando quieras, empieza con dos líneas. Valen lo mismo que dos páginas.</p>' +
+            '<a class="btn" href="#/diario/nueva">Escribir la primera</a></section>';
+          return;
+        }
+        summary.textContent = filtersActive()
+          ? (found.length ? 'Mostrando ' + found.length + ' de ' + state.entries.length + ' entradas.' : 'Ninguna entrada coincide con esos filtros.')
+          : state.entries.length + (state.entries.length === 1 ? ' entrada' : ' entradas') + '.';
+        box.innerHTML = (state.problems.length
+          ? '<p class="msg" data-kind="error">Hay ' + state.problems.length + ' archivo(s) del diario que no se pueden leer del todo. No se ha tocado nada; puedes revisarlos en GitHub.</p>' : '') +
+          (found.length ? H.list(found, state.shown) : '');
+      }
+
+      function paintAll() { paintDrafts(); paintTags(); paintCal(); paintList(); }
+
+      function setFilter(fn) { fn(state.q); state.shown = 40; paintTags(); paintCal(); paintList(); }
+
+      function load(force) {
+        var repo = D.repo();
+        state.error = ''; state.disconnected = !repo; state.loaded = !repo;
+        paintAll();
+        if (!repo) return;
+        repo.list(force).then(function (entries) {
+          state.entries = entries; state.problems = repo.problems(); state.loaded = true;
+          if (state.firstLoad && entries.length) {
+            var latest = D.parseLocal(entries[0].date);
+            if (latest) { state.y = latest.getFullYear(); state.m = latest.getMonth(); }
+          }
+          state.firstLoad = false;
+          paintAll();
+        }).catch(function (err) {
+          state.error = err && err.message ? err.message : 'Inténtalo de nuevo.'; state.loaded = true; paintAll();
+        });
+      }
+
+      view.addEventListener('click', function (e) {
+        var t = e.target.closest ? e.target : null;
+        if (!t) return;
+        var day = t.closest('[data-day]'), nav = t.closest('[data-nav]'), tag = t.closest('[data-tag]');
+        if (day) { setFilter(function (q) { q.day = q.day === day.dataset.day ? '' : day.dataset.day; }); return; }
+        if (nav) {
+          state.m += Number(nav.dataset.nav);
+          if (state.m < 0) { state.m = 11; state.y--; } else if (state.m > 11) { state.m = 0; state.y++; }
+          paintCal(); return;
+        }
+        if (tag) {
+          setFilter(function (q) {
+            var k = D.fold(tag.dataset.tag), i = q.tags.map(D.fold).indexOf(k);
+            if (i >= 0) q.tags.splice(i, 1); else q.tags.push(tag.dataset.tag);
+          });
+          return;
+        }
+        if (t.closest('[data-clear-day]')) { setFilter(function (q) { q.day = ''; }); return; }
+        if (t.closest('#f-fav')) {
+          setFilter(function (q) { q.favoritesOnly = !q.favoritesOnly; });
+          $('#f-fav').setAttribute('aria-pressed', String(state.q.favoritesOnly)); return;
+        }
+        if (t.closest('#f-clear')) {
+          state.q = { text: '', tags: [], favoritesOnly: false, day: '', from: '', to: '' };
+          $('#q').value = ''; $('#f-from').value = ''; $('#f-to').value = ''; $('#f-fav').setAttribute('aria-pressed', 'false');
+          state.shown = 40; paintTags(); paintCal(); paintList(); return;
+        }
+        if (t.closest('#show-more')) { state.shown += 40; paintList(); return; }
+        if (t.closest('#retry')) { load(true); return; }
+        var discard = t.closest('[data-draft-discard]');
+        if (discard && window.confirm('¿Descartar este borrador? El texto sin guardar se perderá.')) {
+          App.drafts.remove(discard.dataset.draftDiscard); paintDrafts();
+        }
+      });
+
+      var timer;
+      $('#q').addEventListener('input', function (e) {
+        clearTimeout(timer);
+        var value = e.target.value;
+        timer = setTimeout(function () { setFilter(function (q) { q.text = value; }); }, 150);
+      });
+      $('#f-from').addEventListener('change', function (e) { setFilter(function (q) { q.from = e.target.value; }); });
+      $('#f-to').addEventListener('change', function (e) { setFilter(function (q) { q.to = e.target.value; }); });
+
+      load(false);
+    }
+  };
+})(window.App = window.App || {});

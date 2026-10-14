@@ -20,6 +20,8 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+    'chev-l': '<path d="M14.5 6l-6 6 6 6"/>',
+    'chev-r': '<path d="M9.5 6l6 6-6 6"/>',
     // Caras de ánimo (los ojos y la boca; el círculo lo pone el CSS)
     'f-radiante': '<path d="M7.5 11c.5-1.2 1.7-1.2 2.2 0M14.3 11c.5-1.2 1.7-1.2 2.2 0"/><path d="M8 14.5c1 2.5 6 2.5 8 0"/>',
     'f-tranquila': '<path d="M7.5 11.2c.5 1 1.7 1 2.2 0M14.3 11.2c.5 1 1.7 1 2.2 0"/><path d="M9.5 15c1.4 1 3.6 1 5 0"/>',
