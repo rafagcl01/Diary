@@ -9,7 +9,7 @@ import { createFakeGithub } from './helpers/fake-github.js';
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const FILES = ['icons', 'prefs', 'ui', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
-  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/html', 'views/diary/list', 'views/diary/read', 'views/people/html', 'views/diary/people-picker', 'views/diary/editor',
+  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/deco', 'views/diary/html', 'views/diary/list', 'views/diary/read', 'views/people/html', 'views/diary/people-picker', 'views/diary/editor',
   'views/diary', 'views/people/list', 'views/people/card', 'views/people/form', 'views/people', 'views/mood', 'views/home'];
 
 function load(extra = {}) {
@@ -358,4 +358,23 @@ test('editar o borrar emociones de una entrada nunca cambia el porcentaje guarda
   const page = await repo.get('2026-10-12');
   await repo.save({ day: '2026-10-12', title: page.title, blocks: page.blocks.map((b) => ({ ...b, emotions: [] })) }, { base: page.updatedAt });
   assert.equal(App.diary.dayMood(await repo.get('2026-10-12')).percent, before);
+});
+
+test('la hoja cambia según el porcentaje: más de 75 dibujos, 50–75 normal, 25–49 bordes rotos, menos de 25 rayones', async () => {
+  const { App } = await connected();
+  const tier = (p) => App.diary.pageTier(p);
+  assert.deepEqual(plain([100, 76, 75, 50, 49, 25, 24, 0, null].map(tier)), ['bright', 'bright', 'normal', 'normal', 'torn', 'torn', 'rough', 'rough', 'normal']);
+  assert.equal(tier(undefined), 'normal');
+  assert.match(App.sheetDeco.markup(100), /d-winged/); assert.match(App.sheetDeco.markup(100), /aria-hidden="true"/);
+  assert.doesNotMatch(App.sheetDeco.markup(60), /<svg/); assert.doesNotMatch(App.sheetDeco.markup(30), /<svg/);
+  assert.match(App.sheetDeco.markup(10), /d-tangle/);
+  const page = (mood) => App.diaryHtml.sheet({ day: '2026-10-12', title: '', favorite: false, blocks: [{ id: 'b_00000001', text: 'x', tags: [], mood, emotions: [], people: [] }] }, {}, {});
+  assert.match(page('muy-bien'), /data-tier="bright"/); assert.match(page('bien'), /data-tier="normal"/);
+  assert.match(page('mal'), /data-tier="torn"/); assert.match(page('muy-mal'), /data-tier="rough"/);
+  assert.match(App.diaryHtml.sheet({ day: '2026-10-12', title: 't', favorite: false, blocks: [] }, {}, {}), /data-tier="normal"/, 'sin estados: hoja normal');
+  // en el editor cambia al vuelo, sin tocar ningún dato
+  const sheet = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, querySelector() { return box; } }; const box = { innerHTML: '' };
+  App.sheetDeco.update(sheet, 100); assert.equal(sheet.attrs['data-tier'], 'bright'); assert.match(box.innerHTML, /d-winged/);
+  App.sheetDeco.update(sheet, 10); assert.equal(sheet.attrs['data-tier'], 'rough'); assert.match(box.innerHTML, /d-tangle/);
+  App.sheetDeco.update(sheet, 60); assert.equal(box.innerHTML, '');
 });

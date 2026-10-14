@@ -166,6 +166,14 @@ Hay cinco estados, con una escala lineal (Neutro es el centro):
 - **Las emociones y las etiquetas nunca entran en el cálculo.**
 - Los siete ánimos de la versión anterior se convierten solos: radiante→Muy bien, tranquila→Bien, normal y cansada→Neutro, ansiosa, triste y enfadada→Mal. El original se conserva en el archivo (`legacyMood`).
 
+### La hoja cambia con el ánimo de la página
+Según el porcentaje de la página, la hoja tiene un aspecto distinto (solo ambiente: no da ni quita puntos y no toca ningún dato):
+- **Más de 75 %:** dibujos grises casi negros y muy suaves en los márgenes y esquinas (corazón con alas, rosa, corazones).
+- **De 50 a 75 %:** la hoja de siempre.
+- **De 25 a 49 %:** bordes rotos: mordidas en pico hacia dentro en los cuatro lados y dos esquinas dobladas.
+- **Menos de 25 %:** lo mismo, más ovillos de rayones gruesos y oscuros en las esquinas y el margen.
+Una página sin estados de ánimo queda como la normal. Los dibujos van detrás del texto, con poca opacidad y sin capturar clics. En el editor cambia en directo al elegir el estado. En navegadores muy antiguos sin soporte de máscaras CSS, los bordes se ven rectos.
+
 ### Emociones personalizables
 - Son **independientes del estado**: puedes tener *Bien* + *Nostalgia* + *Ilusión*. Se eligen varias por entrada (hasta 10).
 - Se crean **desde el editor**: botón *Emociones* de la entrada → todas tus emociones como cápsulas que se iluminan al pulsarlas (otra pulsación las desmarca) → *Añadir emoción nueva* → nombre (hasta 30 caracteres) y un símbolo de una galería de 22 iconos (estilo pastel goth / creepy cute). La nueva queda marcada, y **nada se añade a la entrada hasta pulsar *Aceptar*** (cerrar con Esc descarta la selección).
