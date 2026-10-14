@@ -548,32 +548,21 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 }
 
 /* ---------- Hoja según el porcentaje de la página (solo ambiente) ---------- */
-.sheet { isolation: isolate; --doodle: rgba(34, 32, 38, 0.26); --scrawl: rgba(18, 16, 22, 0.72); --flap: color-mix(in srgb, var(--paper) 80%, #6d5361); }
+.sheet { isolation: isolate; --doodle: rgba(34, 32, 38, 0.26); }
 .sheet-deco { position: absolute; inset: 0; z-index: -1; pointer-events: none; color: var(--doodle); overflow: hidden; }
 .sheet-deco .deco { position: absolute; display: block; height: auto; }
 .sheet[data-tier="bright"] .d-winged { width: 170px; right: 14px; bottom: 10px; transform: rotate(-5deg); }
 .sheet[data-tier="bright"] .d-rose { width: 54px; left: 4px; bottom: 26px; transform: rotate(8deg); }
 .sheet[data-tier="bright"] .d-heart { width: 30px; left: 6px; top: 96px; transform: rotate(-10deg); }
 .sheet[data-tier="bright"] .d-heart + .d-heart { left: auto; right: 10px; top: auto; bottom: 150px; width: 24px; transform: rotate(12deg); }
-/* rayones: ovillos gruesos y oscuros en esquinas y márgenes */
-.sheet[data-tier="rough"] .sheet-deco { color: var(--scrawl); }
-.sheet[data-tier="rough"] .d-tangle { width: 112px; right: 26px; bottom: 16px; transform: rotate(-6deg); }
-.sheet[data-tier="rough"] .d-coil { width: 120px; right: 170px; bottom: 4px; transform: rotate(-4deg); }
-.sheet[data-tier="rough"] .d-spiral { width: 70px; left: 0; bottom: 56px; }
-/* bordes rotos: mordidas en pico hacia dentro en los cuatro lados + esquinas dobladas */
+.sheet[data-tier="rough"] .d-scribble { width: 150px; right: 18px; bottom: 16px; transform: rotate(-3deg); }
+.sheet[data-tier="rough"] .d-tangle { width: 62px; left: 2px; bottom: 40px; }
+.sheet[data-tier="rough"] .d-slash { width: 34px; right: 8px; top: 42%; }
 .sheet[data-tier="torn"], .sheet[data-tier="rough"] {
-  -webkit-mask: linear-gradient(#000 0 0) 28px 28px / calc(100% - 56px) calc(100% - 56px) no-repeat, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='340' height='28' viewBox='0 0 340 28'><polygon points='0,28 0,0 22,0 30,16 44,0 96,0 108,22 120,0 150,0 154,10 160,0 204,0 214,19 236,0 280,0 290,13 298,0 340,0 340,28'/></svg>") 0 0 / 340px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='28' viewBox='0 0 300 28'><polygon points='0,0 0,28 30,28 40,10 50,28 88,28 98,4 112,28 116,28 121,18 128,28 170,28 176,13 196,28 214,28 222,6 230,28 262,28 270,16 284,28 300,28 300,0'/></svg>") 0 100% / 300px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='310' viewBox='0 0 28 310'><polygon points='28,0 0,0 0,34 17,46 0,58 0,110 23,118 0,140 0,176 9,182 0,190 0,230 18,238 0,262 0,310 28,310'/></svg>") 0 0 / 28px 310px repeat-y, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='360' viewBox='0 0 28 360'><polygon points='0,0 28,0 28,20 14,28 28,40 28,84 4,98 28,110 28,132 17,138 28,146 28,196 8,208 28,226 28,290 12,300 28,318 28,360 0,360'/></svg>") 100% 0 / 28px 360px repeat-y;
-  mask: linear-gradient(#000 0 0) 28px 28px / calc(100% - 56px) calc(100% - 56px) no-repeat, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='340' height='28' viewBox='0 0 340 28'><polygon points='0,28 0,0 22,0 30,16 44,0 96,0 108,22 120,0 150,0 154,10 160,0 204,0 214,19 236,0 280,0 290,13 298,0 340,0 340,28'/></svg>") 0 0 / 340px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='28' viewBox='0 0 300 28'><polygon points='0,0 0,28 30,28 40,10 50,28 88,28 98,4 112,28 116,28 121,18 128,28 170,28 176,13 196,28 214,28 222,6 230,28 262,28 270,16 284,28 300,28 300,0'/></svg>") 0 100% / 300px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='310' viewBox='0 0 28 310'><polygon points='28,0 0,0 0,34 17,46 0,58 0,110 23,118 0,140 0,176 9,182 0,190 0,230 18,238 0,262 0,310 28,310'/></svg>") 0 0 / 28px 310px repeat-y, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='360' viewBox='0 0 28 360'><polygon points='0,0 28,0 28,20 14,28 28,40 28,84 4,98 28,110 28,132 17,138 28,146 28,196 8,208 28,226 28,290 12,300 28,318 28,360 0,360'/></svg>") 100% 0 / 28px 360px repeat-y;
-  clip-path: polygon(34px 0, 100% 0, 100% calc(100% - 46px), calc(100% - 46px) 100%, 0 100%, 0 34px);
-}
-.sheet[data-tier="torn"]::after, .sheet[data-tier="rough"]::after {
-  display: block; content: ""; position: absolute; inset: 0; pointer-events: none; transform: none; z-index: 2;
-  background:
-    linear-gradient(135deg, transparent 50%, var(--flap) 50%) left top / 34px 34px no-repeat,
-    linear-gradient(315deg, transparent 50%, var(--flap) 50%) right bottom / 46px 46px no-repeat;
+  -webkit-mask: linear-gradient(#000 0 0) left top / calc(100% - 19px) calc(100% - 27px) no-repeat, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='28' viewBox='0 0 140 28'><polygon points='0,0 140,0 140,14 133,24 126,10 118,22 111,8 103,26 96,13 88,23 80,9 73,20 65,7 57,25 49,12 41,22 33,9 26,24 18,11 10,21 4,8 0,15'/></svg>") left bottom / 140px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='150' viewBox='0 0 20 150'><polygon points='0,0 14,0 8,10 18,19 6,30 15,41 9,52 19,62 7,73 16,84 8,95 18,106 6,117 15,128 9,139 14,150 0,150'/></svg>") right top / 20px 150px repeat-y;
+  mask: linear-gradient(#000 0 0) left top / calc(100% - 19px) calc(100% - 27px) no-repeat, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='28' viewBox='0 0 140 28'><polygon points='0,0 140,0 140,14 133,24 126,10 118,22 111,8 103,26 96,13 88,23 80,9 73,20 65,7 57,25 49,12 41,22 33,9 26,24 18,11 10,21 4,8 0,15'/></svg>") left bottom / 140px 28px repeat-x, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='150' viewBox='0 0 20 150'><polygon points='0,0 14,0 8,10 18,19 6,30 15,41 9,52 19,62 7,73 16,84 8,95 18,106 6,117 15,128 9,139 14,150 0,150'/></svg>") right top / 20px 150px repeat-y;
 }
 @media (max-width: 560px) {
   .sheet[data-tier="bright"] .d-winged { width: 120px; }
-  .sheet[data-tier="rough"] .d-tangle { width: 90px; }
-  .sheet[data-tier="rough"] .d-coil { display: none; }
+  .sheet[data-tier="rough"] .d-scribble { width: 110px; }
 }

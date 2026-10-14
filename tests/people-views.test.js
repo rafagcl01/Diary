@@ -9,7 +9,7 @@ import { createFakeGithub } from './helpers/fake-github.js';
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const FILES = ['icons', 'prefs', 'ui', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
-  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/html', 'views/diary/list', 'views/diary/read',
+  'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/deco', 'views/diary/html', 'views/diary/list', 'views/diary/read',
   'views/people/html', 'views/diary/people-picker', 'views/diary/editor', 'views/diary', 'views/people/list', 'views/people/card', 'views/people/form', 'views/people', 'views/mood', 'views/home'];
 
 function load(extra = {}) {

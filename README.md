@@ -170,9 +170,9 @@ Hay cinco estados, con una escala lineal (Neutro es el centro):
 Según el porcentaje de la página, la hoja tiene un aspecto distinto (solo ambiente: no da ni quita puntos y no toca ningún dato):
 - **Más de 75 %:** dibujos grises casi negros y muy suaves en los márgenes y esquinas (corazón con alas, rosa, corazones).
 - **De 50 a 75 %:** la hoja de siempre.
-- **De 25 a 49 %:** bordes rotos: mordidas en pico hacia dentro en los cuatro lados y dos esquinas dobladas.
-- **Menos de 25 %:** lo mismo, más ovillos de rayones gruesos y oscuros en las esquinas y el margen.
-Una página sin estados de ánimo queda como la normal. Los dibujos van detrás del texto, con poca opacidad y sin capturar clics. En el editor cambia en directo al elegir el estado. En navegadores muy antiguos sin soporte de máscaras CSS, los bordes se ven rectos.
+- **De 25 a 49 %:** bordes rotos (abajo y a la derecha).
+- **Menos de 25 %:** bordes rotos y rayones en las esquinas y el margen.
+Una página sin estados de ánimo queda como la normal. Los dibujos van detrás del texto, con poca opacidad y sin capturar clics. En el editor cambia en directo al elegir el estado. En navegadores muy antiguos sin soporte de máscaras CSS, los bordes simplemente se ven rectos.
 
 ### Emociones personalizables
 - Son **independientes del estado**: puedes tener *Bien* + *Nostalgia* + *Ilusión*. Se eligen varias por entrada (hasta 10).

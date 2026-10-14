@@ -64,6 +64,13 @@
     return { percent: D.averageOf(values), rated: values.length, total: blocks.length };
   };
 
+  // Etapa visual de la hoja según el porcentaje de la página (solo ambiente; ver views/diary/deco.js):
+  // más de 75 → 'bright'; 50 a 75 → 'normal'; 25 a 49 → 'torn'; menos de 25 → 'rough'. Sin estados → 'normal'.
+  D.pageTier = function (percent) {
+    if (typeof percent !== 'number' || !isFinite(percent)) return 'normal';
+    return percent > 75 ? 'bright' : percent >= 50 ? 'normal' : percent >= 25 ? 'torn' : 'rough';
+  };
+
   // ---- Identificadores ----
   D.newBlockId = function () {
     var a = new Uint8Array(4);

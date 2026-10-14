@@ -130,7 +130,9 @@
           (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') + tagList(b.tags, 'Etiquetas de la entrada');
         return '<section class="block-read">' + (b.text ? paragraphs(b.text) : '') + (meta ? '<div class="block-meta-read">' + meta + '</div>' : '') + '</section>';
       }).join('<hr class="stitch-line">');
-      return '<article class="card paper sheet" aria-label="Página del día">' +
+      var pct = D.dayMood(entry).percent;
+      return '<article class="card paper sheet" aria-label="Página del día"' + (App.sheetDeco ? App.sheetDeco.attr(pct) : '') + '>' +
+        (App.sheetDeco ? App.sheetDeco.markup(pct) : '') +
         sheetHead(entry.day, entry.title, percentHtml(entry, false)) +
         (blocks || '<p class="soft">Esta página solo tiene título.</p>') + '</article>';
     },

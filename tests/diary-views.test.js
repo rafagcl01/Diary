@@ -367,7 +367,7 @@ test('la hoja cambia según el porcentaje: más de 75 dibujos, 50–75 normal, 2
   assert.equal(tier(undefined), 'normal');
   assert.match(App.sheetDeco.markup(100), /d-winged/); assert.match(App.sheetDeco.markup(100), /aria-hidden="true"/);
   assert.doesNotMatch(App.sheetDeco.markup(60), /<svg/); assert.doesNotMatch(App.sheetDeco.markup(30), /<svg/);
-  assert.match(App.sheetDeco.markup(10), /d-tangle/);
+  assert.match(App.sheetDeco.markup(10), /d-scribble/);
   const page = (mood) => App.diaryHtml.sheet({ day: '2026-10-12', title: '', favorite: false, blocks: [{ id: 'b_00000001', text: 'x', tags: [], mood, emotions: [], people: [] }] }, {}, {});
   assert.match(page('muy-bien'), /data-tier="bright"/); assert.match(page('bien'), /data-tier="normal"/);
   assert.match(page('mal'), /data-tier="torn"/); assert.match(page('muy-mal'), /data-tier="rough"/);

@@ -2,7 +2,7 @@
 // su estado de ánimo (uno de cinco), sus emociones (de tu biblioteca) y sus etiquetas, y se pueden reordenar.
 // Se guarda como borrador mientras escribes. Las emociones nunca intervienen en el porcentaje de ánimo.
 (function (App) {
-  var D = App.diary, H = App.diaryHtml, P = App.percentUi, esc = App.escapeHtml, icon = App.icon;
+  var D = App.diary, H = App.diaryHtml, P = App.percentUi, deco = App.sheetDeco, esc = App.escapeHtml, icon = App.icon;
   App.diaryViews = App.diaryViews || {};
 
   function hhmm(iso) {
@@ -58,7 +58,7 @@
             '<span id="e-draft" class="soft draft-status" role="status" aria-live="polite"></span></div>' +
           (repo ? '' : '<p class="msg" data-kind="info">Todavía no hay datos conectados. Puedes escribir: el texto se guarda como borrador en este navegador y podrás guardarlo en cuanto conectes. <a href="#/ajustes">Conectar mis datos</a></p>') +
           (useDraft ? '<p class="msg" id="e-restored" data-kind="info">Has recuperado un borrador de las ' + esc(hhmm(draft.updatedAt)) + '. <button type="button" class="btn secondary" id="e-discard">Descartar borrador</button></p>' : '') +
-          '<article class="card paper sheet editor">' +
+          '<article class="card paper sheet editor"' + deco.attr(D.dayMood({ blocks: begin.blocks || [] }).percent) + '>' + deco.markup(D.dayMood({ blocks: begin.blocks || [] }).percent) +
             '<header class="sheet-head"><div class="sheet-titles">' +
               '<h1 id="page-title" class="date-h1" tabindex="-1">' + esc(D.formatLong(day)) + '</h1>' +
               '<label class="field title-field"><span class="sr">Título de la página (opcional)</span>' +
@@ -112,7 +112,7 @@
         var busy = false, timer = null, picker = null;
 
         // El porcentaje sale SOLO de los estados de ánimo de las entradas.
-        function refreshPercent() { P.paint($('#pct-slot'), D.dayMood({ blocks: blocks }), day, { fromZero: false }); }
+        function refreshPercent() { var m = D.dayMood({ blocks: blocks }); P.paint($('#pct-slot'), m, day, { fromZero: false }); deco.update(q('.sheet'), m.percent); }
 
         function paintBlocks() {
           $('#e-blocks').innerHTML = blocks.map(function (b, i) {
