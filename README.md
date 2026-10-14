@@ -16,8 +16,9 @@ js/sections.js      Lista de secciones: para añadir una, crea su vista, añade 
 js/prefs.js         Preferencias de interfaz (solo en este navegador)
 js/ui.js            Utilidades de interfaz (escape de HTML, cabeceras, estados vacíos, descargas)
 js/storage/         Capa de almacenamiento (ver abajo)
-js/diary/           Lógica del diario sin pantalla: entradas, búsqueda, calendario, repositorio y borradores
-js/views/diary/     Pantallas del diario: cronología, lectura y editor
+js/diary/           Lógica del diario sin pantalla: entradas, búsqueda, calendario, estadísticas, repositorio y borradores
+js/views/diary/     Pantallas del diario: cronología, lectura y editor por bloques
+js/views/mood.js    Estadísticas de ánimo
 js/views/           Una vista por sección
 tests/              Pruebas automáticas (node --test) y un GitHub de mentira para probar sin red
 ```
@@ -133,16 +134,17 @@ Las escrituras van de una en una. Si editas desde dos dispositivos y GitHub dete
 - Las fotos no se guardan aquí (fase posterior).
 
 
-## Fase 3: el diario
+## Fase 3: el diario (una entrada por día, con bloques)
 
-### Qué se puede hacer
-- **Escribir** una entrada (`#/diario/nueva`) con fecha y hora, título opcional, texto, etiquetas y marca de favorita. No hay campos obligatorios: basta una línea o solo un título.
-- **Leer** una entrada solo con su texto (sin identificadores ni controles técnicos), **editarla** o **eliminarla** (con confirmación).
-- **Cronología** agrupada por mes, **calendario** con los días que tienen entradas, **búsqueda** por texto (sin importar tildes ni mayúsculas), etiquetas, favoritas, día concreto y rango de fechas.
-- **Borradores:** mientras escribes, el texto se guarda cada medio segundo en este navegador. Si cierras la pestaña o te desconectas, el diario muestra "Trabajo pendiente" con **Continuar** y **Descartar**.
-- Se puede escribir **sin conexión con GitHub**: queda como borrador hasta que conectes.
-- El inicio muestra tus entradas recientes y lo que escribiste "hace un año" ese mismo día.
-- La longitud del texto no da nada de nada: el sistema de XP llega en la fase 6 y no mirará cuánto escribes.
+### Cómo funciona
+- **Una entrada por día.** Cada entrada tiene un título opcional y **varios bloques**. Cada bloque lleva su propio texto, sus **etiquetas** y su **estado de ánimo** (opcional). Un bloque puede ser solo un ánimo, sin texto.
+- **El ánimo se apunta en los bloques.** La sección *Estado de ánimo* ya no registra nada: solo muestra estadísticas. Desde el inicio, *¿Cómo te sientes hoy?* añade con un toque un bloque (solo con ánimo) a la entrada de hoy.
+- **Las etiquetas hacen de actividades.** No hay una lista aparte de actividades ni emociones secundarias: si quieres anotar "paseo" o "dibujar", usa una etiqueta en el bloque.
+- **Escribir:** *Escribir hoy* (`#/diario/hoy`) abre el día con un bloque nuevo; también puedes escribir en otra fecha pasada. Los bloques se pueden añadir, subir, bajar y quitar. Ctrl+Intro guarda.
+- **Leer:** cada bloque con su texto, su ánimo (con su nombre, no solo color) y sus etiquetas. Los controles (editar, favorito, eliminar, añadir bloque) quedan fuera de la hoja.
+- **Cronología y calendario** por días, **búsqueda** por texto (sin importar tildes ni mayúsculas, en títulos, bloques y etiquetas), etiquetas, ánimo, favoritos, día y rango de fechas.
+- **Borradores:** el texto se guarda cada medio segundo en este navegador, con un borrador por día. Si cierras la pestaña, el diario muestra "Trabajo pendiente". Se puede escribir sin conexión con GitHub.
+- La cantidad de texto no da nada: el sistema de XP llega en la fase 6 y no mirará cuánto escribes.
 
 ### Cómo se guardan las entradas
 Un archivo por mes en el repositorio de datos: `entries/AAAA-MM.json`.
@@ -150,44 +152,57 @@ Un archivo por mes en el repositorio de datos: `entries/AAAA-MM.json`.
 ```json
 {
   "month": "2026-10",
+  "version": 2,
   "entries": [{
-    "id": "e_0123456789ab",
-    "date": "2026-10-13T21:30",
+    "day": "2026-10-13",
     "title": "Tarde de sábado",
-    "blocks": [{ "id": "b_01234567", "text": "Primer párrafo." }],
-    "tags": ["amigos"],
     "favorite": false,
-    "moodId": null,
     "createdAt": "2026-10-13T19:30:12.000Z",
-    "updatedAt": "2026-10-13T19:30:12.000Z"
+    "updatedAt": "2026-10-13T19:30:12.000Z",
+    "blocks": [
+      { "id": "b_01234567", "text": "Quedé con Marcos.", "tags": ["amigos"], "mood": "radiante" },
+      { "id": "b_89abcdef", "text": "", "tags": [], "mood": "cansada" }
+    ]
   }]
 }
 ```
 
-- **`date`** es la hora local tal como la escribes (sin zona horaria), así que una entrada de las 23:50 nunca salta de día ni de mes.
-- **Cada párrafo es un bloque con identificador propio** (`b_…`). En la fase 4 las personas se vincularán a esos identificadores, no al texto, y por eso corregir una errata no rompe nada. Hasta entonces el editor es un único cuadro de texto: al guardar, cada párrafo conserva su identificador si sigue siendo "el mismo" (idéntico, parecido, o el único que cambió).
-- **`moodId`** queda reservado para enlazar con un registro de ánimo (fase 5).
+- **El día es la identidad de la entrada** (no hay otro identificador). No se puede escribir en días que aún no han llegado.
+- **Cada bloque tiene un identificador propio** (`b_…`). En la fase 4 las personas se vincularán a esos identificadores, así que corregir un texto no rompe nada.
+- Los **ánimos** son: radiante, tranquila, normal, cansada, ansiosa, triste y enfadada. Su orden en el selector es solo ese; ninguno cuenta más ni menos que otro.
 - Los campos desconocidos se conservan al editar, para que una versión futura no pierda datos.
-- Si cambias la fecha de una entrada a otro mes, se escribe primero en el mes nuevo y después se quita del antiguo. Si algo se interrumpe entre medias, al cargar gana la copia más reciente.
 - Un archivo de mes dañado se avisa, **no se toca** y no impide leer ni escribir los demás meses.
-- Si editas desde dos dispositivos a la vez en el mismo mes, se fusionan (ver "Conflictos entre dispositivos"). Si editas **la misma entrada** en los dos a la vez, gana el último guardado.
+
+### Dos dispositivos a la vez
+- Si editas el **mismo día** desde dos dispositivos y el otro ya guardó cambios, la aplicación **se niega a pisarlos** (te avisa y tu texto sigue como borrador). Recarga para ver la versión nueva y vuelve a añadir lo tuyo.
+- *Añadir un ánimo con un toque* (inicio) no tiene ese problema: se suma al día sin pisar nada.
+- Días distintos se fusionan sin problema.
+
+### Formato antiguo (si ya habías escrito entradas en la versión anterior)
+Antes había varias entradas por día, con fecha y hora y etiquetas de entrada. Si el diario detecta ese formato, muestra *Actualizar el formato del diario* y **bloquea guardar** hasta que lo aceptes. La actualización une las entradas de cada día en una (cada texto antiguo pasa a ser un bloque, ordenados por la hora a la que los escribiste), copia las etiquetas de la entrada a todos sus bloques y no pierde texto; GitHub conserva el historial. **Antes de actualizar, descarga una copia** en Configuración. Los borradores de la versión anterior también se convierten solos.
+
+### Estadísticas de ánimo
+La sección *Estado de ánimo* solo muestra números calculados con tus bloques:
+- **Mes:** cuántos bloques con ánimo, en cuántos días, el reparto (con el número escrito y el porcentaje) y un calendario donde cada día se colorea con el ánimo que más aparece (si empatan, el del último bloque del día).
+- **Mes a mes:** los últimos 12 meses en columnas; pulsa una para ver ese mes.
+- **Etiquetas y ánimo:** para las etiquetas con al menos 5 bloques con ánimo, qué ánimo aparece más en ellos, comparado con el total. Solo se muestra si hay al menos 15 bloques con ánimo en los últimos 12 meses.
+- Son **asociaciones, no causas**, no hay diagnósticos ni juicios sobre qué ánimo es "mejor" y con pocos datos no se saca ninguna pista.
 
 ### Privacidad de los borradores
-Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta que guardas la entrada o los descartas. En un ordenador compartido, descártalos al terminar. Se conservan como máximo 20.
+Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta que guardas la entrada o los descartas (como máximo 20). En un ordenador compartido, descártalos al terminar.
 
 ### Límites conocidos
-- Cada mes debe pesar menos de ~850 KB de texto; si un mes lo supera, la aplicación se niega a guardar y lo explica.
-- Un párrafo puede tener hasta 20 000 caracteres; una entrada, hasta 500 párrafos.
-- La búsqueda por personas llega con la fase 4; los adjuntos y fotos, más adelante.
+- Cada mes debe pesar menos de ~850 KB de texto; si lo supera, la aplicación se niega a guardar y lo explica. Un bloque admite hasta 20 000 caracteres y una entrada hasta 200 bloques.
 - Sin conexión no se puede leer ni editar lo ya guardado (solo escribir borradores).
+- La búsqueda por personas llega con la fase 4; las fotos, más adelante.
 
 ### Comprobaciones manuales de la fase 3
-- [ ] Con los datos conectados, **Nueva entrada** > escribir > **Guardar** abre la entrada en lectura.
-- [ ] Recarga la página y la entrada sigue ahí (y aparece como archivo `entries/AAAA-MM.json` en GitHub).
-- [ ] **Editar** cambia el texto sin duplicar la entrada; cambiar la fecha a otro mes la mueve.
-- [ ] Escribe algo, cierra la pestaña sin guardar y reábrela: aparece "Trabajo pendiente".
-- [ ] Sin conexión (o desconectado), se puede escribir y avisa de que queda como borrador.
-- [ ] La búsqueda encuentra "música" aunque escribas "MUSICA"; el calendario filtra por día; el filtro de etiquetas y de favoritas funciona.
-- [ ] **Eliminar** pide confirmación y la entrada desaparece de la lista.
-- [ ] Ctrl+Intro en el cuadro de texto guarda.
-- [ ] En móvil, el calendario aparece antes que la lista y todo se puede tocar con comodidad.
+- [ ] Con los datos conectados: **Escribir hoy**, escribir en un bloque, elegir un ánimo, añadir una etiqueta, **Añadir bloque** y **Guardar**: se abre la lectura con los dos bloques.
+- [ ] Recarga y la entrada sigue ahí (y existe `entries/AAAA-MM.json` en GitHub).
+- [ ] En el inicio, elegir un ánimo y **Apuntar en el diario de hoy** añade un bloque a la entrada de hoy.
+- [ ] **Escribir en esa fecha** con un día pasado crea esa entrada; un día futuro no se puede.
+- [ ] Escribe algo, cierra la pestaña y reábrela: aparece "Trabajo pendiente".
+- [ ] La búsqueda encuentra "música" aunque escribas "MUSICA"; el calendario, las etiquetas, el filtro de ánimo y favoritos filtran.
+- [ ] *Estado de ánimo*: con varios ánimos apuntados se ven el reparto, el calendario y los 12 meses, sin ningún texto que juzgue un ánimo.
+- [ ] **Eliminar** pide confirmación y el día desaparece de la lista.
+- [ ] Si tenías entradas antiguas: aparece el aviso de formato, y tras *Actualizar formato* todo sigue ahí, una entrada por día.

@@ -9,6 +9,7 @@
     conflict: 'Los datos han cambiado desde otro dispositivo. Vuelve a cargarlos e inténtalo de nuevo.',
     network: 'No hay conexión con GitHub. Comprueba tu conexión a internet.',
     'public-repo': 'Ese repositorio es público. Por privacidad, el diario solo se conecta a repositorios privados.',
+    stale: 'Esta entrada ha cambiado desde otro dispositivo. Recarga la página para ver la versión nueva; tu texto sigue guardado como borrador.',
     invalid: 'Los datos no tienen el formato esperado.',
     unknown: 'GitHub ha respondido con un error inesperado.'
   };

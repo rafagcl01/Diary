@@ -20,6 +20,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+    trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/><path d="M10.5 10.5v6M13.5 10.5v6"/>',
     'chev-l': '<path d="M14.5 6l-6 6 6 6"/>',
     'chev-r': '<path d="M9.5 6l6 6-6 6"/>',
     // Caras de ánimo (los ojos y la boca; el círculo lo pone el CSS)

@@ -1,213 +1,228 @@
-// Lógica pura del diario (sin pantalla ni red): validar entradas, párrafos con identificador estable,
-// búsqueda y calendario. Todo lo que se guarda pasa por aquí.
+// Lógica pura del diario (sin pantalla ni red): validar entradas y bloques, búsqueda y calendario.
 //
-// Forma de una entrada (se guarda dentro de entries/AAAA-MM.json):
-//   { id: "e_…", date: "2026-10-13T21:30" (hora local, sin zona), title, blocks: [{ id: "b_…", text }],
-//     tags: [], favorite: false, moodId: null, createdAt, updatedAt }
-// Los campos desconocidos se conservan al editar, para no perder datos de versiones futuras.
+// Modelo: UNA entrada por día. Cada entrada tiene varios bloques y cada bloque lleva sus propias
+// etiquetas y su estado de ánimo (opcional). Se guarda en entries/AAAA-MM.json:
+//   { day: "2026-10-13", title, favorite, createdAt, updatedAt,
+//     blocks: [{ id: "b_…", text, tags: [], mood: "tranquila" | null }] }
+// El día es la identidad de la entrada. Los campos desconocidos se conservan al editar.
 (function (App) {
   var D = (App.diary = App.diary || {});
 
-  var LIMITS = { title: 200, paragraph: 20000, paragraphs: 500, tags: 20, tag: 40 };
-  var DATE_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
-  var ENTRY_ID_RE = /^e_[0-9a-f]{12}$/;
+  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40 };
+  var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
+  var MOOD_RE = /^[a-z][a-z0-9-]{0,29}$/;
   function skipKey(k) { return k === '__proto__' || k === 'constructor' || k === 'prototype'; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function invalid(msg) { return App.storageError('invalid', msg); }
 
   D.LIMITS = LIMITS;
-  D.isEntryId = function (s) { return typeof s === 'string' && ENTRY_ID_RE.test(s); };
 
-  function hex(bytes) {
-    var a = new Uint8Array(bytes);
+  // Los estados de ánimo disponibles. El orden es solo el del selector: no significa mejor ni peor.
+  D.MOODS = [
+    { id: 'radiante', label: 'Radiante' }, { id: 'tranquila', label: 'Tranquila' }, { id: 'normal', label: 'Normal' },
+    { id: 'cansada', label: 'Cansada' }, { id: 'ansiosa', label: 'Ansiosa' }, { id: 'triste', label: 'Triste' },
+    { id: 'enfadada', label: 'Enfadada' }
+  ];
+  D.moodLabel = function (id) {
+    for (var i = 0; i < D.MOODS.length; i++) if (D.MOODS[i].id === id) return D.MOODS[i].label;
+    return String(id);
+  };
+  D.isKnownMood = function (id) { return D.MOODS.some(function (m) { return m.id === id; }); };
+
+  // ---- Identificadores ----
+  D.newBlockId = function () {
+    var a = new Uint8Array(4);
     if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(a);
     else for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
-    return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-  }
-  D.newId = function (prefix) { return prefix + hex(prefix === 'e_' ? 6 : 4); };
+    return 'b_' + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  };
 
-  function pad(n) { return (n < 10 ? '0' : '') + n; }
-
-  // ---- Fechas (hora local escrita como texto: "2026-10-13T21:30") ----
-  D.parseLocal = function (str) {
-    var m = DATE_RE.exec(String(str));
+  // ---- Días ("2026-10-13", hora local) ----
+  D.parseDay = function (str) {
+    var m = DAY_RE.exec(String(str));
     if (!m) return null;
-    var y = +m[1], mo = +m[2], d = +m[3], h = +m[4], mi = +m[5];
-    var date = new Date(y, mo - 1, d, h, mi);
-    var ok = date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d && date.getHours() === h && date.getMinutes() === mi;
-    return ok ? date : null;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    var date = new Date(y, mo - 1, d);
+    return date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d ? date : null;
   };
-  D.toLocalString = function (date) {
-    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  D.isDay = function (s) { return typeof s === 'string' && D.parseDay(s) !== null; };
+  D.today = function () {
+    var n = new Date();
+    return n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate());
   };
-  D.nowLocal = function () { return D.toLocalString(new Date()); };
-  D.monthKey = function (dateStr) { return String(dateStr).slice(0, 7); };
-  D.dayKey = function (dateStr) { return String(dateStr).slice(0, 10); };
-  D.formatLong = function (dateStr) {
-    var d = D.parseLocal(dateStr);
+  D.monthKey = function (day) { return String(day).slice(0, 7); };
+  D.formatLong = function (day) {
+    var d = D.parseDay(day);
     return d ? d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
   };
-  D.formatTime = function (dateStr) { return String(dateStr).slice(11, 16); };
   D.formatMonth = function (key) {
-    var d = D.parseLocal(key + '-01T00:00');
+    var d = D.parseDay(key + '-01');
     return d ? d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : key;
   };
 
-  // ---- Texto y párrafos ----
-  D.splitParagraphs = function (text) {
-    return String(text == null ? '' : text).replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/)
-      .map(function (p) { return p.trim(); }).filter(function (p) { return p.length > 0; });
-  };
-  D.blocksToText = function (blocks) {
-    return (blocks || []).map(function (b) { return b.text; }).join('\n\n');
-  };
-
-  function tokens(s) { return String(s).toLowerCase().split(/\s+/).filter(Boolean); }
-  function jaccard(a, b) {
-    var A = tokens(a), B = tokens(b), setB = {}, inter = 0, union;
-    B.forEach(function (w) { setB[w] = true; });
-    var seen = {};
-    A.forEach(function (w) { if (!seen[w]) { seen[w] = true; if (setB[w]) inter++; } });
-    union = Object.keys(seen).length + Object.keys(setB).length - inter;
-    return union === 0 ? 0 : inter / union;
-  }
-
-  // Convierte el texto escrito en bloques conservando el identificador de cada párrafo que "sigue siendo el mismo":
-  // primero por texto idéntico, luego por parecido, y si solo queda uno suelto en cada lado, se emparejan.
-  // (La fase 4 sustituye esto por un editor de bloques donde los identificadores son explícitos.)
-  D.reconcileBlocks = function (oldBlocks, text) {
-    var old = oldBlocks || [], paras = D.splitParagraphs(text);
-    var used = old.map(function () { return false; }), result = paras.map(function () { return null; });
-
-    paras.forEach(function (p, i) {
-      for (var k = 0; k < old.length; k++) {
-        if (!used[k] && old[k].text === p) { used[k] = true; result[i] = Object.assign({}, old[k]); return; }
-      }
-    });
-
-    var cands = [];
-    paras.forEach(function (p, i) {
-      if (result[i] || tokens(p).length < 3) return;
-      old.forEach(function (b, k) {
-        if (used[k] || tokens(b.text).length < 3) return;
-        var s = jaccard(p, b.text);
-        if (s >= 0.5) cands.push({ i: i, k: k, s: s });
-      });
-    });
-    cands.sort(function (a, b) { return (b.s - a.s) || (Math.abs(a.i - a.k) - Math.abs(b.i - b.k)); });
-    cands.forEach(function (c) {
-      if (!result[c.i] && !used[c.k]) { used[c.k] = true; result[c.i] = Object.assign({}, old[c.k], { text: paras[c.i] }); }
-    });
-
-    var freeNew = [], freeOld = [];
-    result.forEach(function (r, i) { if (!r) freeNew.push(i); });
-    used.forEach(function (u, k) { if (!u) freeOld.push(k); });
-    if (freeNew.length === 1 && freeOld.length === 1) {
-      result[freeNew[0]] = Object.assign({}, old[freeOld[0]], { text: paras[freeNew[0]] });
-    }
-
-    return paras.map(function (p, i) { return result[i] || { id: D.newId('b_'), text: p }; });
-  };
-
   // ---- Etiquetas ----
+  function fold(s) { return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  D.fold = fold;
   D.normalizeTag = function (tag) {
     return String(tag == null ? '' : tag).replace(/^#+/, '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.tag);
   };
-  function fold(s) { return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
-  D.fold = fold;
-  function uniqueTags(list) {
+  D.uniqueTags = function (list) {
     var seen = {}, out = [];
     (Array.isArray(list) ? list : []).forEach(function (t) {
       var n = D.normalizeTag(t), k = fold(n);
       if (n && !seen[k]) { seen[k] = true; out.push(n); }
     });
     return out.slice(0, LIMITS.tags);
-  }
-  D.uniqueTags = uniqueTags;
+  };
 
-  // ---- Validación ----
-  function invalid(msg) { return App.storageError('invalid', msg); }
+  // ---- Bloques ----
+  D.blockHasContent = function (b) { return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood)); };
 
-  // Devuelve la entrada limpia o lanza un error con un mensaje claro. Conserva campos desconocidos.
+  // Devuelve el bloque limpio (puede estar vacío). Conserva campos desconocidos.
+  D.sanitizeBlock = function (input, seenIds) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('Hay un bloque con un formato inesperado.');
+    var out = {};
+    Object.keys(input).forEach(function (k) { if (!skipKey(k)) out[k] = input[k]; });
+    var text = out.text === undefined || out.text === null ? '' : out.text;
+    if (typeof text !== 'string') throw invalid('Hay un bloque con un formato inesperado.');
+    out.text = text.trim();
+    if (out.text.length > LIMITS.text) throw invalid('Un bloque es demasiado largo (máximo ' + LIMITS.text + ' caracteres).');
+    seenIds = seenIds || {};
+    out.id = typeof out.id === 'string' && BLOCK_ID_RE.test(out.id) && !seenIds[out.id] ? out.id : D.newBlockId();
+    seenIds[out.id] = true;
+    out.tags = D.uniqueTags(out.tags);
+    out.mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
+    return out;
+  };
+
+  // ---- Entradas ----
+  // Devuelve la entrada limpia o lanza un error con un mensaje claro. Los bloques vacíos se descartan.
   D.sanitizeEntry = function (input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('La entrada no es válida.');
     var out = {};
     Object.keys(input).forEach(function (k) { if (!skipKey(k)) out[k] = input[k]; });
 
-    if (out.id === undefined || out.id === null) out.id = D.newId('e_');
-    if (!ENTRY_ID_RE.test(out.id)) throw invalid('El identificador de la entrada no es válido.');
-    if (!D.parseLocal(out.date)) throw invalid('La fecha y la hora no son válidas.');
-
+    if (!D.isDay(out.day)) throw invalid('La fecha no es válida.');
     out.title = typeof out.title === 'string' ? out.title.trim() : '';
     if (out.title.length > LIMITS.title) throw invalid('El título es demasiado largo (máximo ' + LIMITS.title + ' caracteres).');
 
     var blocks = Array.isArray(out.blocks) ? out.blocks : [];
-    if (blocks.length > LIMITS.paragraphs) throw invalid('La entrada tiene demasiados párrafos.');
-    var seenIds = {};
-    out.blocks = blocks.map(function (b) {
-      if (!b || typeof b.text !== 'string') throw invalid('Hay un párrafo con un formato inesperado.');
-      var text = b.text.trim();
-      if (text.length > LIMITS.paragraph) throw invalid('Un párrafo es demasiado largo (máximo ' + LIMITS.paragraph + ' caracteres).');
-      var id = typeof b.id === 'string' && BLOCK_ID_RE.test(b.id) && !seenIds[b.id] ? b.id : D.newId('b_');
-      seenIds[id] = true;
-      return Object.assign({}, b, { id: id, text: text });
-    }).filter(function (b) { return b.text.length > 0; });
+    if (blocks.length > LIMITS.blocks) throw invalid('La entrada tiene demasiados bloques (máximo ' + LIMITS.blocks + ').');
+    var seen = {};
+    out.blocks = blocks.map(function (b) { return D.sanitizeBlock(b, seen); }).filter(D.blockHasContent);
 
-    out.tags = uniqueTags(out.tags);
     out.favorite = out.favorite === true;
-    out.moodId = typeof out.moodId === 'string' ? out.moodId : null;
-
     var now = new Date().toISOString();
     out.createdAt = typeof out.createdAt === 'string' && !isNaN(Date.parse(out.createdAt)) ? out.createdAt : now;
     out.updatedAt = typeof out.updatedAt === 'string' && !isNaN(Date.parse(out.updatedAt)) ? out.updatedAt : now;
 
-    if (!out.title && out.blocks.length === 0) throw invalid('Escribe al menos una línea o un título.');
+    if (!out.title && out.blocks.length === 0) throw invalid('Escribe algo, elige un ánimo o añade una etiqueta en algún bloque, o ponle un título al día.');
     return out;
   };
 
-  // Para entradas que vienen del repositorio: devuelve null si no se pueden leer (no se borran del archivo).
+  // Para entradas que vienen del repositorio: null si no se pueden leer (no se borran del archivo).
   D.normalizeLoaded = function (raw) {
     try { return D.sanitizeEntry(raw); } catch (e) { return null; }
   };
 
+  // Une varias entradas del mismo día en una (los bloques se conservan en el orden dado).
+  D.mergeDayEntries = function (list) {
+    var first = list[0], seen = {}, blocks = [], favorite = false, title = '', created = first.createdAt, updated = first.updatedAt;
+    list.forEach(function (e) {
+      e.blocks.forEach(function (b) { if (!seen[b.id]) { seen[b.id] = true; blocks.push(b); } });
+      favorite = favorite || e.favorite;
+      title = title || e.title;
+      if (e.createdAt < created) created = e.createdAt;
+      if (e.updatedAt > updated) updated = e.updatedAt;
+    });
+    return Object.assign({}, first, { blocks: blocks, favorite: favorite, title: title, createdAt: created, updatedAt: updated });
+  };
+
+  // ---- Formato antiguo (varias entradas por día, con fecha y hora y etiquetas de entrada) ----
+  D.isLegacy = function (raw) {
+    return !!raw && typeof raw === 'object' && typeof raw.day !== 'string' && typeof raw.date === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw.date) && D.isDay(raw.date.slice(0, 10));
+  };
+
+  // Convierte entradas antiguas en entradas nuevas: una por día. Las etiquetas de cada entrada pasan a
+  // todos sus bloques y los bloques de un mismo día se ordenan por la hora a la que se escribieron.
+  D.upgradeLegacy = function (rawList) {
+    var byDay = {}, days = [];
+    rawList.forEach(function (raw) {
+      if (!D.isLegacy(raw)) return;
+      var day = raw.date.slice(0, 10);
+      var entryTags = D.uniqueTags(raw.tags);
+      var seen = {};
+      var blocks = (Array.isArray(raw.blocks) ? raw.blocks : []).filter(function (b) { return b && typeof b.text === 'string'; }).map(function (b) {
+        return D.sanitizeBlock({ id: b.id, text: b.text, tags: entryTags, mood: null }, seen);
+      }).filter(D.blockHasContent);
+      var created = typeof raw.createdAt === 'string' && !isNaN(Date.parse(raw.createdAt)) ? raw.createdAt : new Date().toISOString();
+      var updated = typeof raw.updatedAt === 'string' && !isNaN(Date.parse(raw.updatedAt)) ? raw.updatedAt : created;
+      var entry = { day: day, title: typeof raw.title === 'string' ? raw.title.trim().slice(0, LIMITS.title) : '', favorite: raw.favorite === true, blocks: blocks, createdAt: created, updatedAt: updated };
+      if (!entry.title && !entry.blocks.length) return;
+      if (!byDay[day]) { byDay[day] = []; days.push(day); }
+      byDay[day].push({ order: raw.date + '|' + created, entry: entry });
+    });
+    return days.sort().map(function (day) {
+      var list = byDay[day].sort(function (a, b) { return a.order < b.order ? -1 : 1; }).map(function (x) { return x.entry; });
+      return D.mergeDayEntries(list);
+    });
+  };
+
   // ---- Presentación de texto ----
+  D.entryTags = function (entry) {
+    var all = [];
+    entry.blocks.forEach(function (b) { all = all.concat(b.tags || []); });
+    return D.uniqueTags(all);
+  };
+  D.firstText = function (entry) {
+    for (var i = 0; i < entry.blocks.length; i++) if (entry.blocks[i].text) return entry.blocks[i].text;
+    return '';
+  };
   D.excerpt = function (entry, max) {
-    var first = entry.blocks && entry.blocks[0] ? entry.blocks[0].text : '';
-    var flat = first.replace(/\s+/g, ' ').trim();
+    var flat = D.firstText(entry).replace(/\s+/g, ' ').trim();
     max = max || 140;
     return flat.length > max ? flat.slice(0, max - 1).trimEnd() + '…' : flat;
   };
-  D.displayTitle = function (entry) { return entry.title || D.excerpt(entry, 60) || 'Sin título'; };
+  D.displayTitle = function (entry) { return entry.title || D.excerpt(entry, 60) || D.formatLong(entry.day); };
+  D.entryMoods = function (entry) {
+    var seen = {}, out = [];
+    entry.blocks.forEach(function (b) { if (b.mood && !seen[b.mood]) { seen[b.mood] = true; out.push(b.mood); } });
+    return out;
+  };
 
   // ---- Búsqueda ----
-  // q: { text, tags: [], favoritesOnly, day: 'AAAA-MM-DD', from, to }   (todo opcional)
+  // q: { text, tags: [], mood, favoritesOnly, day: 'AAAA-MM-DD', from, to }   (todo opcional)
   D.search = function (entries, q) {
     q = q || {};
     var terms = fold(q.text || '').split(/\s+/).filter(Boolean);
     var wantTags = (q.tags || []).map(fold);
     return entries.filter(function (e) {
-      var day = D.dayKey(e.date);
-      if (q.day && day !== q.day) return false;
-      if (q.from && day < q.from) return false;
-      if (q.to && day > q.to) return false;
+      if (q.day && e.day !== q.day) return false;
+      if (q.from && e.day < q.from) return false;
+      if (q.to && e.day > q.to) return false;
       if (q.favoritesOnly && !e.favorite) return false;
+      if (q.mood && !e.blocks.some(function (b) { return b.mood === q.mood; })) return false;
       if (wantTags.length) {
-        var mine = (e.tags || []).map(fold);
+        var mine = D.entryTags(e).map(fold);
         if (!wantTags.every(function (t) { return mine.indexOf(t) >= 0; })) return false;
       }
       if (terms.length) {
-        var hay = fold(e.title + ' ' + e.blocks.map(function (b) { return b.text; }).join(' ') + ' ' + (e.tags || []).join(' '));
+        var hay = fold(e.title + ' ' + e.blocks.map(function (b) { return b.text + ' ' + (b.tags || []).join(' '); }).join(' '));
         if (!terms.every(function (t) { return hay.indexOf(t) >= 0; })) return false;
       }
       return true;
-    }).sort(D.byDateDesc);
+    }).sort(D.byDayDesc);
   };
-  D.byDateDesc = function (a, b) {
-    return a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0);
-  };
+  D.byDayDesc = function (a, b) { return a.day < b.day ? 1 : a.day > b.day ? -1 : 0; };
+
+  // Etiquetas más usadas (cuenta bloques)
   D.allTags = function (entries) {
     var counts = {}, names = {};
     entries.forEach(function (e) {
-      (e.tags || []).forEach(function (t) { var k = fold(t); counts[k] = (counts[k] || 0) + 1; names[k] = names[k] || t; });
+      e.blocks.forEach(function (b) {
+        (b.tags || []).forEach(function (t) { var k = fold(t); counts[k] = (counts[k] || 0) + 1; names[k] = names[k] || t; });
+      });
     });
     return Object.keys(counts).map(function (k) { return { tag: names[k], count: counts[k] }; })
       .sort(function (a, b) { return (b.count - a.count) || (a.tag < b.tag ? -1 : 1); });
@@ -215,7 +230,7 @@
   D.groupByMonth = function (entries) {
     var groups = [], last = null;
     entries.forEach(function (e) {
-      var key = D.monthKey(e.date);
+      var key = D.monthKey(e.day);
       if (!last || last.key !== key) { last = { key: key, entries: [] }; groups.push(last); }
       last.entries.push(e);
     });
@@ -227,13 +242,13 @@
     var first = new Date(Date.UTC(year, monthIndex, 1));
     var offset = (first.getUTCDay() + 6) % 7;                       // lunes = 0
     var days = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-    var counts = {};
-    entries.forEach(function (e) { var k = D.dayKey(e.date); counts[k] = (counts[k] || 0) + 1; });
+    var byDay = {};
+    entries.forEach(function (e) { byDay[e.day] = e; });
     var cells = [], i;
     for (i = 0; i < offset; i++) cells.push(null);
     for (i = 1; i <= days; i++) {
-      var key = year + '-' + pad(monthIndex + 1) + '-' + pad(i);
-      cells.push({ day: i, key: key, count: counts[key] || 0 });
+      var key = year + '-' + pad(monthIndex + 1) + '-' + pad(i), e = byDay[key];
+      cells.push({ day: i, key: key, has: !!e, blocks: e ? e.blocks.length : 0 });
     }
     while (cells.length % 7) cells.push(null);
     var weeks = [];

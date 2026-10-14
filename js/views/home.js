@@ -16,11 +16,6 @@
     }
   }
 
-  var moods = ['radiante', 'tranquila', 'normal', 'cansada', 'ansiosa', 'triste', 'enfadada'];
-  var faces = moods.map(function (m) {
-    return '<span class="face m-' + m + '">' + icon('f-' + m) + '</span>';
-  }).join('');
-
   // Corazón remendado: la seña de identidad. Las estrellitas titilan salvo que se desactiven los efectos.
   var sigil =
     '<svg viewBox="0 0 60 60" aria-hidden="true" focusable="false">' +
@@ -42,7 +37,7 @@
 
           '<div class="home-grid">' +
             '<div class="stack">' +
-              '<a class="card paper hero glint" href="#/diario/nueva">' +
+              '<a class="card paper hero glint" href="#/diario/hoy">' +
                 icon('bow', 'bow') +
                 '<p class="pixel soft">hoja en blanco</p>' +
                 '<p class="prompt">Querido diario, hoy…</p>' +
@@ -52,12 +47,15 @@
                 '</div>' +
               '</a>' +
 
-              '<a class="card stitched mood-card glint" href="#/animo">' +
-                '<span class="tag">Pronto</span>' +
-                '<h3>¿Cómo te sientes hoy?</h3>' +
-                '<p class="soft">Sin escribir nada, si prefieres.</p>' +
-                '<div class="row" aria-hidden="true">' + faces + '</div>' +
-              '</a>' +
+              '<section class="card stitched mood-card" aria-labelledby="home-mood-title">' +
+                '<h3 id="home-mood-title">¿Cómo te sientes hoy?</h3>' +
+                '<p class="soft">Se apunta como un bloque en la entrada de hoy, sin escribir nada si prefieres.</p>' +
+                '<div class="moods" role="radiogroup" aria-label="Estado de ánimo">' + moodButtons() + '</div>' +
+                '<div class="btn-row"><button type="button" class="btn" id="home-mood-save">Apuntar en el diario de hoy</button></div>' +
+                '<p class="msg" id="home-mood-msg" role="status" data-kind="info"></p>' +
+                '<p class="soft" style="margin-top: 10px; font-size: .92rem"><a class="link" href="#/animo">Ver cómo se reparten tus ánimos</a></p>' +
+              '</section>' +
+
               '<article class="card" id="home-recent"><h3>Entradas recientes</h3><div id="home-recent-body"><p class="soft">Conecta tus datos para ver aquí tus últimas entradas.</p></div></article>' +
             '</div>' +
 
@@ -87,9 +85,45 @@
           '</div>' +
         '</div>';
 
+      wireMood(root);
       fillDiary(root);
     }
   };
+
+  function moodButtons() {
+    return App.diary.MOODS.map(function (m) {
+      return '<button type="button" role="radio" class="mood-btn" data-m="' + m.id + '" aria-checked="false">' +
+        App.diaryHtml.face(m.id) + '<span>' + App.escapeHtml(m.label) + '</span></button>';
+    }).join('');
+  }
+
+  // Elegir un ánimo y apuntarlo: añade un bloque (solo con ánimo) a la entrada de hoy.
+  function wireMood(root) {
+    var card = root.querySelector('.mood-card'), chosen = null;
+    var msg = root.querySelector('#home-mood-msg'), save = root.querySelector('#home-mood-save');
+    function say(html, kind) { msg.innerHTML = html; msg.setAttribute('data-kind', kind || 'info'); }
+    card.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var pick = t.closest('[data-m]');
+      if (pick) {
+        chosen = chosen === pick.dataset.m ? null : pick.dataset.m;
+        card.querySelectorAll('[data-m]').forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.m === chosen)); });
+        return;
+      }
+      if (!t.closest('#home-mood-save')) return;
+      var repo = App.diary.repo(), D = App.diary;
+      if (!chosen) { say('Elige primero cómo te sientes.', 'error'); return; }
+      if (!repo) { say('Conecta tus datos para guardar tu ánimo. <a href="#/ajustes">Conectar mis datos</a>', 'error'); return; }
+      save.disabled = true; say('Guardando…', 'info');
+      repo.appendBlock(D.today(), { text: '', tags: [], mood: chosen }).then(function () {
+        say('Apuntado en la entrada de hoy. <a href="#/diario/' + D.today() + '/editar/nuevo">Añadir un texto</a>', 'ok');
+        chosen = null;
+        card.querySelectorAll('[data-m]').forEach(function (b) { b.setAttribute('aria-checked', 'false'); });
+        save.disabled = false;
+      }).catch(function (err) { say(App.escapeHtml(err.message || 'No se pudo guardar.'), 'error'); save.disabled = false; });
+    });
+  }
 
   // Rellena "Entradas recientes" y "Hace un año" si hay datos conectados (no bloquea la pantalla).
   function fillDiary(root) {
@@ -104,14 +138,14 @@
         recent.innerHTML = '<p class="soft">Todavía no has escrito ninguna.</p><p style="margin-top: 10px"><a class="btn secondary" href="#/diario/nueva">Escribir la primera</a></p>';
       } else {
         recent.innerHTML = '<ul class="mini-list">' + entries.slice(0, 3).map(function (e) {
-          return '<li><a href="#/diario/' + esc(e.id) + '"><b>' + esc(D.displayTitle(e)) + '</b><small class="soft">' + esc(D.formatLong(e.date)) + '</small></a></li>';
+          return '<li><a href="#/diario/' + esc(e.day) + '"><b>' + esc(D.displayTitle(e)) + '</b><small class="soft">' + esc(D.formatLong(e.day)) + '</small></a></li>';
         }).join('') + '</ul><p style="margin-top: 10px"><a href="#/diario" class="link">Ver todo el diario</a></p>';
       }
-      var md = D.nowLocal().slice(5, 10), year = D.nowLocal().slice(0, 4);
-      var memories = entries.filter(function (e) { return e.date.slice(5, 10) === md && e.date.slice(0, 4) !== year; }).slice(0, 2);
+      var md = D.today().slice(5, 10), year = D.today().slice(0, 4);
+      var memories = entries.filter(function (e) { return e.day.slice(5, 10) === md && e.day.slice(0, 4) !== year && D.excerpt(e, 10); }).slice(0, 2);
       if (memories.length) {
         memo.innerHTML = memories.map(function (e) {
-          return '<a class="memory" href="#/diario/' + esc(e.id) + '"><span class="margin-note">' + esc(D.formatLong(e.date)) + '</span>' +
+          return '<a class="memory" href="#/diario/' + esc(e.day) + '"><span class="margin-note">' + esc(D.formatLong(e.day)) + '</span>' +
             '<span>' + esc(D.excerpt(e, 130)) + '</span></a>';
         }).join('');
       }
