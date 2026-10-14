@@ -317,16 +317,22 @@ test('desde el editor: crear una emoción nueva, asignarla y guardar; el estado 
   assert.match(root.els['#emo-msg'].textContent, /Emoción creada y marcada/);
   assert.doesNotMatch(root.els[`[data-emolist="${id}"]`].innerHTML, /Nostalgia/, 'hasta pulsar Aceptar no se añade a la entrada');
   assert.match(root.els['#emo-list'].innerHTML, /Nostalgia/);
-  assert.match(root.els['#emo-list'].innerHTML, /checked/);
+  assert.match(root.els['#emo-list'].innerHTML, /aria-pressed="true"/);
   assert.doesNotMatch(root.els['#emo-list'].innerHTML, /data-emo-edit|Editar</, 'sin botón Editar junto a cada emoción');
-  assert.equal(root.els['#emo-edit'].disabled, false, 'con una sola seleccionada se puede editar');
+  assert.equal(root.els['#emo-edit'].disabled, false, 'con una marcada se puede editar');
   assert.equal(root.els['#pct-slot'].innerHTML, pctBefore, 'crear y asignar una emoción no cambia el porcentaje');
   // una segunda emoción y quitarla otra vez
   click({ '#emo-new': {} }); root.els['#emo-name'].value = 'Ilusión';
   fire(view, 'change', { target: { id: 'x', name: 'emo-symbol', value: App.diary.EMOTION_SYMBOLS[1].id } });
   click({ '#emo-save': {} }); await tick(80);
   assert.equal(root.els['#pct-slot'].innerHTML, pctBefore);
-  assert.equal(root.els['#emo-edit'].disabled, true, 'con dos seleccionadas no se puede editar');
+  assert.equal(root.els['#emo-edit'].disabled, false);
+  // pulsar la cápsula de una marcada la desmarca
+  const ids = [...root.els['#emo-list'].innerHTML.matchAll(/data-emo-check="(em_[0-9a-f]{8})"/g)].map((m) => m[1]);
+  click({ '[data-emo-check]': { dataset: { emoCheck: ids[0] } } });
+  assert.equal([...root.els['#emo-list'].innerHTML.matchAll(/aria-pressed="true"/g)].length, 1);
+  click({ '[data-emo-check]': { dataset: { emoCheck: ids[0] } } });
+  assert.equal([...root.els['#emo-list'].innerHTML.matchAll(/aria-pressed="true"/g)].length, 2);
   click({ '#emo-done': {} });
   assert.equal(root.els['#emo-dialog'].open, false);
   assert.match(root.els[`[data-emolist="${id}"]`].innerHTML, /Nostalgia/);

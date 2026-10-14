@@ -168,8 +168,8 @@ Hay cinco estados, con una escala lineal (Neutro es el centro):
 
 ### Emociones personalizables
 - Son **independientes del estado**: puedes tener *Bien* + *Nostalgia* + *Ilusión*. Se eligen varias por entrada (hasta 10).
-- Se crean **desde el editor**: botón *Emociones* de la entrada → desplegable con todas tus emociones (casillas) → *Añadir emoción nueva* → nombre (hasta 30 caracteres) y un símbolo de una galería de 22 iconos (estilo pastel goth / creepy cute). La nueva queda marcada, y **nada se añade a la entrada hasta pulsar *Aceptar*** (cerrar con Esc descarta la selección).
-- Quedan guardadas en `emotions.json` y se reutilizan en cualquier entrada. Se puede **editar el nombre y el símbolo** con *Editar la seleccionada* (activo solo cuando hay exactamente una marcada); el cambio se ve en todas las entradas que la usan. No se admiten dos emociones con el mismo nombre (sin importar tildes ni mayúsculas).
+- Se crean **desde el editor**: botón *Emociones* de la entrada → todas tus emociones como cápsulas que se iluminan al pulsarlas (otra pulsación las desmarca) → *Añadir emoción nueva* → nombre (hasta 30 caracteres) y un símbolo de una galería de 22 iconos (estilo pastel goth / creepy cute). La nueva queda marcada, y **nada se añade a la entrada hasta pulsar *Aceptar*** (cerrar con Esc descarta la selección).
+- Quedan guardadas en `emotions.json` y se reutilizan en cualquier entrada. Se puede **editar el nombre y el símbolo** con *Editar* (edita la última que hayas marcado; desmarcar no cuenta); el cambio se ve en todas las entradas que la usan. No se admiten dos emociones con el mismo nombre (sin importar tildes ni mayúsculas).
 - Si `emotions.json` no se puede cargar, se puede escribir igual (sin elegirlas).
 
 ### Cómo se guardan los datos

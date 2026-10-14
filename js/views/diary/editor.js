@@ -74,9 +74,8 @@
 
           '<dialog class="confirm emo-dialog" id="emo-dialog" aria-labelledby="emo-title">' +
             '<h3 id="emo-title">Emociones de la entrada <span id="emo-n"></span></h3>' +
-            '<p class="soft">Marca las que quieras y pulsa Aceptar. Son aparte del estado de ánimo: no cambian el porcentaje.</p>' +
-            '<details class="emo-drop" id="emo-drop" open><summary id="emo-sum">Emociones guardadas</summary>' +
-              '<ul class="emo-list" id="emo-list"></ul></details>' +
+            '<p class="soft">Pulsa las que quieras para marcarlas (pulsa otra vez para quitarlas) y luego Aceptar. Son aparte del estado de ánimo: no cambian el porcentaje.</p>' +
+            '<ul class="emo-caps" id="emo-list" aria-label="Emociones guardadas"></ul>' +
             '<div id="emo-form" hidden>' +
               '<h4 id="emo-form-title">Nueva emoción</h4>' +
               '<label class="field"><span>Nombre</span><input id="emo-name" type="text" maxlength="' + D.EMOTION_LIMITS.name + '" autocomplete="off" placeholder="Por ejemplo, Nostalgia"></label>' +
@@ -84,7 +83,7 @@
               '<div class="btn-row"><button type="button" class="btn" id="emo-save">Guardar emoción</button><button type="button" class="btn secondary" id="emo-cancel">Cancelar</button></div>' +
             '</div>' +
             '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
-            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Añadir emoción nueva</button><button type="button" class="btn secondary" id="emo-edit" disabled>Editar la seleccionada</button><button type="button" class="btn" id="emo-done">Aceptar</button></div>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Añadir emoción nueva</button><button type="button" class="btn secondary" id="emo-edit" disabled>Editar</button><button type="button" class="btn" id="emo-done">Aceptar</button></div>' +
           '</dialog>' +
           '<dialog class="confirm ppl-dialog" id="ppl-dialog" aria-labelledby="ppl-title">' +
             '<h3 id="ppl-title">Personas de la entrada <span id="ppl-n"></span></h3>' +
@@ -173,13 +172,12 @@
           if (!emoRepo) { $('#emo-list').innerHTML = '<li class="soft">Conecta tus datos para usar emociones. <a href="#/ajustes">Conectar mis datos</a></li>'; return; }
           if (!emoLoaded) { $('#emo-list').innerHTML = '<li class="soft">No se pudieron cargar tus emociones ahora mismo.</li>'; return; }
           $('#emo-list').innerHTML = library.length ? library.map(function (e) {
-            return '<li class="emo-item"><label class="emo-opt"><input type="checkbox" data-emo-check="' + esc(e.id) + '"' + (chosen.indexOf(e.id) >= 0 ? ' checked' : '') + '>' +
-              icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></label></li>';
+            return '<li><button type="button" class="emo-cap" data-emo-check="' + esc(e.id) + '" aria-pressed="' + (chosen.indexOf(e.id) >= 0) + '">' +
+              icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></button></li>';
           }).join('') : '<li class="soft">Todavía no tienes emociones. Añade la primera.</li>';
-          var n = chosen.length;
-          $('#emo-sum').textContent = 'Emociones guardadas · ' + (n === 1 ? '1 seleccionada' : n + ' seleccionadas');
-          $('#emo-edit').disabled = !(emoLoaded && n === 1 && byId[chosen[0]]);
+          $('#emo-edit').disabled = !(emoLoaded && n0(chosen) && byId[chosen[chosen.length - 1]]);   // edita la última marcada
         }
+        function n0(a) { return a.length > 0; }
         function paintSymbols() {
           $('#emo-symbols').innerHTML = D.EMOTION_SYMBOLS.map(function (s) {
             return '<label class="symbol"><input type="radio" name="emo-symbol" value="' + s.id + '"' + (formSymbol === s.id ? ' checked' : '') + '>' +
@@ -251,7 +249,6 @@
           var t = e.target;
           if (t.id === 'e-fav') scheduleDraft();
           else if (t.name === 'emo-symbol') formSymbol = t.value;
-          else if (t.dataset && t.dataset.emoCheck) stageEmotion(t.dataset.emoCheck, !!t.checked);
         });
         view.addEventListener('focusout', function (e) {
           var t = e.target;
@@ -292,7 +289,9 @@
             return;
           }
           if (open) { openEmo(open.dataset.emoOpen); return; }
-          if (t.closest('#emo-edit')) { var em = staged.length === 1 ? byId[staged[0]] : null; if (em) openForm(em); return; }
+          var cap = t.closest('[data-emo-check]');
+          if (cap) { stageEmotion(cap.dataset.emoCheck, staged.indexOf(cap.dataset.emoCheck) < 0); return; }
+          if (t.closest('#emo-edit')) { var em = staged.length ? byId[staged[staged.length - 1]] : null; if (em) openForm(em); return; }
           if (t.closest('#emo-new')) { openForm(null); return; }
           if (t.closest('#emo-cancel')) { closeForm(); emoSay('', 'info'); return; }
           if (t.closest('#emo-save')) { saveEmotion(); return; }
