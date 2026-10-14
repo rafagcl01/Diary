@@ -244,8 +244,14 @@ Nombre (lo único obligatorio), **apodos**, **avatar** (la inicial o un símbolo
 
 - **Historial:** en la ficha ves, en orden cronológico (y puedes invertirlo), cada entrada vinculada a esa persona con su fecha, **su texto completo** (el contexto original), con quién más estaba y el enlace *Abrir la página original*. Las entradas sin vínculo no aparecen.
 - **Recuerdos destacados:** *Destacar* en cualquier fragmento lo guarda arriba. Es solo una marca tuya.
-- **Lista:** orden alfabético; buscador por nombre, apodo, relación o etiqueta (sin importar tildes ni mayúsculas). Cada persona muestra cuántos fragmentos tiene, solo como información. Si quieres, puedes ordenar por quién tiene recuerdos más recientes; nunca por cantidad.
+- **Lista:** ahora es una **cuadrícula de tarjetas casi cuadradas** (cinta, avatar o foto, nombre, apodo, relaciones, cumpleaños y nº de recuerdos). Orden alfabético; buscador por nombre, apodo, relación, mes de cumpleaños o etiqueta (sin importar tildes ni mayúsculas). Los recuentos son solo información. Si quieres, puedes ordenar por quién tiene recuerdos más recientes.
 - **Inicio:** *Personas recientes* muestra a quién has vinculado últimamente (por fecha, no por cantidad).
+
+### Relaciones, cumpleaños, foto y emociones (ampliación)
+- **Relaciones:** varias por persona, en **cápsulas** como las emociones (pulsar marca, pulsar otra vez quita). Se ofrecen unas básicas y todas las que ya usas en otras fichas; se pueden añadir nuevas con Intro. Las fichas antiguas con una sola relación se convierten solas. Dos personas con el mismo nombre solo se admiten si no comparten ninguna relación.
+- **Cumpleaños:** día y mes (el año es opcional). Se ve en la tarjeta y en la ficha, y se puede buscar por el mes.
+- **Foto:** se elige una imagen, se recorta al centro y se reduce a 160 px (JPEG) en tu navegador, y se guarda **dentro de `people.json`** (unos 2–10 KB cada una). Para no pasarse del tamaño que GitHub maneja bien, `people.json` no puede superar ~800 KB: si lo alcanzas, pide quitar alguna foto. La foto no sale de tu repositorio de datos.
+- **Emociones en sus recuerdos:** en la ficha, el reparto porcentual de las emociones marcadas en las entradas vinculadas a esa persona (suma 100 %). Solo describe lo que escribiste; no es una nota para la persona, y no cambia ningún porcentaje de ánimo.
 
 ### Vincular personas a las entradas
 En el editor, cada entrada tiene un botón **Personas**: un buscador sobre tus fichas (por nombre, apodo o relación), varias personas por entrada, y *Crear una ficha nueva* sin salir. Para quitar a alguien, la **×** de su etiqueta; **quitar un vínculo nunca borra el texto**.

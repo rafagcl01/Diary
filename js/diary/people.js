@@ -4,7 +4,7 @@
 (function (App) {
   var D = App.diary;
   var PATH = 'people.json';
-  var LIMITS = { name: 60, nickname: 40, nicknames: 10, relation: 40, notes: 5000, tags: 20, highlights: 50, count: 500 };
+  var LIMITS = { name: 60, nickname: 40, nicknames: 10, relation: 40, relations: 8, photo: 16000, docBytes: 800000, notes: 5000, tags: 20, highlights: 50, count: 500 };
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
   var MET_RE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
   D.PEOPLE_LIMITS = LIMITS;
@@ -62,6 +62,67 @@
     return out.slice(0, LIMITS.highlights);
   }
 
+  // Relaciones: varias por persona, en cápsulas (texto libre, sin repetir sin importar tildes ni mayúsculas).
+  D.cleanRelations = function (list) {
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (r) {
+      var c = clean(r);
+      if (!c) return;
+      if (c.length > LIMITS.relation) throw invalid('Una relación es demasiado larga (máximo ' + LIMITS.relation + ' caracteres).');
+      var k = D.fold(c);
+      if (!seen[k]) { seen[k] = true; out.push(c); }
+    });
+    if (out.length > LIMITS.relations) throw invalid('Demasiadas relaciones (máximo ' + LIMITS.relations + ').');
+    return out;
+  };
+  D.relationsText = function (p) { return (p && p.relations || []).join(', '); };
+
+  // Cumpleaños: "MM-DD" (sin año) o "AAAA-MM-DD". Vacío si no se quiere poner.
+  var MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  D.cleanBirthday = function (raw) {
+    var b = clean(raw);
+    if (!b) return '';
+    var m = /^(?:(\d{4})-)?(\d{2})-(\d{2})$/.exec(b);
+    if (!m) throw invalid('El cumpleaños debe ser día y mes (por ejemplo 14-05) o una fecha completa (1995-05-14).');
+    var mo = +m[2], d = +m[3], y = m[1] ? +m[1] : 2000;                  // sin año se valida con uno bisiesto: el 29-02 es posible
+    var dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    if (mo < 1 || mo > 12 || d < 1 || d > dim) throw invalid('Ese cumpleaños no existe.');
+    if (m[1] && (y < 1900 || b > D.today())) throw invalid('Esa fecha de nacimiento no es válida.');
+    return b;
+  };
+  D.formatBirthday = function (b) {
+    if (!b) return '';
+    var parts = b.split('-'), n = parts.length;
+    return +parts[n - 1] + ' de ' + MONTHS[+parts[n - 2] - 1] + (n === 3 ? ' de ' + parts[0] : '');
+  };
+
+  // Foto: una miniatura cuadrada JPEG ya reducida (se guarda dentro de people.json). Solo se acepta un data URL de JPEG.
+  var PHOTO_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+\/]+={0,2}$/;
+  D.cleanPhoto = function (raw) {
+    if (raw === undefined || raw === null || raw === '') return '';
+    if (typeof raw !== 'string' || !PHOTO_RE.test(raw)) throw invalid('La foto no es válida. Prueba con otra imagen.');
+    if (raw.length > LIMITS.photo) throw invalid('La foto es demasiado pesada.');
+    return raw;
+  };
+
+  // Emociones de los recuerdos con una persona: reparto porcentual de las emociones marcadas en los fragmentos vinculados.
+  // Solo describe lo que escribiste; no puntúa a la persona. Los porcentajes suman 100 (método del mayor resto).
+  D.personEmotions = function (entries, personId, emotionsById) {
+    var counts = {}, total = 0, frags = 0;
+    D.fragmentsOf(entries, personId).forEach(function (f) {
+      var ids = (f.block.emotions || []).filter(function (id) { return emotionsById && emotionsById[id]; });
+      if (!ids.length) return;
+      frags++;
+      ids.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; total++; });
+    });
+    var items = Object.keys(counts).map(function (id) { return { id: id, count: counts[id], exact: counts[id] * 100 / total }; });
+    items.forEach(function (it) { it.percent = Math.floor(it.exact); });
+    var left = 100 - items.reduce(function (a, it) { return a + it.percent; }, 0);
+    items.slice().sort(function (a, b) { return (b.exact - b.percent) - (a.exact - a.percent); }).slice(0, total ? left : 0).forEach(function (it) { it.percent++; });
+    items.sort(function (a, b) { return b.count - a.count || (emotionsById[a.id].name < emotionsById[b.id].name ? -1 : 1); });
+    return { fragments: frags, total: total, items: items };
+  };
+
   // Valida una persona (lanza un error claro). Conserva campos desconocidos.
   D.sanitizePerson = function (input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw invalid('La ficha no es válida.');
@@ -75,8 +136,10 @@
     out.nicknames = cleanNicknames(out.nicknames, out.name);
     out.symbol = D.isSymbol(out.symbol) ? out.symbol : null;
     out.met = D.cleanMet(out.met);
-    out.relation = clean(out.relation);
-    if (out.relation.length > LIMITS.relation) throw invalid('La relación es demasiado larga (máximo ' + LIMITS.relation + ' caracteres).');
+    out.relations = D.cleanRelations(Array.isArray(out.relations) ? out.relations : [out.relation]);   // las fichas antiguas traen una sola "relation"
+    delete out.relation;
+    out.birthday = D.cleanBirthday(out.birthday);
+    out.photo = D.cleanPhoto(out.photo);
     out.notes = typeof out.notes === 'string' ? out.notes.replace(/\r\n/g, '\n').trim() : '';
     if (out.notes.length > LIMITS.notes) throw invalid('Las notas son demasiado largas (máximo ' + LIMITS.notes + ' caracteres).');
     out.tags = D.uniqueTags(out.tags);
@@ -94,7 +157,7 @@
     return map;
   };
   // Cómo se distingue una persona de otra con el mismo nombre: su relación.
-  D.personLabel = function (p) { return p.name + (p.relation ? ' (' + p.relation + ')' : ''); };
+  D.personLabel = function (p) { return p.name + (p.relations && p.relations.length ? ' (' + p.relations.join(', ') + ')' : ''); };
   D.personInitial = function (p) {
     var m = /[A-Za-zÀ-ÿ0-9]/.exec(p.name || '');
     return m ? m[0].toUpperCase() : '·';
@@ -105,7 +168,7 @@
     var terms = D.fold(text || '').split(/\s+/).filter(Boolean);
     var found = list.filter(function (p) {
       if (!terms.length) return true;
-      var hay = D.fold([p.name].concat(p.nicknames, [p.relation], p.tags).join(' '));
+      var hay = D.fold([p.name].concat(p.nicknames, p.relations || [], p.tags, [D.formatBirthday(p.birthday)]).join(' '));
       return terms.every(function (t) { return hay.indexOf(t) >= 0; });
     });
     var first = terms[0] || '';
@@ -205,19 +268,20 @@
     // "Marcos" sin más junto a otro "Marcos", que dejaría los vínculos ambiguos.
     // Devuelve null (sin conflicto), 'same' (es la misma persona: mismo nombre y misma relación) o 'ambiguous'
     // (mismo nombre y falta una relación que las distinga).
+    function relKeys(list) { return (Array.isArray(list) ? list : []).map(function (r) { return D.fold(clean(r)); }).filter(Boolean); }
     function clashes(doc, person) {
-      var name = D.personKey(person.name), rel = D.fold(person.relation), kind = null;
+      var name = D.personKey(person.name), rel = relKeys(person.relations), kind = null;
       doc.people.forEach(function (raw) {
         if (!raw || raw.id === person.id || typeof raw.name !== 'string' || D.personKey(raw.name) !== name) return;
-        var other = D.fold(clean(raw.relation));
-        if (rel === other) kind = kind || (rel ? 'same' : 'ambiguous');
-        else if (!rel || !other) kind = 'ambiguous';
+        var other = relKeys(Array.isArray(raw.relations) ? raw.relations : [raw.relation]);
+        if (!rel.length || !other.length) kind = 'ambiguous';
+        else if (rel.some(function (r) { return other.indexOf(r) >= 0; })) kind = kind || 'same';
       });
       return kind;
     }
     function clashMessage(kind) {
       return kind === 'same'
-        ? 'Ya tienes una ficha con ese nombre y esa relación. Búscala en la lista en vez de crearla otra vez.'
+        ? 'Ya tienes una ficha con ese nombre y una relación en común. Búscala en la lista en vez de crearla otra vez.'
         : 'Ya tienes a alguien con ese nombre. Para distinguirlas, indica una relación distinta en cada ficha (por ejemplo, "amigo" y "compañero de trabajo").';
     }
     function load(force) {
@@ -234,6 +298,9 @@
       return store.updateJson(PATH, function (doc) {
         ensureDoc(doc);
         var out = fn(doc, function (r) { result = r; });
+        if (JSON.stringify(out).length > LIMITS.docBytes && JSON.stringify(out).length > JSON.stringify(doc.people).length) {
+          throw invalid('Las fichas ocupan demasiado para guardarse en un solo archivo. Quita alguna foto y vuelve a intentarlo.');
+        }
         return Object.assign({}, doc, { version: 1, people: out });
       }, { fallback: { version: 1, people: [] }, message: message }).then(function () { return load(true); }).then(function () { return result; });
     }

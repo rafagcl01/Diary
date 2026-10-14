@@ -89,7 +89,7 @@
         var found = D.searchPeople(library, text).slice(0, 40);
         $('#ppl-list').innerHTML = found.length ? found.map(function (p) {
           var nick = D.matchedNickname(p, text);
-          var sub = [p.relation, nick ? 'apodo: ' + nick : ''].filter(Boolean).map(esc).join(' · ');
+          var sub = [D.relationsText(p), nick ? 'apodo: ' + nick : ''].filter(Boolean).map(esc).join(' · ');
           return '<li class="ppl-item"><button type="button" class="ppl-toggle" data-ppl-toggle="' + esc(p.id) + '" aria-pressed="' + (chosen.indexOf(p.id) >= 0) + '">' +
             H.avatar(p, 'tiny') + '<span class="ppl-text"><span>' + esc(p.name) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</span></button></li>';
         }).join('') : '<li class="soft">Nadie coincide con esa búsqueda. Puedes crear la ficha ahora.</li>';
@@ -111,7 +111,7 @@
       function createPerson() {
         if (!repo) return;
         say('Guardando…', 'info');
-        repo.create({ name: $('#ppl-name').value, relation: $('#ppl-rel').value }).then(function (p) {
+        repo.create({ name: $('#ppl-name').value, relations: [$('#ppl-rel').value] }).then(function (p) {
           return repo.list().then(function (list) {
             setLibrary(list);
             if (link(activeId, p.id)) o.onChange();

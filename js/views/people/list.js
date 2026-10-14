@@ -11,7 +11,7 @@
         '<div class="btn-row page-actions"><a class="btn" href="#/personas/nueva">Nueva persona</a></div>' +
         App.lace() +
         '<div class="toolbar">' +
-          '<label class="searchbox"><span class="sr">Buscar personas</span><input id="p-q" type="search" placeholder="Buscar por nombre, apodo, relación o etiqueta" autocomplete="off" spellcheck="false"></label>' +
+          '<label class="searchbox"><span class="sr">Buscar personas</span><input id="p-q" type="search" placeholder="Buscar por nombre, apodo, relación, cumpleaños o etiqueta" autocomplete="off" spellcheck="false"></label>' +
           '<label class="field inline"><span class="sr">Orden</span><select id="p-sort"><option value="name">Por nombre</option><option value="recent">Con recuerdos recientes primero</option></select></label>' +
         '</div>' +
         '<p id="p-summary" class="soft summary" role="status"></p>' +
@@ -43,7 +43,7 @@
         } else if (!found.length) {
           list.innerHTML = '<p class="soft">Ninguna ficha coincide con esa búsqueda.</p>';
         } else {
-          list.innerHTML = '<ul class="people-list">' + found.map(function (p) { return H.item(p, state.act[p.id]); }).join('') + '</ul>';
+          list.innerHTML = '<ul class="people-grid">' + found.map(function (p) { return H.card(p, state.act[p.id]); }).join('') + '</ul>';
         }
       }
       var activity = diary ? diary.list().then(function (entries) { return D.peopleActivity(entries); }).catch(function () { return {}; }) : Promise.resolve({});

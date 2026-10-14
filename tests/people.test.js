@@ -43,7 +43,7 @@ test('crear, listar y editar fichas: se guardan en people.json y sobreviven a re
 test('todos los campos personales son opcionales; solo el nombre es obligatorio', async () => {
   const fake = createFakeGithub(); const { ppl } = makeAll(fake);
   const p = await ppl.create({ name: 'Ana' });
-  assert.deepEqual(plain({ n: p.nicknames, s: p.symbol, m: p.met, r: p.relation, no: p.notes, t: p.tags, h: p.highlights }), { n: [], s: null, m: '', r: '', no: '', t: [], h: [] });
+  assert.deepEqual(plain({ n: p.nicknames, s: p.symbol, m: p.met, r: p.relations, no: p.notes, t: p.tags, h: p.highlights }), { n: [], s: null, m: '', r: [], no: '', t: [], h: [] });
   await rejectsWith(ppl.create({ name: '   ' }), 'invalid');
   await rejectsWith(ppl.create({}), 'invalid');
   await rejectsWith(ppl.create(null), 'invalid');
@@ -59,11 +59,11 @@ test('la fecha aproximada admite año, mes o día, y rechaza lo imposible o futu
 test('dos fichas con el mismo nombre solo se admiten si la relación las distingue', async () => {
   const fake = createFakeGithub(); const { ppl } = makeAll(fake);
   const a = await ppl.create({ name: 'Marcos', relation: 'amigo' });
-  await assert.rejects(ppl.create({ name: 'MARCOS', relation: 'Amigo' }), (e) => /mismo nombre y esa relación/.test(e.message) || /con ese nombre y esa relación/.test(e.message));
+  await assert.rejects(ppl.create({ name: 'MARCOS', relation: 'Amigo' }), (e) => /con ese nombre y una relación en común/.test(e.message));
   await assert.rejects(ppl.create({ name: 'marcos' }), (e) => /relación distinta/.test(e.message), 'sin relación, ambigua');
   const b = await ppl.create({ name: 'Marcos', relation: 'compañero de trabajo' });
   assert.notEqual(a.id, b.id);
-  await rejectsWith(ppl.update(b.id, { relation: 'amigo' }), 'invalid');
+  await rejectsWith(ppl.update(b.id, { relations: ['Amigo'] }), 'invalid');
   await rejectsWith(ppl.update('pe_00000000', { name: 'Nadie' }), 'invalid');
 });
 
@@ -147,7 +147,7 @@ test('las sugerencias detectan nombres y apodos, nunca vinculan, y piden elegir 
   const lucia = await ppl.create({ name: 'Lucía', relation: 'hermana' });
   const lucia2 = await ppl.create({ name: 'Lucía', relation: 'compañera de trabajo' });
   const people = await ppl.list();
-  const names = (s) => plain(s.map((x) => [x.term, x.people.map((p) => p.relation || p.name)]));
+  const names = (s) => plain(s.map((x) => [x.term, x.people.map((p) => (p.relations && p.relations[0]) || p.name)]));
   // un nombre que es de dos personas devuelve las dos: hay que elegir
   const s1 = D.suggestPeople('El sábado quedé con MARQUI y con lucía.', people);
   assert.deepEqual(names(s1).map((n) => n[0]).sort(), ['Lucía', 'Marqui']);
@@ -218,4 +218,55 @@ test('los borradores conservan las personas vinculadas', () => {
   App2.drafts.save('2026-10-12', { title: '', blocks: [{ text: 'x', people: ['pe_0a1b2c3d', 'basura'] }] });
   assert.deepEqual(plain(App2.drafts.get('2026-10-12').blocks[0].people), ['pe_0a1b2c3d']);
   assert.ok(App);
+});
+
+test('varias relaciones por persona: se limpian, no se repiten y las fichas antiguas con "relation" se convierten', async () => {
+  const fake = createFakeGithub(); const { ppl, App } = makeAll(fake);
+  const a = await ppl.create({ name: 'Ana', relations: ['amistad', ' Amistad ', 'trabajo', ''] });
+  assert.deepEqual(plain(a.relations), ['amistad', 'trabajo']);
+  assert.equal(a.relation, undefined);
+  fake.state.files.set('people.json', JSON.stringify({ version: 1, people: [{ id: 'pe_aaaaaaaa', name: 'Vieja', relation: 'prima' }] }));
+  const reopened = makeAll(fake).ppl;
+  assert.deepEqual(plain((await reopened.list())[0].relations), ['prima']);
+  await rejectsWith(ppl.create({ name: 'Mucho', relations: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] }), 'invalid');
+  // mismo nombre: vale si no comparten ninguna relación; se rechaza si comparten alguna
+  await ppl.create({ name: 'Marcos', relations: ['amistad', 'vecindad'] });
+  await ppl.create({ name: 'Marcos', relations: ['trabajo'] });
+  await rejectsWith(ppl.create({ name: 'marcos', relations: ['Vecindad', 'familia'] }), 'invalid');
+  assert.match(App.diary.relationsText({ relations: ['a', 'b'] }), /^a, b$/);
+});
+
+test('cumpleaños: día y mes (con o sin año), se valida y se muestra legible; el 29-02 existe sin año', async () => {
+  const fake = createFakeGithub(); const { ppl, App } = makeAll(fake);
+  for (const b of ['05-14', '1995-05-14', '02-29', '']) await ppl.create({ name: 'P' + b, birthday: b });
+  for (const b of ['13-01', '02-30', '1995-02-29', '14/05', '2999-01-01', '1800-01-01', 'hoy']) await rejectsWith(ppl.create({ name: 'X' + b, birthday: b }), 'invalid');
+  assert.equal(App.diary.formatBirthday('05-14'), '14 de mayo'); assert.equal(App.diary.formatBirthday('1995-05-14'), '14 de mayo de 1995');
+  assert.equal(App.diary.searchPeople(await ppl.list(), 'mayo').length, 2, 'se puede buscar por el mes del cumpleaños');
+});
+
+test('foto: solo una miniatura JPEG en data URL y con tamaño máximo; se puede quitar', async () => {
+  const fake = createFakeGithub(); const { ppl } = makeAll(fake);
+  const ok = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+  const p = await ppl.create({ name: 'Ana', photo: ok });
+  assert.equal(p.photo, ok);
+  for (const bad of ['http://x/y.jpg', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:text/html;base64,AAAA', '<img src=x>', 'data:image/jpeg;base64,' + 'A'.repeat(17000)]) await rejectsWith(ppl.create({ name: 'B' + bad.length, photo: bad }), 'invalid');
+  assert.equal((await ppl.update(p.id, { photo: '' })).photo, '');
+});
+
+test('emociones de los recuerdos con una persona: reparto que suma 100 y solo cuenta sus entradas', async () => {
+  const fake = createFakeGithub(); const { ppl, repo, emo, App } = makeAll(fake);
+  const D = App.diary;
+  const a = await emo.create({ name: 'Calma', symbol: D.EMOTION_SYMBOLS[0].id }), b = await emo.create({ name: 'Nostalgia', symbol: D.EMOTION_SYMBOLS[1].id }), c = await emo.create({ name: 'Risa', symbol: D.EMOTION_SYMBOLS[2].id });
+  const m = await ppl.create({ name: 'Marcos' }), o = await ppl.create({ name: 'Otra' });
+  await repo.save({ day: '2026-10-10', blocks: [
+    { text: 'x', people: [m.id], emotions: [a.id, b.id] }, { text: 'y', people: [m.id], emotions: [a.id] }, { text: 'z', people: [m.id], emotions: [c.id] },
+    { text: 'w', people: [o.id], emotions: [b.id, b.id] }, { text: 'sin emociones', people: [m.id] }] }, { base: null });
+  const entries = await repo.list(), byId = D.emotionMap(await emo.list());
+  const r = D.personEmotions(entries, m.id, byId);
+  assert.equal(r.fragments, 3); assert.equal(r.total, 4);
+  assert.equal(r.items.reduce((s, i) => s + i.percent, 0), 100);
+  assert.deepEqual(plain(r.items.map((i) => [byId[i.id].name, i.percent])), [['Calma', 50], ['Nostalgia', 25], ['Risa', 25]]);
+  assert.deepEqual(plain(D.personEmotions(entries, 'pe_00000000', byId)), { fragments: 0, total: 0, items: [] });
+  const third = D.personEmotions([{ day: '2026-10-10', blocks: [{ id: 'b_00000001', people: [m.id], emotions: [a.id, b.id, c.id] }] }], m.id, byId);
+  assert.equal(third.items.reduce((s, i) => s + i.percent, 0), 100, 'con tercios también suma 100');
 });

@@ -85,7 +85,7 @@ test('la lista: estado vacío, orden por nombre, búsqueda por apodo y recuentos
   const root = render(App, []); await tick();
   const html = root.els['#p-list'].innerHTML;
   assert.ok(html.indexOf('>Ana<') < html.indexOf('>Marcos Pérez<'), 'alfabético');
-  assert.match(html, /2 fragmentos/); assert.match(html, /Sin fragmentos todavía/); assert.match(html, /También: Marqui/);
+  assert.match(html, /people-grid/); assert.match(html, /2 recuerdos vinculados/); assert.match(html, /Sin recuerdos todavía/); assert.match(html, /“Marqui”/); assert.match(html, />amigo</);
   assert.match(root.els['#p-summary'].textContent, /2 personas/);
   root.els['#p-q'].value = 'MARQUI'; fire(root.els['#p-q'], 'input', {});
   assert.match(root.els['#p-list'].innerHTML, /Marcos Pérez/); assert.ok(!/>Ana</.test(root.els['#p-list'].innerHTML));
@@ -103,7 +103,7 @@ test('la ficha: historial cronológico con la fecha, el texto completo y el enla
     { text: 'Quedé con Marcos para tomar algo.', people: [marcos.id] }, { text: 'Nos encontramos con Lucía y hablamos del viaje.', people: [marcos.id, lucia.id] }, { text: 'Película en casa.' }] }, { base: null });
   const root = render(App, [marcos.id]); await tick(80);
   const view = root.els['.people-view']; const html = view.innerHTML;
-  assert.match(html, /<h1[^>]*>Marcos<\/h1>/); assert.match(html, /También: Marqui/); assert.match(html, /amigo · la conocí en mayo de 2019/);
+  assert.match(html, /<h1[^>]*>Marcos<\/h1>/); assert.match(html, /También: Marqui/); assert.match(html, /class="cap">amigo</); assert.match(html, /la conocí en mayo de 2019/);
   assert.match(html, /Nos conocimos en un concierto\./); assert.match(html, /#música/);
   assert.match(html, /3 fragmentos, en orden cronológico/);
   const order = [...html.matchAll(/class="frag-date" href="#\/diario\/(\d{4}-\d{2}-\d{2})"/g)].map((m) => m[1]);
@@ -156,7 +156,7 @@ test('el formulario crea una ficha con solo el nombre, y avisa de un nombre repe
   assert.equal((root.els['#p-symbols'].innerHTML.match(/type="radio"/g) || []).length, 1 + App.diary.EMOTION_SYMBOLS.length, 'la inicial + la galería');
   root.els['#p-save'].handlers.click[0](); await tick(60);
   assert.match(root.els['#p-msg'].textContent, /Ponle un nombre/);
-  root.querySelector('#p-name').value = 'Marcos'; root.querySelector('#p-relation').value = 'amigo'; root.querySelector('#p-met').value = '2019-05';
+  root.querySelector('#p-name').value = 'Marcos'; root.querySelector('#p-rel-new').value = 'amigo'; root.querySelector('#p-met').value = '2019-05';
   root.querySelector('#p-nick').value = 'Marqui, Marcus'; root.querySelector('#p-tag').value = 'música';
   root.els['#p-save'].handlers.click[0](); await tick(80);
   const saved = JSON.parse(fake.state.files.get('people.json')).people;
@@ -240,7 +240,7 @@ test('editor: el nombre repetido avisa antes de crear, y la ficha duplicada se r
   assert.match(ed.root.els['#ppl-hint'].textContent, /Ya tienes: Marcos Pérez \(amigo\)/); assert.match(ed.root.els['#ppl-hint'].textContent, /relación distinta/);
   ed.root.els['#ppl-name'].value = 'Marcos Pérez'; ed.root.els['#ppl-rel'].value = 'amigo';
   ed.click({ '#ppl-save': {} }); await tick(120);
-  assert.match(ed.root.els['#ppl-msg'].textContent, /Ya tienes una ficha con ese nombre y esa relación/);
+  assert.match(ed.root.els['#ppl-msg'].textContent, /Ya tienes una ficha con ese nombre y una relación en común/);
   assert.equal(ed.chips(id), '', 'no se vinculó nada');
 });
 
@@ -351,4 +351,42 @@ test('inicio: el botón de la primera entrada lleva a una dirección que existe'
   const { App } = await connected();
   const root = fakeRoot(); App.views.home.render(root); await tick(100);
   assert.match(root.els['#home-recent-body'].innerHTML, /href="#\/diario\/hoy"/); assert.ok(!/diario\/nueva/.test(root.els['#home-recent-body'].innerHTML));
+});
+
+test('la ficha muestra sus relaciones, el cumpleaños y el reparto de emociones sin puntuar a nadie', async () => {
+  const { App, repo, ppl } = await connected();
+  const emo = App.diary.emotions();
+  const calma = await emo.create({ name: 'Calma', symbol: App.diary.EMOTION_SYMBOLS[0].id }), risa = await emo.create({ name: 'Risa', symbol: App.diary.EMOTION_SYMBOLS[1].id });
+  const marcos = await ppl.create({ name: 'Marcos', relations: ['amistad', 'trabajo'], birthday: '05-14', photo: 'data:image/jpeg;base64,/9j/4AAQ' });
+  await repo.save({ day: '2026-10-10', blocks: [{ text: 'a', people: [marcos.id], emotions: [calma.id] }, { text: 'b', people: [marcos.id], emotions: [calma.id, risa.id] }] }, { base: null });
+  const html = render(App, [marcos.id]); await tick(80);
+  const h = html.els['.people-view'].innerHTML;
+  assert.match(h, /class="cap">amistad</); assert.match(h, /class="cap">trabajo</); assert.match(h, /cumple el 14 de mayo/);
+  assert.match(h, /<img class="av-photo"/); assert.match(h, /Calma<\/span>|Calma/); assert.match(h, /67 %/); assert.match(h, /33 %/);
+  assert.match(h, /No es una nota para la persona/);
+  const grid = render(App, []); await tick(80);
+  assert.match(grid.els['#p-list'].innerHTML, /Cumple el 14 de mayo/); assert.match(grid.els['#p-list'].innerHTML, /<img class="av-photo"/);
+});
+
+test('el formulario: relaciones en cápsulas (varias, nuevas con Intro), cumpleaños y quitar la foto', async () => {
+  const { App, fake, ppl } = await connected();
+  await ppl.create({ name: 'Otra', relations: ['vecindad', 'prima'], photo: 'data:image/jpeg;base64,/9j/4AAQ' });
+  const root = render(App, ['nueva']); await tick(60);
+  const caps = root.els['.people-view'].innerHTML;
+  assert.match(caps, /data-rel-toggle="prima"/); assert.match(caps, /data-rel-toggle="amistad"/);
+  const view = root.els['.people-view'];
+  const click = (map) => fire(view, 'click', { target: target(map) });
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'amistad' }, getAttribute: () => 'false' } });
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' }, getAttribute: () => 'false' } });
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' }, getAttribute: () => 'true' } });   // otra pulsación la quita
+  root.querySelector('#p-rel-new').value = 'Compañera de clase'; fire(view, 'keydown', { target: { id: 'p-rel-new', value: 'Compañera de clase' }, key: 'Enter', preventDefault() {} });
+  assert.match(root.querySelector('#p-rels').innerHTML, /data-rel-toggle="Compañera de clase" aria-pressed="true"/);
+  root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14'; root.querySelector('#p-bd-m').value = '5'; root.querySelector('#p-bd-y').value = '';
+  root.els['#p-save'].handlers.click[0](); await tick(80);
+  const saved = JSON.parse(fake.state.files.get('people.json')).people.find((p) => p.name === 'Lola');
+  assert.deepEqual(plain(saved.relations), ['amistad', 'Compañera de clase']); assert.equal(saved.birthday, '05-14');
+  const bad = render(App, ['nueva']); await tick(60);
+  bad.querySelector('#p-name').value = 'Pepe'; bad.querySelector('#p-bd-d').value = '14'; bad.querySelector('#p-bd-m').value = '';
+  bad.els['#p-save'].handlers.click[0](); await tick(60);
+  assert.match(bad.querySelector('#p-msg').textContent, /día y el mes/);
 });

@@ -8,6 +8,17 @@
     root.innerHTML = shell(App.pageHeader('No encuentro esa ficha', text || '', 'álbum de personas') + '<p><a class="btn secondary" href="#/personas">Volver a Personas</a></p>');
   }
 
+  // Reparto de las emociones marcadas en los fragmentos con esta persona. Solo describe lo escrito; no puntúa a nadie.
+  function emotionBars(emo, byId, name) {
+    if (!emo.total) return '<p class="soft">Todavía no hay emociones marcadas en las entradas con ' + esc(name) + '.</p>';
+    return '<p class="soft">Reparto de las emociones que marcaste en ' + App.peopleHtml.plural(emo.fragments, 'entrada', 'entradas') + ' con ' + esc(name) + '. No es una nota para la persona.</p>' +
+      '<ul class="emo-bars">' + emo.items.map(function (it) {
+        var e = byId[it.id];
+        return '<li><span class="eb-name">' + App.icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + esc(e.name) + '</span>' +
+          '<span class="eb-bar" aria-hidden="true"><span style="width:' + it.percent + '%"></span></span><span class="eb-pct">' + it.percent + ' %</span></li>';
+      }).join('') + '</ul>';
+  }
+
   App.peopleViews.card = {
     render: function (root, id) {
       var repo = D.people(), diary = D.repo();
@@ -15,14 +26,15 @@
       root.innerHTML = shell('<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>');
       var view = root.querySelector('.people-view');     // los manejadores van aquí, no en `root` (que se reutiliza entre pantallas)
 
-      Promise.all([repo.list(), diary.list()]).then(function (r) {
-        var people = r[0], entries = r[1], byId = D.personMap(people), p = byId[id];
+      var emoRepo = D.emotions();
+      Promise.all([repo.list(), diary.list(), emoRepo ? emoRepo.list().catch(function () { return []; }) : Promise.resolve([])]).then(function (r) {
+        var people = r[0], entries = r[1], emoById = D.emotionMap(r[2]), byId = D.personMap(people), p = byId[id];
         if (!p) { notFound(root, 'Puede que se haya borrado o que el enlace esté mal.'); return; }
-        var fragments = D.fragmentsOf(entries, id), newestFirst = false, current = p;
+        var fragments = D.fragmentsOf(entries, id), newestFirst = false, current = p, emo = D.personEmotions(entries, id, emoById);
 
         function starred(f) { return current.highlights.some(function (h) { return h.day === f.day && h.block === f.block.id; }); }
         function paint() {
-          var m = H.meta(current), a = H.aliases(current);
+          var m = H.meta(current, true), a = H.aliases(current);
           var shown = fragments.slice(); if (newestFirst) shown.reverse();
           var stars = fragments.filter(starred);
           view.innerHTML = (
@@ -32,7 +44,9 @@
               '<header class="person-head">' + H.avatar(current, 'large') + '<div class="sheet-titles">' +
                 '<h1 id="page-title" class="date-h1" tabindex="-1">' + esc(current.name) + '</h1>' +
                 (a ? '<p class="soft">' + a + '</p>' : '') + (m ? '<p class="soft">' + m + '</p>' : '') + '</div></header>' +
+              ((current.relations || []).length ? '<ul class="chips rel-caps" aria-label="Relaciones">' + current.relations.map(function (t) { return '<li class="cap">' + esc(t) + '</li>'; }).join('') + '</ul>' : '') +
               (current.tags.length ? '<ul class="chips" aria-label="Etiquetas">' + current.tags.map(function (t) { return '<li class="chip">#' + esc(t) + '</li>'; }).join('') + '</ul>' : '') +
+              '<section aria-labelledby="pe"><h2 id="pe" class="sec-title">Emociones en sus recuerdos</h2>' + emotionBars(emo, emoById, current.name) + '</section>' +
               (current.notes ? '<section aria-labelledby="pn"><h2 id="pn" class="sec-title">Notas</h2>' + App.diaryHtml.paragraphs(current.notes) + '</section>' : '') +
               '<section aria-labelledby="ph"><h2 id="ph" class="sec-title">Recuerdos destacados</h2>' +
                 (stars.length ? '<ul class="fragments">' + stars.map(function (f) { return H.fragment(f, byId, id, true); }).join('') + '</ul>'

@@ -8,13 +8,15 @@
 
   // Avatar: el símbolo elegido o, si no hay, la inicial. Solo decorativo (el nombre siempre va escrito al lado).
   function avatar(p, size) {
-    var inner = p.symbol && D.isSymbol(p.symbol) ? icon(p.symbol) : '<span class="av-letter">' + esc(D.personInitial(p)) + '</span>';
+    var inner = p.photo ? '<img class="av-photo" alt="" src="' + esc(p.photo) + '">'
+      : p.symbol && D.isSymbol(p.symbol) ? icon(p.symbol) : '<span class="av-letter">' + esc(D.personInitial(p)) + '</span>';
     return '<span class="avatar av-' + hash(p.id) + (size ? ' ' + size : '') + '" aria-hidden="true">' + inner + '</span>';
   }
   // "amiga · la conocí en mayo de 2019"
-  function meta(p) {
+  function meta(p, noRelations) {
     var bits = [];
-    if (p.relation) bits.push(esc(p.relation));
+    if (!noRelations && p.relations && p.relations.length) bits.push(p.relations.map(esc).join(', '));
+    if (p.birthday) bits.push('cumple el ' + esc(D.formatBirthday(p.birthday)));
     if (p.met) bits.push('la conocí ' + (p.met.length === 4 ? 'en ' : p.met.length === 7 ? 'en ' : 'el ') + esc(D.formatMet(p.met)));
     return bits.join(' · ');
   }
@@ -41,6 +43,22 @@
       '</span><span class="person-count soft">' + count + '</span></a></li>';
   }
 
+  // Tarjeta de la cuadrícula: casi cuadrada, para recorrer y encontrar a alguien de un vistazo.
+  function card(p, act) {
+    var n = act && act.count ? act.count : 0;
+    var rels = (p.relations || []).slice(0, 3).map(function (r) { return '<span class="cap">' + esc(r) + '</span>'; });
+    if ((p.relations || []).length > 3) rels.push('<span class="cap">+' + (p.relations.length - 3) + '</span>');
+    if (p.met) rels.push('<span class="cap">Desde ' + esc(D.formatMet(p.met)) + '</span>');
+    return '<li><a class="person-card" href="#/personas/' + esc(p.id) + '" aria-label="Ficha de ' + esc(p.name) + '">' +
+      '<span class="tape" aria-hidden="true"></span>' + avatar(p, 'large') +
+      '<span class="pc-name">' + esc(p.name) + '</span>' +
+      '<span class="pc-nick">' + (p.nicknames.length ? '“' + esc(p.nicknames[0]) + '”' : 'sin apodo') + '</span>' +
+      '<span class="pc-caps">' + rels.join('') + '</span>' +
+      (p.birthday ? '<span class="pc-bday">' + icon('star') + 'Cumple el ' + esc(D.formatBirthday(p.birthday)) + '</span>' : '') +
+      '<span class="pc-count">' + (n ? plural(n, 'recuerdo vinculado', 'recuerdos vinculados') : 'Sin recuerdos todavía') + '</span>' +
+      '<span class="btn secondary pc-open">Abrir ficha</span></a></li>';
+  }
+
   // Un fragmento vinculado a la persona, con su fecha, TODO su texto (el contexto original) y el enlace a la página.
   function fragment(f, byId, selfId, starred) {
     var others = (f.block.people || []).filter(function (id) { return id !== selfId; });
@@ -55,5 +73,5 @@
         '<a class="link" href="#/diario/' + esc(f.day) + '">Abrir la página original</a></div></li>';
   }
 
-  App.peopleHtml = { avatar: avatar, meta: meta, aliases: aliases, personChips: personChips, item: item, fragment: fragment, plural: plural };
+  App.peopleHtml = { avatar: avatar, meta: meta, aliases: aliases, personChips: personChips, item: item, card: card, fragment: fragment, plural: plural };
 })(window.App = window.App || {});

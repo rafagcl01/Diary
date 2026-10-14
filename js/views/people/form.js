@@ -1,9 +1,39 @@
 // Personas: crear o editar una ficha. Solo el nombre es obligatorio; todo lo demás es opcional y editable.
 (function (App) {
-  var D = App.diary, esc = App.escapeHtml, icon = App.icon;
+  var D = App.diary, H = App.peopleHtml, esc = App.escapeHtml, icon = App.icon;
   App.peopleViews = App.peopleViews || {};
 
-  var RELATIONS = ['amistad', 'amigo', 'amiga', 'familia', 'pareja', 'expareja', 'compañero de trabajo', 'compañera de trabajo', 'compañero de clase', 'compañera de clase', 'vecino', 'vecina', 'conocido', 'conocida'];
+  var RELATIONS = ['amistad', 'familia', 'pareja', 'expareja', 'trabajo', 'estudios', 'vecindad', 'conocidos'];
+  var MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var PHOTO_PX = 160;
+
+  // Reduce la foto elegida a una miniatura cuadrada JPEG (recortada al centro) para guardarla dentro de people.json.
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error('Ese archivo no es una imagen.')); return; }
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('No se pudo leer esa imagen.')); };
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas');
+        c.width = c.height = PHOTO_PX;
+        var g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, PHOTO_PX, PHOTO_PX);
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, PHOTO_PX, PHOTO_PX);
+        for (var q = 0.8; q >= 0.4; q -= 0.1) {
+          var data = c.toDataURL('image/jpeg', q);
+          if (data.length <= D.PEOPLE_LIMITS.photo) { resolve(data); return; }
+        }
+        reject(new Error('Esa imagen no se puede reducir lo bastante. Prueba con otra.'));
+      };
+      img.src = url;
+    });
+  }
+  function relCaps(lib, chosen) {
+    return lib.length ? lib.map(function (r) {
+      return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="' + (chosen.map(D.fold).indexOf(D.fold(r)) >= 0) + '"><span>' + esc(r) + '</span></button></li>';
+    }).join('') : '';
+  }
 
   function chipList(items, kind) {
     return items.map(function (t, i) {
@@ -30,7 +60,11 @@
           person = D.personMap(people)[id];
           if (!person) { view.innerHTML = App.pageHeader('No encuentro esa ficha', '', 'álbum de personas') + '<p><a class="btn secondary" href="#/personas">Volver a Personas</a></p>'; return; }
         }
-        var base = person || { name: '', nicknames: [], symbol: null, met: '', relation: '', notes: '', tags: [] };
+        var base = person || { name: '', nicknames: [], symbol: null, met: '', relations: [], birthday: '', photo: '', notes: '', tags: [] };
+        var rels = (base.relations || []).slice(), photo = base.photo || '', lib = RELATIONS.slice();
+        people.forEach(function (o) { (o.relations || []).forEach(function (r) { if (lib.map(D.fold).indexOf(D.fold(r)) < 0) lib.push(r); }); });
+        rels.forEach(function (r) { if (lib.map(D.fold).indexOf(D.fold(r)) < 0) lib.push(r); });
+        var bd = (base.birthday || '').split('-'), bYear = bd.length === 3 ? bd[0] : '', bMonth = bd.length >= 2 ? +bd[bd.length - 2] : 0, bDay = bd.length >= 2 ? +bd[bd.length - 1] : '';
         var nicks = base.nicknames.slice(), tags = base.tags.slice(), symbol = base.symbol, busy = false;
 
         view.innerHTML =
@@ -41,9 +75,20 @@
             '<label class="field"><span>Nombre</span><input id="p-name" type="text" maxlength="' + D.PEOPLE_LIMITS.name + '" autocomplete="off" value="' + esc(base.name) + '"></label>' +
             '<div class="field"><span id="nick-l">Apodos</span><ul class="chips" id="p-nicks" aria-live="polite">' + chipList(nicks, 'nick') + '</ul>' +
               '<input id="p-nick" type="text" maxlength="' + D.PEOPLE_LIMITS.nickname + '" autocomplete="off" aria-labelledby="nick-l" placeholder="Un apodo y pulsa Intro"></div>' +
-            '<label class="field"><span>Relación <small>(opcional)</small></span><input id="p-relation" type="text" list="p-rels" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" value="' + esc(base.relation) + '">' +
-              '<datalist id="p-rels">' + RELATIONS.map(function (r) { return '<option value="' + esc(r) + '"></option>'; }).join('') + '</datalist>' +
-              '<small>Si tienes a dos personas con el mismo nombre, la relación es lo que las distingue.</small></label>' +
+            '<div class="field"><span id="rel-l">Relaciones <small>(opcional, puedes marcar varias)</small></span>' +
+              '<ul class="emo-caps" id="p-rels" aria-labelledby="rel-l">' + relCaps(lib, rels) + '</ul>' +
+              '<div class="inline-add"><input id="p-rel-new" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" aria-label="Nueva relación" placeholder="Otra relación y pulsa Intro"></div>' +
+              '<small>Pulsa una cápsula para marcarla y otra vez para quitarla. Si tienes a dos personas con el mismo nombre, las relaciones son lo que las distingue.</small></div>' +
+            '<div class="field"><span id="bd-l">Cumpleaños <small>(opcional; el año también)</small></span>' +
+              '<div class="bday-row" role="group" aria-labelledby="bd-l">' +
+                '<input id="p-bd-d" type="number" min="1" max="31" inputmode="numeric" placeholder="Día" aria-label="Día" value="' + esc(bDay) + '">' +
+                '<select id="p-bd-m" aria-label="Mes"><option value="">Mes</option>' + MONTHS.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (bMonth === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
+                '<input id="p-bd-y" type="text" inputmode="numeric" maxlength="4" placeholder="Año" aria-label="Año (opcional)" value="' + esc(bYear) + '"></div></div>' +
+            '<div class="field"><span id="ph-l">Foto <small>(opcional)</small></span>' +
+              '<div class="photo-row"><span id="p-photo-prev"></span>' +
+                '<input id="p-photo" type="file" accept="image/*" aria-labelledby="ph-l">' +
+                '<button type="button" class="mini" id="p-photo-rm"' + (photo ? '' : ' hidden') + '>Quitar foto</button></div>' +
+              '<small>Se guarda reducida (cuadrada, 160 px) dentro de tus datos. Cuantas más fotos, más pesa el archivo de fichas.</small></div>' +
             '<label class="field"><span>Fecha aproximada en que la conocí <small>(opcional)</small></span><input id="p-met" type="text" inputmode="numeric" autocomplete="off" placeholder="2019, 2019-05 o 2019-05-14" value="' + esc(base.met) + '"></label>' +
             '<fieldset class="symbols"><legend>Avatar</legend><div class="symbol-grid" id="p-symbols"></div></fieldset>' +
             '<label class="field"><span>Notas <small>(solo para ti)</small></span><textarea id="p-notes" rows="5" maxlength="' + D.PEOPLE_LIMITS.notes + '">' + esc(base.notes) + '</textarea></label>' +
@@ -63,26 +108,53 @@
           }).join('');
         }
         paintSymbols();
+        function paintPhoto() {
+          $('#p-photo-prev').innerHTML = photo ? H.avatar({ id: id || 'pe_00000000', photo: photo, name: '' }, 'large') : '';
+          $('#p-photo-rm').hidden = !photo;
+        }
+        paintPhoto();
+        function toggleRel(r, on) {
+          var i = rels.map(D.fold).indexOf(D.fold(r));
+          if (on && i < 0) rels.push(r); else if (!on && i >= 0) rels.splice(i, 1);
+          $('#p-rels').innerHTML = relCaps(lib, rels);
+        }
+        function addRel(raw) {
+          var r = String(raw).replace(/\s+/g, ' ').trim(); if (!r) return;
+          if (rels.length >= D.PEOPLE_LIMITS.relations) { say('Máximo ' + D.PEOPLE_LIMITS.relations + ' relaciones.', 'error'); return; }
+          var known = lib.filter(function (x) { return D.fold(x) === D.fold(r); })[0];
+          if (!known) lib.push(r);
+          toggleRel(known || r, true); $('#p-rel-new').value = '';
+        }
         function addTo(list, raw, max) {
           String(raw).split(',').forEach(function (x) { x = x.replace(/\s+/g, ' ').trim(); if (x && list.length < max && list.map(D.fold).indexOf(D.fold(x)) < 0) list.push(x); });
         }
         function paintNicks() { $('#p-nicks').innerHTML = chipList(nicks, 'nick'); }
         function paintTags() { $('#p-tags').innerHTML = chipList(tags, 'tag'); }
         function commitInputs() {
+          if ($('#p-rel-new').value.trim()) addRel($('#p-rel-new').value);
           if ($('#p-nick').value.trim()) { addTo(nicks, $('#p-nick').value, D.PEOPLE_LIMITS.nicknames); $('#p-nick').value = ''; paintNicks(); }
           if ($('#p-tag').value.trim()) { addTo(tags, $('#p-tag').value, D.LIMITS.tags); $('#p-tag').value = ''; paintTags(); }
         }
 
         view.addEventListener('keydown', function (e) {
           var t = e.target;
+          if (t.id === 'p-rel-new' && (e.key === 'Enter' || e.key === ',')) { e.preventDefault(); addRel(t.value); return; }
           if ((t.id === 'p-nick' || t.id === 'p-tag') && (e.key === 'Enter' || e.key === ',')) {
             e.preventDefault(); commitInputs();
           }
         });
         view.addEventListener('focusout', function (e) { if (e.target && (e.target.id === 'p-nick' || e.target.id === 'p-tag')) commitInputs(); });
         view.addEventListener('change', function (e) { if (e.target && e.target.name === 'p-symbol') symbol = e.target.value || null; });
+        view.addEventListener('change', function (e) {
+          var t = e.target; if (!t || t.id !== 'p-photo' || !t.files || !t.files[0]) return;
+          say('Preparando la foto…', 'info');
+          shrinkPhoto(t.files[0]).then(function (data) { photo = data; paintPhoto(); say('', 'info'); }).catch(function (err) { say(err.message, 'error'); });
+        });
         view.addEventListener('click', function (e) {
           var t = e.target; if (!t || !t.closest) return;
+          var rc = t.closest('[data-rel-toggle]');
+          if (rc) { toggleRel(rc.dataset.relToggle, rc.getAttribute('aria-pressed') !== 'true'); return; }
+          if (t.closest('#p-photo-rm')) { photo = ''; paintPhoto(); return; }
           var rn = t.closest('[data-remove-nick]'), rt = t.closest('[data-remove-tag]');
           if (rn) { nicks.splice(Number(rn.dataset.removeNick), 1); paintNicks(); return; }
           if (rt) { tags.splice(Number(rt.dataset.removeTag), 1); paintTags(); }
@@ -91,7 +163,12 @@
         $('#p-save').addEventListener('click', function () {
           if (busy) return;
           commitInputs();
-          var input = { name: $('#p-name').value, nicknames: nicks, relation: $('#p-relation').value, met: $('#p-met').value, symbol: symbol, notes: $('#p-notes').value, tags: tags };
+          var dd = $('#p-bd-d').value.trim(), mm = $('#p-bd-m').value, yy = $('#p-bd-y').value.trim(), birthday = '';
+          if (dd || mm || yy) {
+            if (!dd || !mm) { say('Para el cumpleaños indica al menos el día y el mes.', 'error'); return; }
+            birthday = (yy ? yy + '-' : '') + ('0' + mm).slice(-2) + '-' + ('0' + dd).slice(-2);
+          }
+          var input = { name: $('#p-name').value, nicknames: nicks, relations: rels, birthday: birthday, photo: photo, met: $('#p-met').value, symbol: symbol, notes: $('#p-notes').value, tags: tags };
           busy = true; $('#p-save').disabled = true; say('Guardando…', 'info');
           (id ? repo.update(id, input) : repo.create(input)).then(function (saved) {
             location.hash = '#/personas/' + saved.id;
