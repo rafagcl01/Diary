@@ -500,7 +500,14 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 .dd-opt[aria-selected="true"] { font-weight: 800; background: color-mix(in srgb, var(--lavender) 45%, transparent); }
 .dd-opt[aria-selected="true"]:hover { background: color-mix(in srgb, var(--pink-pastel) 55%, transparent); }
 .dd-btn span::first-letter { text-transform: uppercase; }
-.photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.photo-pick { display: inline-flex; align-items: center; gap: 14px; cursor: pointer; }
+.photo-circle { display: inline-grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; border: 1.5px dashed var(--accent); color: var(--accent); overflow: hidden; transition: background .15s, transform .15s; }
+.photo-circle .avatar { border: 0; }
+.photo-plus { font-size: 2rem; line-height: 1; }
+.photo-text { font-weight: 800; color: var(--accent); }
+.photo-pick:hover .photo-circle { background: color-mix(in srgb, var(--accent) 12%, transparent); transform: rotate(-3deg); }
+#p-photo:focus-visible + .photo-pick .photo-circle { outline: 2px solid var(--accent); outline-offset: 3px; }
 .emo-bars { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
 .emo-bars li { display: grid; grid-template-columns: minmax(120px, 11rem) 1fr 3.2rem; align-items: center; gap: 10px; }
 .eb-name { display: inline-flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
@@ -539,7 +546,7 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 .person-chip a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
 .sheet .entry-people { margin-top: 14px; }
 .person-form .field input[type="text"], .person-form .field textarea { width: 100%; }
-.person-form textarea { padding: 12px 14px; border-radius: var(--r-ctl); border: 1.5px solid var(--edge); background: var(--surface); color: var(--ink); font: inherit; }
+.person-form textarea { padding: 12px 14px; min-height: 140px; resize: vertical; font: inherit; }   /* fondo blanco y borde como el resto de huecos de texto: vienen de .editor textarea */
 
 /* Selector de personas en el editor y sugerencias */
 .ppl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 4px 0 12px; }

@@ -90,8 +90,8 @@
                   '</ul></div>' +
                 '<input id="p-bd-y" type="text" inputmode="numeric" maxlength="4" placeholder="Año" aria-label="Año (opcional)" value="' + esc(bYear) + '"></div></div>' +
             '<div class="field"><span id="ph-l">Foto <small>(opcional)</small></span>' +
-              '<div class="photo-row"><span id="p-photo-prev"></span>' +
-                '<input id="p-photo" type="file" accept="image/*" aria-labelledby="ph-l">' +
+              '<div class="photo-row"><input id="p-photo" class="sr" type="file" accept="image/*" aria-labelledby="ph-l">' +
+                '<label class="photo-pick" for="p-photo"><span class="photo-circle" id="p-photo-prev"></span><span class="photo-text" id="p-photo-text">Añadir foto</span></label>' +
                 '<button type="button" class="mini" id="p-photo-rm"' + (photo ? '' : ' hidden') + '>Quitar foto</button></div>' +
               '<small>Se guarda reducida (cuadrada, 160 px) dentro de tus datos. Cuantas más fotos, más pesa el archivo de fichas.</small></div>' +
             '<label class="field"><span>Fecha aproximada en que la conocí <small>(opcional)</small></span><input id="p-met" type="text" inputmode="numeric" autocomplete="off" placeholder="2019, 2019-05 o 2019-05-14" value="' + esc(base.met) + '"></label>' +
@@ -126,7 +126,8 @@
         }
         paintSymbols();
         function paintPhoto() {
-          $('#p-photo-prev').innerHTML = photo ? H.avatar({ id: id || 'pe_00000000', photo: photo, name: '' }, 'large') : '';
+          $('#p-photo-prev').innerHTML = photo ? H.avatar({ id: id || 'pe_00000000', photo: photo, name: '' }, 'large') : '<span class="photo-plus" aria-hidden="true">+</span>';
+          $('#p-photo-text').textContent = photo ? 'Cambiar foto' : 'Añadir foto';
           $('#p-photo-rm').hidden = !photo;
         }
         paintPhoto();
