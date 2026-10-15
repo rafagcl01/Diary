@@ -303,3 +303,29 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 - [ ] *Destacar* un fragmento lo sube a *Recuerdos destacados*.
 - [ ] Borrar una ficha: confirma, y las entradas conservan su texto y su ánimo.
 - [ ] *Diario → Más filtros → Persona* filtra; en el inicio aparece *Personas recientes*.
+
+## Fase 5A: personaje y atributos (RPG)
+
+**Qué hay:** la ficha del personaje (nombre, avatar, nivel general con barra de XP, últimas recompensas), un radar con **cinco atributos** y sus subcategorías. Las misiones, logros, títulos y colección llegan en las siguientes fases (5B–5D).
+
+### Reglas de la experiencia
+- La XP **solo** entra por acciones explícitas: en esta fase, **«Apuntar actividad»** (tamaño Pequeña 15 / Normal 30 / Difícil 60 / Épica 100 XP) y **«Corregir experiencia»**. El diario, los estados de ánimo y las emociones **no dan ni quitan XP**; editar una entrada tampoco.
+- Nivel general: para pasar del nivel *n* al *n+1* hacen falta `100 + 25·(n−1)` XP (el sobrante se conserva). Subcategorías: `80 + 20·(n−1)`.
+- Al apuntar, la XP se reparte entre subcategorías por porcentajes (suman 100). Sin subcategorías, solo sube el nivel general. Los atributos principales no tienen XP propia: su valor es la media del progreso de sus subcategorías.
+- **Nada se cuenta dos veces:** cada apunte lleva una clave única; reintentar, hacer doble clic o abrir la app en otro dispositivo no lo duplica. La recompensa solo se anuncia cuando GitHub ha confirmado el guardado.
+- **Correcciones:** solo con un ajuste visible (con motivo) en el historial. Nunca se borra nada en silencio. El total no baja de 0.
+
+### Atributos y subcategorías (personalizables)
+Vitalidad (Fuerza, Salud, Resistencia, Descanso, Autocuidado) · Espíritu (Conocimiento, Disciplina, Brujería) · Vínculos (Amistad, Amor, Familia, Conexión) · Aventura (Experiencias, Valentía, Exploración) · Creatividad (Arte, Lectura, Películas). Puedes crear, renombrar, describir, cambiar el icono, reordenar y archivar subcategorías, y renombrar los cinco atributos. Archivar o renombrar conserva su XP e historial (se identifican por un id fijo). Brujería tiene una tarjeta propia, más mágica y misteriosa.
+
+### El radar
+Fondo de estrella de cinco puntas con las puntas unidas por un pentágono; el progreso es un polígono relleno translúcido. Las puntas son botones (ratón, táctil y teclado) y enseñan sus subcategorías. La escala (2, 3, 5, 10, 15…) crece sola y se indica bajo el gráfico. Mientras no cambies la estructura, ganar XP nunca encoge el polígono. **Ojo:** crear una subcategoría nueva baja un poco la media de su atributo (cuenta como una más a nivel 1); archivarla (con XP) no cambia nada.
+
+### Dónde se guarda (repositorio de datos, sin cifrar)
+`rpg/profile.json`, `rpg/attributes.json` y `rpg/ledger-AAAA.json` (solo se añaden apunte). El nivel nunca se guarda: se calcula del registro.
+
+### Pruebas
+`tests/rpg.test.js` (14 pruebas: niveles, reparto, idempotencia, fallo al guardar, validación, ajustes, subcategorías, radar). Comprobado además en Chromium con GitHub simulado, en escritorio y móvil (390 px, sin scroll horizontal). **No** se ha probado contra tu GitHub real.
+
+### Límites conocidos
+No hay misiones ni logros todavía. «Registrar actividades» es un apunte manual rápido. No hay deshacer: se corrige con un ajuste.

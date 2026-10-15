@@ -12,7 +12,7 @@ const files = [
   'diary/entries.js', 'diary/repository.js', 'diary/drafts.js', 'diary/emotions.js', 'diary/people.js', 'diary/stats.js',
   'views/home.js', 'views/diary/percent.js', 'views/diary/deco.js', 'views/diary/html.js', 'views/diary/list.js', 'views/diary/read.js', 'views/people/html.js', 'views/diary/people-picker.js', 'views/diary/editor.js', 'views/diary.js',
   'views/people/list.js', 'views/people/card.js', 'views/people/form.js', 'views/people.js', 'views/mood.js',
-  'views/character.js', 'views/quests.js', 'views/collection.js', 'views/settings.js',
+  'rpg/model.js', 'rpg/repository.js', 'views/rpg/radar.js', 'views/character.js', 'views/quests.js', 'views/collection.js', 'views/settings.js',
   'sections.js',
 ];
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');

@@ -8,7 +8,7 @@
         App.emptyState({
           icon: 'grim',
           title: 'No hay misiones',
-          text: 'Las crearás tú; las sugerencias serán siempre opcionales. Se activa en la fase 7.'
+          text: 'Las crearás tú y, al completarlas, repartirán experiencia entre tus atributos. Llega en la siguiente fase.'
         }) +
         '</div>';
     }

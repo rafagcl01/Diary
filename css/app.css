@@ -604,3 +604,86 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
   .sheet[data-tier="rough"] .d-tangle { width: 90px; }
   .sheet[data-tier="rough"] .d-coil { display: none; }
 }
+
+/* ---------- Personaje (RPG) ---------- */
+.rpg-view .card { margin-bottom: 18px; }
+.char-hero { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; align-items: center; }
+.char-avatar { width: 72px; height: 72px; }
+.char-avatar .ic { width: 38px; height: 38px; }
+.char-id h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 1.8rem; overflow-wrap: anywhere; }
+.char-id p { margin: 2px 0; }
+.char-actions { grid-column: 1 / -1; }
+.xpbar { height: 12px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); border: 1px solid color-mix(in srgb, currentColor 22%, transparent); overflow: hidden; margin: 6px 0; }
+.xpbar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--pink-pastel), var(--lavender)); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); transition: width .6s ease; }
+.radar { margin: 0; text-align: center; }
+.radar-svg { width: min(100%, 520px); height: auto; overflow: visible; }
+.radar { --rd-a: #F08BB5; --rd-b: #B9A7E0; }
+.rd-halo { fill: color-mix(in srgb, var(--lavender) 10%, transparent); stroke: none; }
+.rd-ring { fill: none; stroke: var(--edge); stroke-width: 1; stroke-dasharray: 2 4; }
+.rd-outer { fill: none; stroke: color-mix(in srgb, var(--lavender) 70%, transparent); stroke-width: 1.4; stroke-linejoin: round; }
+.rd-star { stroke: color-mix(in srgb, var(--pink-pastel) 75%, transparent); stroke-width: 1.4; stroke-linecap: round; }
+.rd-spoke { stroke: var(--edge); stroke-width: 1; }
+.rd-area { fill: url(#rd-fill); fill-opacity: .42; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)); transition: all .5s ease; }
+.rd-dot { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.rd-dot.on { fill: var(--accent); }
+.rd-label { cursor: pointer; outline: none; }
+.rd-hit { fill: transparent; stroke: transparent; stroke-width: 2; }
+.rd-label:hover .rd-hit, .rd-label:focus-visible .rd-hit { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: var(--accent); }
+.rd-label.on .rd-hit { fill: color-mix(in srgb, var(--accent) 18%, transparent); }
+.rd-name { fill: var(--ink); font-family: var(--font-display); font-size: 17px; }
+.rd-lv { fill: var(--ink-soft); font-size: 12.5px; }
+.radar figcaption { font-size: .85rem; margin-top: 4px; }
+.attr-head { display: flex; gap: 14px; align-items: center; }
+.attr-head > div { flex: 1; min-width: 0; }
+.attr-head h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; }
+.sub-ic { display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1.5px solid var(--edge); color: var(--accent); }
+.sub-ic.big { width: 52px; height: 52px; }
+.sub-ic .ic { width: 22px; height: 22px; }
+.sub-lv { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.sub-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.sub-card { padding: 14px; border: 1.5px solid var(--edge); border-radius: var(--r-card); background: var(--surface-2); }
+.sub-card[data-archived] { opacity: .75; border-style: dashed; }
+.sub-head { display: flex; gap: 12px; align-items: center; }
+.sub-name { flex: 1; min-width: 0; }
+.sub-name h3 { margin: 0; font-size: 1.1rem; }
+.sub-name p, .sub-xp { margin: 2px 0; font-size: .88rem; }
+.sub-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sub-tools .mini, .attr-panel .mini { background: transparent; color: var(--ink); border-color: var(--edge); }
+.sub-hist summary, .archived summary { cursor: pointer; font-weight: 700; margin-top: 6px; }
+.hist { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.hist li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; font-size: .92rem; }
+.hist li span:first-child { overflow-wrap: anywhere; }
+.hist strong { color: var(--accent); }
+.shares { border: 1.5px dashed var(--edge); border-radius: 14px; padding: 10px 12px; margin: 0 0 14px; }
+.shares legend { padding: 0 6px; font-weight: 700; }
+.share-rows { display: grid; gap: 8px; margin-top: 8px; }
+.share-row { display: grid; grid-template-columns: 1fr 84px auto; gap: 8px; align-items: center; }
+.share-row input { min-height: 40px; padding: 0 10px; border-radius: var(--r-ctl); border: 1.5px solid var(--edge); background: var(--surface); color: var(--ink); }
+.adj-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rpg-dialog { width: min(600px, calc(100% - 32px)); max-height: 88vh; overflow: auto; }
+.rpg-dialog .field input, .rpg-dialog .field select { width: 100%; }
+
+/* Brujería: más mágica y misteriosa (violeta profundo, brillo y chispas) */
+.sub-card[data-magic] {
+  position: relative; overflow: hidden; border-color: #9B7BD6; color: #F1E6FF;
+  background: radial-gradient(120% 90% at 85% 0%, rgba(155, 123, 214, .45), transparent 60%), radial-gradient(90% 80% at 0% 100%, rgba(165, 46, 105, .38), transparent 65%), #1D1230;
+  box-shadow: 0 0 0 1px rgba(214, 190, 255, .25) inset, 0 0 22px rgba(155, 123, 214, .45);
+}
+.sub-card[data-magic] .soft { color: #CDB8E8; }
+.sub-card[data-magic] h3 { font-family: var(--font-display); font-style: italic; font-size: 1.3rem; letter-spacing: .04em; text-shadow: 0 0 10px rgba(214, 190, 255, .7); }
+.sub-card[data-magic] .sub-ic { border-color: #D6BEFF; color: #E9D8FF; box-shadow: 0 0 12px rgba(214, 190, 255, .6); background: rgba(40, 20, 70, .6); }
+.sub-card[data-magic] .sub-lv, .sub-card[data-magic] .hist strong { color: #E9D8FF; }
+.sub-card[data-magic] .xpbar > span { background: linear-gradient(90deg, #9B7BD6, #F08BB5, #E9D8FF); }
+.sub-card[data-magic] .mini { color: #F1E6FF; border-color: rgba(214, 190, 255, .45); }
+.sub-card[data-magic]::before, .sub-card[data-magic]::after { content: "✦"; position: absolute; color: #E9D8FF; opacity: .75; pointer-events: none; animation: twinkle 3.2s ease-in-out infinite; }
+.sub-card[data-magic]::before { top: 8px; right: 14px; font-size: .9rem; }
+.sub-card[data-magic]::after { bottom: 10px; right: 46px; font-size: .65rem; animation-delay: 1.4s; }
+@keyframes twinkle { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
+@media (max-width: 520px) {
+  .char-hero { grid-template-columns: 1fr; text-align: left; }
+  .adj-row { grid-template-columns: 1fr; }
+  .hist li { grid-template-columns: 1fr auto; }
+  .hist li .soft { grid-column: 1; }
+  .rd-name { font-size: 21px; }
+  .rd-lv { font-size: 16px; }
+}

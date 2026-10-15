@@ -23,6 +23,17 @@
     trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/><path d="M10.5 10.5v6M13.5 10.5v6"/>',
     'chev-l': '<path d="M14.5 6l-6 6 6 6"/>',
     'chev-r': '<path d="M9.5 6l6 6-6 6"/>',
+    // Iconos del personaje (atributos y subcategorías)
+    dumbbell: '<path d="M3 9.5v5M6 7.5v9M18 7.5v9M21 9.5v5M6 12h12"/>',
+    bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+    leaf: '<path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19c3-4 6-7 10-9"/>',
+    compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+    pencil: '<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>',
+    film: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9.5h4M4 14.5h4M16 9.5h4M16 14.5h4"/>',
+    mirror: '<ellipse cx="12" cy="10" rx="5.5" ry="7"/><path d="M12 17v4M9 21h6"/><path d="M9.5 7.5c.6-1 1.5-1.5 2.5-1.5"/>',
+    tarot: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 8.5l1 2.5 2.5.3-1.9 1.7.6 2.5-2.2-1.3-2.2 1.3.6-2.5-1.9-1.7 2.5-.3z"/>',
+    spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="M12 8.5l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>',
+    pentagram: '<path d="M12.0 3.6L17.3 19.9L3.4 9.8L20.6 9.8L6.7 19.9z"/><circle cx="12" cy="12.6" r="9" opacity=".45"/>',
     // Galería de símbolos para las emociones (línea fina, estética pastel goth / creepy cute)
     ghost: '<path d="M6 20V11a6 6 0 0 1 12 0v9l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5z"/><path d="M9.5 11h.01M14.5 11h.01"/>',
     skull: '<path d="M12 4c-4 0-7 2.8-7 6.5 0 2.2 1 3.8 2.5 4.8V19h9v-3.7c1.5-1 2.5-2.6 2.5-4.8C19 6.8 16 4 12 4z"/><path d="M9.5 11.5h.01M14.5 11.5h.01M10.5 19v-2.5M13.5 19v-2.5M12 14l-.8 1.5h1.6z"/>',

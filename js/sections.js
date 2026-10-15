@@ -9,7 +9,7 @@
     { id: 'animo',     label: 'Estado de ánimo',       icon: 'mood',    bottom: true, short: 'Ánimo', view: v.mood },
     { id: 'personaje', label: 'Personaje',             icon: 'star',    view: v.character },
     { id: 'misiones',  label: 'Misiones',              icon: 'grim',    view: v.quests },
-    { id: 'coleccion', label: 'Colección y recuerdos', icon: 'locket',  view: v.collection },
+    { id: 'coleccion', label: 'Colección', icon: 'locket',  view: v.collection },
     { id: 'ajustes',   label: 'Configuración',         icon: 'sliders', view: v.settings }
   ];
 })(window.App = window.App || {});
