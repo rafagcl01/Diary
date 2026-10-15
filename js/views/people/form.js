@@ -29,16 +29,11 @@
       img.src = url;
     });
   }
-  // Relaciones elegidas (mismo formato que las emociones) + el círculo "+" que despliega las demás
-  function relSelected(chosen, open) {
-    return chosen.map(function (r) {
-      return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="true" aria-label="Quitar la relación ' + esc(r) + '"><span>' + esc(r) + '</span></button></li>';
-    }).join('') + '<li><button type="button" class="plus-btn" id="p-rel-plus" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="p-rel-panel" aria-label="Añadir o quitar relaciones"><span aria-hidden="true">+</span></button></li>';
-  }
-  function relCaps(lib, chosen) {
-    return lib.length ? lib.map(function (r) {
-      return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="' + (chosen.map(D.fold).indexOf(D.fold(r)) >= 0) + '"><span>' + esc(r) + '</span></button></li>';
-    }).join('') : '';
+  // Cápsulas del menú de relaciones: igual que el de emociones, sin símbolo, y el círculo "+" al final
+  function relCaps(lib, staged) {
+    return lib.map(function (r) {
+      return '<li><button type="button" class="emo-cap" data-rel-toggle="' + esc(r) + '" aria-pressed="' + (staged.map(D.fold).indexOf(D.fold(r)) >= 0) + '"><span>' + esc(r) + '</span></button></li>';
+    }).join('') + '<li><button type="button" class="plus-btn" id="rel-new" aria-label="Añadir relación nueva" title="Añadir relación nueva"><span aria-hidden="true">+</span></button></li>';
   }
 
   function chipList(items, kind) {
@@ -81,12 +76,9 @@
             '<label class="field"><span>Nombre</span><input id="p-name" type="text" maxlength="' + D.PEOPLE_LIMITS.name + '" autocomplete="off" value="' + esc(base.name) + '"></label>' +
             '<div class="field"><span id="nick-l">Apodos</span><ul class="chips" id="p-nicks" aria-live="polite">' + chipList(nicks, 'nick') + '</ul>' +
               '<input id="p-nick" type="text" maxlength="' + D.PEOPLE_LIMITS.nickname + '" autocomplete="off" aria-labelledby="nick-l" placeholder="Un apodo y pulsa Intro"></div>' +
-            '<div class="field"><span id="rel-l">Relaciones <small>(opcional, puedes marcar varias)</small></span>' +
-              '<ul class="emo-caps" id="p-rels-sel" aria-labelledby="rel-l">' + relSelected(rels, false) + '</ul>' +
-              '<div class="rel-panel" id="p-rel-panel" hidden>' +
-                '<p class="soft">Relaciones que ya existen. Pulsa para marcarlas o quitarlas.</p>' +
-                '<ul class="emo-caps" id="p-rels" aria-label="Relaciones existentes">' + relCaps(lib, rels) + '</ul>' +
-                '<div class="inline-add"><input id="p-rel-new" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" aria-label="Crear una relación nueva" placeholder="Crear una nueva y pulsa Intro"></div></div>' +
+            '<div class="field"><span id="rel-l">Relaciones <small>(opcional)</small></span>' +
+              '<div class="emo-row"><ul class="chips emo-selected" id="p-rels-sel" aria-labelledby="rel-l" aria-live="polite">' + chipList(rels, 'rel') + '</ul>' +
+                '<button type="button" class="mini" id="p-rel-open" aria-haspopup="dialog">Relaciones</button></div>' +
               '<small>Si tienes a dos personas con el mismo nombre, las relaciones son lo que las distingue.</small></div>' +
             '<div class="field"><span id="bd-l">Cumpleaños <small>(opcional; el año también)</small></span>' +
               '<div class="bday-row" role="group" aria-labelledby="bd-l">' +
@@ -110,7 +102,19 @@
             '<div class="btn-row"><button type="button" class="btn" id="p-save">Guardar</button><a class="btn secondary" href="' + back + '">Cancelar</a>' +
               (id ? '<button type="button" class="btn secondary" id="p-delete">Borrar ficha</button>' : '') + '</div>' +
             '<p class="msg" id="p-msg" role="status" data-kind="info"></p>' +
-          '</article>';
+          '</article>' +
+          '<dialog class="confirm emo-dialog" id="rel-dialog" aria-labelledby="rel-title">' +
+            '<h3 id="rel-title">Relaciones</h3>' +
+            '<p class="soft">Pulsa las que quieras para marcarlas (pulsa otra vez para quitarlas) y luego Aceptar.</p>' +
+            '<ul class="emo-caps" id="rel-list" aria-label="Relaciones guardadas"></ul>' +
+            '<div id="rel-form" hidden>' +
+              '<h4 id="rel-form-title">Nueva relación</h4>' +
+              '<label class="field"><span>Nombre</span><input id="rel-name" type="text" maxlength="' + D.PEOPLE_LIMITS.relation + '" autocomplete="off" placeholder="Por ejemplo, vecindad"></label>' +
+              '<div class="btn-row"><button type="button" class="btn" id="rel-save">Guardar relación</button><button type="button" class="btn secondary" id="rel-cancel">Cancelar</button></div>' +
+            '</div>' +
+            '<p class="msg" id="rel-msg" role="status" data-kind="info"></p>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="rel-edit" disabled>Editar</button><button type="button" class="btn" id="rel-done">Aceptar</button></div>' +
+          '</dialog>';
 
         function $(sel) { return root.querySelector(sel); }
         function say(text, kind) { var m = $('#p-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
@@ -126,16 +130,45 @@
           $('#p-photo-rm').hidden = !photo;
         }
         paintPhoto();
-        function toggleRel(r, on) {
-          var i = rels.map(D.fold).indexOf(D.fold(r));
-          if (on && i < 0) rels.push(r); else if (!on && i >= 0) rels.splice(i, 1);
-          paintRels();
+        // ---- Relaciones: mismo menú que las emociones (cápsulas, "+", Editar, Aceptar), sin símbolos ----
+        var relStaged = [], relEditing = null;
+        function relSay(text, kind) { var m = $('#rel-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
+        function paintSelectedRels() { $('#p-rels-sel').innerHTML = chipList(rels, 'rel'); }
+        function paintRelList() { $('#rel-list').innerHTML = relCaps(lib, relStaged); $('#rel-edit').disabled = !relStaged.length; }
+        function openRelForm(name) {
+          relEditing = name; $('#rel-form-title').textContent = name ? 'Editar relación' : 'Nueva relación';
+          $('#rel-name').value = name || ''; relSay('', 'info'); $('#rel-form').hidden = false;
+          if ($('#rel-name').focus) $('#rel-name').focus();
         }
-        var relOpen = false;
-        function paintRels() {
-          $('#p-rels').innerHTML = relCaps(lib, rels);
-          $('#p-rels-sel').innerHTML = relSelected(rels, relOpen);
-          $('#p-rel-panel').hidden = !relOpen;
+        function closeRelForm() { $('#rel-form').hidden = true; relEditing = null; }
+        function openRel() { relStaged = rels.slice(); closeRelForm(); relSay('', 'info'); paintRelList(); $('#rel-dialog').showModal(); }
+        function stageRel(r, on) {
+          var i = relStaged.map(D.fold).indexOf(D.fold(r));
+          if (on && i < 0) relStaged.push(r); else if (!on && i >= 0) relStaged.splice(i, 1);
+          paintRelList();
+        }
+        function acceptRels() { rels = relStaged.slice(); paintSelectedRels(); $('#rel-dialog').close(); }
+        function replaceIn(list, from, to) { var k = D.fold(from); for (var i = 0; i < list.length; i++) if (D.fold(list[i]) === k) list[i] = to; }
+        function saveRel() {
+          var name;
+          try { name = D.cleanRelations([$('#rel-name').value])[0]; } catch (err) { relSay(err.message, 'error'); return; }
+          if (!name) { relSay('Escribe el nombre de la relación.', 'error'); return; }
+          var old = relEditing, key = D.fold(name);
+          if (lib.some(function (x) { return D.fold(x) === key && D.fold(x) !== D.fold(old || ''); })) { relSay('Esa relación ya existe.', 'error'); return; }
+          if (!old) {
+            if (relStaged.length >= D.PEOPLE_LIMITS.relations) { relSay('Máximo ' + D.PEOPLE_LIMITS.relations + ' relaciones.', 'error'); return; }
+            lib.push(name); relStaged.push(name); paintRelList(); closeRelForm();
+            relSay('Relación creada y marcada. Pulsa Aceptar para añadirla.', 'ok'); return;
+          }
+          function applyLocal() {
+            replaceIn(lib, old, name); replaceIn(relStaged, old, name); replaceIn(rels, old, name);
+            paintRelList(); paintSelectedRels(); closeRelForm(); relSay('Relación actualizada.', 'ok');
+          }
+          var used = people.some(function (o) { return (o.relations || []).some(function (r) { return D.fold(r) === D.fold(old); }); });
+          if (!used) { applyLocal(); return; }                       // solo existe en este formulario
+          relSay('Guardando…', 'info');
+          repo.renameRelation(old, name).then(function () { return repo.list(true); }).then(function (l) { people = l; applyLocal(); })
+            .catch(function (err) { relSay(err && err.message ? err.message : 'No se pudo guardar la relación.', 'error'); });
         }
         function setMonth(n) {
           $('#p-bd-m').value = n ? String(n) : '';
@@ -145,27 +178,19 @@
         function monthList(open) {
           $('#p-bd-mlist').hidden = !open; $('#p-bd-mbtn').setAttribute('aria-expanded', String(open));
         }
-        function addRel(raw) {
-          var r = String(raw).replace(/\s+/g, ' ').trim(); if (!r) return;
-          if (rels.length >= D.PEOPLE_LIMITS.relations) { say('Máximo ' + D.PEOPLE_LIMITS.relations + ' relaciones.', 'error'); return; }
-          var known = lib.filter(function (x) { return D.fold(x) === D.fold(r); })[0];
-          if (!known) lib.push(r);
-          toggleRel(known || r, true); $('#p-rel-new').value = '';
-        }
         function addTo(list, raw, max) {
           String(raw).split(',').forEach(function (x) { x = x.replace(/\s+/g, ' ').trim(); if (x && list.length < max && list.map(D.fold).indexOf(D.fold(x)) < 0) list.push(x); });
         }
         function paintNicks() { $('#p-nicks').innerHTML = chipList(nicks, 'nick'); }
         function paintTags() { $('#p-tags').innerHTML = chipList(tags, 'tag'); }
         function commitInputs() {
-          if ($('#p-rel-new').value.trim()) addRel($('#p-rel-new').value);
           if ($('#p-nick').value.trim()) { addTo(nicks, $('#p-nick').value, D.PEOPLE_LIMITS.nicknames); $('#p-nick').value = ''; paintNicks(); }
           if ($('#p-tag').value.trim()) { addTo(tags, $('#p-tag').value, D.LIMITS.tags); $('#p-tag').value = ''; paintTags(); }
         }
 
         view.addEventListener('keydown', function (e) {
           var t = e.target;
-          if (t.id === 'p-rel-new' && (e.key === 'Enter' || e.key === ',')) { e.preventDefault(); addRel(t.value); return; }
+          if (t.id === 'rel-name' && e.key === 'Enter') { e.preventDefault(); saveRel(); return; }
           var opts = view.querySelectorAll ? Array.prototype.slice.call(view.querySelectorAll('.dd-opt')) : [];
           if (t.id === 'p-bd-mbtn' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
             e.preventDefault(); monthList(true);
@@ -196,9 +221,16 @@
           if (mo) { setMonth(+mo.dataset.month || 0); monthList(false); $('#p-bd-mbtn').focus(); return; }
           if (t.closest('#p-bd-mbtn')) { monthList($('#p-bd-mlist').hidden); return; }
           if (!t.closest('.dd')) monthList(false);
-          if (t.closest('#p-rel-plus')) { relOpen = !relOpen; paintRels(); if (relOpen && $('#p-rel-new').focus) $('#p-rel-new').focus(); return; }
+          if (t.closest('#p-rel-open')) { openRel(); return; }
           var rc = t.closest('[data-rel-toggle]');
-          if (rc) { toggleRel(rc.dataset.relToggle, rc.getAttribute('aria-pressed') !== 'true'); return; }
+          if (rc) { stageRel(rc.dataset.relToggle, relStaged.map(D.fold).indexOf(D.fold(rc.dataset.relToggle)) < 0); return; }
+          if (t.closest('#rel-new')) { openRelForm(null); return; }
+          if (t.closest('#rel-edit')) { var last = relStaged[relStaged.length - 1]; if (last) openRelForm(last); return; }   // edita la última marcada
+          if (t.closest('#rel-cancel')) { closeRelForm(); relSay('', 'info'); return; }
+          if (t.closest('#rel-save')) { saveRel(); return; }
+          if (t.closest('#rel-done')) { acceptRels(); return; }
+          var rr = t.closest('[data-remove-rel]');
+          if (rr) { rels.splice(Number(rr.dataset.removeRel), 1); paintSelectedRels(); return; }
           if (t.closest('#p-photo-rm')) { photo = ''; paintPhoto(); return; }
           var rn = t.closest('[data-remove-nick]'), rt = t.closest('[data-remove-tag]');
           if (rn) { nicks.splice(Number(rn.dataset.removeNick), 1); paintNicks(); return; }

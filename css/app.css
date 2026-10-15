@@ -481,15 +481,11 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 .inline-add { margin-top: 8px; }
 .bday-row { display: grid; grid-template-columns: 90px 1fr 110px; gap: 8px; align-items: start; }
 .bday-row input { min-width: 0; }
-/* círculo "+" y panel de relaciones */
+/* círculo "+" (emociones y relaciones) */
 .plus-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1.5px dashed var(--accent); background: transparent; color: var(--accent); font: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer; transition: background .15s, transform .2s; }
 .plus-btn:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .plus-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .plus-btn[aria-expanded="true"] { transform: rotate(45deg); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.rel-panel { margin: 2px 0 8px; padding: 12px 8px 14px; border: 1.5px dashed var(--edge); border-radius: 20px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
-.rel-panel > .soft { margin: 0 8px 0; font-size: .9rem; }
-.rel-panel .emo-caps { padding-top: 10px; padding-bottom: 10px; }
-.rel-panel .inline-add { margin: 0 8px; }
 /* desplegable del mes, a juego con la web (el de serie del navegador no se puede suavizar) */
 .dd { position: relative; }
 .dd-btn { position: relative; width: 100%; min-height: 48px; padding: 10px 38px 10px 14px; text-align: left; font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--edge); border-radius: var(--r-ctl); cursor: pointer; }

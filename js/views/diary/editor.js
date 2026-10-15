@@ -82,7 +82,7 @@
               '<div class="btn-row"><button type="button" class="btn" id="emo-save">Guardar emoción</button><button type="button" class="btn secondary" id="emo-cancel">Cancelar</button></div>' +
             '</div>' +
             '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
-            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-new">Añadir emoción nueva</button><button type="button" class="btn secondary" id="emo-edit" disabled>Editar</button><button type="button" class="btn" id="emo-done">Aceptar</button></div>' +
+            '<div class="btn-row"><button type="button" class="btn secondary" id="emo-edit" disabled>Editar</button><button type="button" class="btn" id="emo-done">Aceptar</button></div>' +
           '</dialog>' +
           '<dialog class="confirm ppl-dialog" id="ppl-dialog" aria-labelledby="ppl-title">' +
             '<h3 id="ppl-title">Personas de la entrada <span id="ppl-n"></span></h3>' +
@@ -174,10 +174,10 @@
           var chosen = staged;
           if (!emoRepo) { $('#emo-list').innerHTML = '<li class="soft">Conecta tus datos para usar emociones. <a href="#/ajustes">Conectar mis datos</a></li>'; return; }
           if (!emoLoaded) { $('#emo-list').innerHTML = '<li class="soft">No se pudieron cargar tus emociones ahora mismo.</li>'; return; }
-          $('#emo-list').innerHTML = library.length ? library.map(function (e) {
+          $('#emo-list').innerHTML = (library.length ? '' : '<li class="soft">Todavía no tienes emociones. Pulsa + para crear la primera.</li>') + library.map(function (e) {
             return '<li><button type="button" class="emo-cap" data-emo-check="' + esc(e.id) + '" aria-pressed="' + (chosen.indexOf(e.id) >= 0) + '">' +
               icon(D.isSymbol(e.symbol) ? e.symbol : 'heart') + '<span>' + esc(e.name) + '</span></button></li>';
-          }).join('') : '<li class="soft">Todavía no tienes emociones. Añade la primera.</li>';
+          }).join('') + '<li><button type="button" class="plus-btn" id="emo-new" aria-label="Añadir emoción nueva" title="Añadir emoción nueva"><span aria-hidden="true">+</span></button></li>';
           $('#emo-edit').disabled = !(emoLoaded && n0(chosen) && byId[chosen[chosen.length - 1]]);   // edita la última marcada
         }
         function n0(a) { return a.length > 0; }
@@ -200,7 +200,6 @@
           activeId = id; closeForm(); emoSay('', 'info');
           var cur = activeBlock(); staged = cur ? cur.emotions.slice() : [];
           $('#emo-n').textContent = String(blockIndex(id) + 1);
-          $('#emo-new').disabled = !emoLoaded;
           paintEmoList();
           $('#emo-dialog').showModal();
         }

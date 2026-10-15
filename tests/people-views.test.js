@@ -35,6 +35,11 @@ const fakeRoot = () => {
 const fire = (el, type, ev) => (el.handlers[type] || []).forEach((h) => h(ev));
 const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 const target = (map) => ({ closest: (sel) => map[sel] ?? null });
+// Elige/crea relaciones por el menú (el mismo que el de emociones): abrir → "+" → nombre → guardar → Aceptar
+const addRelation = (root, name) => {
+  const view = root.els['.people-view']; const click = (m) => fire(view, 'click', { target: target(m) });
+  click({ '#p-rel-open': {} }); click({ '#rel-new': {} }); root.querySelector('#rel-name').value = name; click({ '#rel-save': {} }); click({ '#rel-done': {} });
+};
 async function connected(extra = {}) {
   const fake = createFakeGithub(); const App = load({ localStorage: memoryStorage(), fetch: fake.fetch, ...extra });
   await App.connection.connect({ repo: 'ana/diario-datos', token: 'good', fetch: fake.fetch });
@@ -156,7 +161,7 @@ test('el formulario crea una ficha con solo el nombre, y avisa de un nombre repe
   assert.equal((root.els['#p-symbols'].innerHTML.match(/type="radio"/g) || []).length, 1 + App.diary.EMOTION_SYMBOLS.length, 'la inicial + la galería');
   root.els['#p-save'].handlers.click[0](); await tick(60);
   assert.match(root.els['#p-msg'].textContent, /Ponle un nombre/);
-  root.querySelector('#p-name').value = 'Marcos'; root.querySelector('#p-rel-new').value = 'amigo'; root.querySelector('#p-met').value = '2019-05';
+  root.querySelector('#p-name').value = 'Marcos'; addRelation(root, 'amigo'); root.querySelector('#p-met').value = '2019-05';
   root.querySelector('#p-nick').value = 'Marqui, Marcus'; root.querySelector('#p-tag').value = 'música';
   root.els['#p-save'].handlers.click[0](); await tick(80);
   const saved = JSON.parse(fake.state.files.get('people.json')).people;
@@ -368,19 +373,30 @@ test('la ficha muestra sus relaciones, el cumpleaños y el reparto de emociones 
   assert.match(grid.els['#p-list'].innerHTML, /Cumple el 14 de mayo/); assert.match(grid.els['#p-list'].innerHTML, /<img class="av-photo"/);
 });
 
-test('el formulario: relaciones en cápsulas (varias, nuevas con Intro), cumpleaños y quitar la foto', async () => {
+test('el formulario: relaciones en cápsulas (varias, nuevas con "+"), cumpleaños y quitar la foto', async () => {
   const { App, fake, ppl } = await connected();
   await ppl.create({ name: 'Otra', relations: ['vecindad', 'prima'], photo: 'data:image/jpeg;base64,/9j/4AAQ' });
   const root = render(App, ['nueva']); await tick(60);
-  const caps = root.els['.people-view'].innerHTML;
-  assert.match(caps, /data-rel-toggle="prima"/); assert.match(caps, /data-rel-toggle="amistad"/);
   const view = root.els['.people-view'];
   const click = (map) => fire(view, 'click', { target: target(map) });
-  click({ '[data-rel-toggle]': { dataset: { relToggle: 'amistad' }, getAttribute: () => 'false' } });
-  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' }, getAttribute: () => 'false' } });
-  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' }, getAttribute: () => 'true' } });   // otra pulsación la quita
-  root.querySelector('#p-rel-new').value = 'Compañera de clase'; fire(view, 'keydown', { target: { id: 'p-rel-new', value: 'Compañera de clase' }, key: 'Enter', preventDefault() {} });
-  assert.match(root.querySelector('#p-rels').innerHTML, /data-rel-toggle="Compañera de clase" aria-pressed="true"/);
+  click({ '#p-rel-open': {} });
+  assert.equal(root.querySelector('#rel-dialog').open, true);
+  const list = root.querySelector('#rel-list').innerHTML;
+  assert.match(list, /data-rel-toggle="prima"/); assert.match(list, /data-rel-toggle="amistad"/); assert.match(list, /id="rel-new"/, 'círculo + al final de las cápsulas');
+  assert.doesNotMatch(list, /class="ic"|<svg/, 'las relaciones no llevan símbolo');
+  assert.equal(root.querySelector('#rel-edit').disabled, true, 'sin ninguna marcada no se puede editar');
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'amistad' } } });
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' } } });
+  click({ '[data-rel-toggle]': { dataset: { relToggle: 'trabajo' } } });   // otra pulsación la quita
+  assert.equal(root.querySelector('#rel-edit').disabled, false);
+  assert.doesNotMatch(root.querySelector('#p-rels-sel').innerHTML, /amistad/, 'hasta Aceptar no se añade a la ficha');
+  click({ '#rel-new': {} }); root.querySelector('#rel-name').value = 'Compañera de clase'; click({ '#rel-save': {} });
+  assert.match(root.querySelector('#rel-list').innerHTML, /data-rel-toggle="Compañera de clase" aria-pressed="true"/);
+  click({ '#rel-new': {} }); root.querySelector('#rel-name').value = 'AMISTAD'; click({ '#rel-save': {} });
+  assert.match(root.querySelector('#rel-msg').textContent, /ya existe/);
+  click({ '#rel-done': {} });
+  assert.equal(root.querySelector('#rel-dialog').open, false);
+  assert.match(root.querySelector('#p-rels-sel').innerHTML, /amistad/); assert.match(root.querySelector('#p-rels-sel').innerHTML, /Compañera de clase/);
   root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14'; root.querySelector('#p-bd-m').value = '5'; root.querySelector('#p-bd-y').value = '';
   root.els['#p-save'].handlers.click[0](); await tick(80);
   const saved = JSON.parse(fake.state.files.get('people.json')).people.find((p) => p.name === 'Lola');
@@ -391,28 +407,38 @@ test('el formulario: relaciones en cápsulas (varias, nuevas con Intro), cumplea
   assert.match(bad.querySelector('#p-msg').textContent, /día y el mes/);
 });
 
-test('formulario: el "+" despliega las relaciones, el mes es un desplegable propio y el día solo admite números', async () => {
+test('editar una relación desde el menú la renombra en todas las fichas; no permite choques de nombre', async () => {
+  const { App, fake, ppl } = await connected();
+  const a = await ppl.create({ name: 'Ana', relations: ['amistad'] }); const b = await ppl.create({ name: 'Bea', relations: ['amistad', 'trabajo'] });
+  const root = render(App, [a.id, 'editar']); await tick(80);
+  const view = root.els['.people-view']; const click = (m) => fire(view, 'click', { target: target(m) });
+  click({ '#p-rel-open': {} });
+  click({ '#rel-edit': {} }); assert.equal(root.querySelector('#rel-form').hidden, false); assert.equal(root.querySelector('#rel-name').value, 'amistad', 'edita la última marcada');
+  root.querySelector('#rel-name').value = 'amigos'; click({ '#rel-save': {} }); await tick(80);
+  assert.match(root.querySelector('#rel-msg').textContent, /actualizada/);
+  const doc = JSON.parse(fake.state.files.get('people.json')).people;
+  assert.deepEqual(plain(doc.find((p) => p.name === 'Ana').relations), ['amigos']); assert.deepEqual(plain(doc.find((p) => p.name === 'Bea').relations), ['amigos', 'trabajo']);
+  click({ '#rel-done': {} }); assert.match(root.querySelector('#p-rels-sel').innerHTML, /amigos/);
+});
+
+test('formulario: el menú de relaciones tiene "+", el mes es un desplegable propio y el día solo admite números', async () => {
   const { App, fake } = await connected();
   const root = render(App, ['nueva']); await tick(60);
   const view = root.els['.people-view'];
   const h = view.innerHTML;
-  assert.match(h, /id="p-rel-plus"[^>]*aria-expanded="false"/); assert.match(h, /id="p-rel-panel" hidden/);
+  assert.match(h, /id="p-rel-open"/); assert.match(h, /id="rel-dialog"/); assert.doesNotMatch(h, /p-rel-panel|p-rel-plus/);
   assert.doesNotMatch(h, /type="number"/, 'sin flechas en el día'); assert.doesNotMatch(h, /<select/, 'sin el desplegable nativo');
   const click = (map) => fire(view, 'click', { target: target(map) });
-  click({ '#p-rel-plus': {} });
-  assert.equal(root.querySelector('#p-rel-panel').hidden, false); assert.match(root.querySelector('#p-rels-sel').innerHTML, /aria-expanded="true"/);
-  click({ '[data-rel-toggle]': { dataset: { relToggle: 'familia' }, getAttribute: () => 'false' } });
-  assert.match(root.querySelector('#p-rels-sel').innerHTML, /data-rel-toggle="familia" aria-pressed="true"/, 'las elegidas salen como cápsulas de emoción');
-  click({ '#p-rel-plus': {} }); assert.equal(root.querySelector('#p-rel-panel').hidden, true);
   // día: solo dígitos
   const day = { id: 'p-bd-d', value: '1a4x' }; fire(view, 'input', { target: day }); assert.equal(day.value, '14');
   // mes: abrir, elegir, cerrar; "Sin indicar" lo quita
+  root.querySelector('#p-bd-mlist').hidden = true;   // el HTML real lo trae oculto; el documento de pruebas no lo refleja
   click({ '#p-bd-mbtn': {} }); assert.equal(root.querySelector('#p-bd-mlist').hidden, false);
   click({ '[data-month]': { dataset: { month: '5' } } });
   assert.equal(root.querySelector('#p-bd-m').value, '5'); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'mayo'); assert.equal(root.querySelector('#p-bd-mlist').hidden, true);
   root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14';
   root.els['#p-save'].handlers.click[0](); await tick(80);
   const saved = JSON.parse(fake.state.files.get('people.json')).people[0];
-  assert.equal(saved.birthday, '05-14'); assert.deepEqual(plain(saved.relations), ['familia']);
+  assert.equal(saved.birthday, '05-14'); assert.deepEqual(plain(saved.relations), []);
   click({ '[data-month]': { dataset: { month: '' } } }); assert.equal(root.querySelector('#p-bd-m').value, ''); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'Mes');
 });

@@ -341,6 +341,29 @@
         });
       },
 
+      // Renombra una relación en TODAS las fichas que la usan (como editar una emoción: el cambio se ve en todas partes).
+      renameRelation: function (from, to) {
+        var a = clean(from), b;
+        try { b = D.cleanRelations([to])[0]; } catch (err) { return Promise.reject(err); }
+        if (!b) return Promise.reject(invalid('Escribe el nombre de la relación.'));
+        return mutate('Renombra una relación', function (doc, done) {
+          var key = D.fold(a), n = 0, now = new Date().toISOString();
+          var next = doc.people.map(function (raw) {
+            var rels = Array.isArray(raw.relations) ? raw.relations : (raw.relation ? [raw.relation] : []);
+            if (!rels.some(function (r) { return D.fold(clean(r)) === key; })) return raw;
+            n++;
+            return D.sanitizePerson(Object.assign({}, raw, { relations: rels.map(function (r) { return D.fold(clean(r)) === key ? b : r; }), updatedAt: now }));
+          });
+          next.forEach(function (p) {                          // dos personas con el mismo nombre no pueden acabar compartiendo relación
+            if (clashes({ people: next.filter(function (x) { return x !== p; }) }, p) === 'same') {
+              throw invalid('Con ese cambio, dos fichas con el mismo nombre (' + p.name + ') compartirían relación. Cámbiala en una de ellas primero.');
+            }
+          });
+          done(n);
+          return next;
+        });
+      },
+
       // Destacar o dejar de destacar un fragmento en la ficha ("recuerdos destacados").
       setHighlight: function (id, ref, on) {
         return mutate('Destaca un recuerdo', function (doc, done) {
