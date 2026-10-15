@@ -7,7 +7,7 @@ import { createFakeGithub } from './helpers/fake-github.js';
 
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
-const FILES = ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'rpg/model', 'rpg/repository', 'views/rpg/radar'];
+const FILES = ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/quests', 'views/rpg/radar'];
 function load(extra = {}) {
   const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, ...extra });
   ctx.window = ctx;
@@ -18,7 +18,8 @@ function make(fake = createFakeGithub()) {
   const App = load({ fetch: fake.fetch });
   const adapter = App.createGithubAdapter({ owner: 'ana', repo: 'diario-datos', branch: 'main', token: 'good', fetch: fake.fetch });
   const store = App.createStore(adapter);
-  return { App, R: App.rpg, fake, repo: App.createRpgRepo(store), store };
+  const repo = App.createRpgRepo(store);
+  return { App, R: App.rpg, fake, repo, store, acts: App.createActivityRepo(store, repo), quests: App.createQuestRepo(store, repo) };
 }
 const rejectsWith = (p, code) => assert.rejects(p, (e) => { assert.equal(e.code, code, e.message); return true; });
 const ledger = (fake, year = new Date().getFullYear()) => JSON.parse(fake.state.files.get(`rpg/ledger-${year}.json`));
@@ -184,4 +185,121 @@ test('el nombre del personaje se escapa y los datos dañados no se pisan', async
   fake.state.files.set('rpg/attributes.json', '{"version":1,"attributes":"roto"}');
   await rejectsWith(make(fake).repo.state(), 'invalid');
   assert.equal(fake.state.files.get('rpg/attributes.json'), '{"version":1,"attributes":"roto"}');
+});
+
+test('actividades: máximo 5 XP en puntos enteros, repartidos entre subcategorías', async () => {
+  const { acts, repo, R } = make();
+  const list = await acts.list();
+  assert.ok(list.length >= 15);
+  assert.ok(list.every((a) => R.activityXp(a) >= 1 && R.activityXp(a) <= 5), 'las de fábrica respetan el máximo');
+  const libro = list.find((a) => a.id === 'leer-libro');
+  const r = await acts.log('leer-libro', { req: 'r1', day: '2026-08-01' });
+  assert.equal(r.entry.xp, 5); assert.deepEqual(plain(r.entry.splits), [{ sub: 'lectura', xp: 2 }, { sub: 'conocimiento', xp: 3 }]);
+  assert.equal(r.entry.activity, 'leer-libro');
+  const st = await repo.state(true);
+  assert.equal(st.computed.general.total, 5);
+  assert.equal(st.computed.mains.find((m) => m.id === 'creatividad').subs.find((s) => s.id === 'lectura').xp, 2);
+  assert.equal((await acts.log('leer-libro', { req: 'r1', day: '2026-08-01' })).duplicate, true, 'el mismo toque no suma dos veces');
+  await rejectsWith(acts.create({ name: 'Maratón', icon: 'star', points: [{ sub: 'arte', xp: 3 }, { sub: 'amor', xp: 3 }] }), 'invalid');
+  await rejectsWith(acts.create({ name: 'Vacía', icon: 'star', points: [] }), 'invalid');
+  await rejectsWith(acts.create({ name: 'Leer un libro', icon: 'star', points: [{ sub: 'arte', xp: 1 }] }), 'invalid');
+  const mia = await acts.create({ name: 'Podcast', icon: 'cloud', points: [{ sub: 'conocimiento', xp: 2 }, { sub: 'lectura', xp: 1 }] });
+  assert.match(mia.id, /^ac_[0-9a-f]{8}$/);
+  await acts.update(mia.id, { name: 'Podcast nuevo', icon: 'cloud', points: [{ sub: 'conocimiento', xp: 4 }] });
+  await acts.setArchived('gimnasio', true);
+  await rejectsWith(acts.log('gimnasio', {}), 'invalid');
+  assert.ok(libro);
+});
+
+test('cambiar una actividad no cambia el pasado (el apunte guarda sus puntos)', async () => {
+  const { acts, repo, fake } = make();
+  await acts.log('dormir-bien', { req: 'p1', day: '2026-08-02' });
+  const a = (await acts.list()).find((x) => x.id === 'dormir-bien');
+  await acts.update('dormir-bien', { ...a, points: [{ sub: 'salud', xp: 1 }] });
+  const st = await make(fake).repo.state();
+  assert.equal(st.computed.mains.find((m) => m.id === 'vitalidad').subs.find((s) => s.id === 'descanso').xp, 5);
+});
+
+test('anular un apunte: ajuste visible que lo compensa, una sola vez, y deja de contar para misiones', async () => {
+  const { acts, repo, quests, fake } = make();
+  const r = await acts.log('gimnasio', { req: 'v1', day: '2026-09-01' });
+  await repo.voidEntry(r.entry.key);
+  const doc = ledger(fake, 2026);
+  assert.equal(doc.entries.length, 2); assert.equal(doc.entries[1].kind, 'adjustment'); assert.equal(doc.entries[1].reverses, r.entry.key);
+  const st = await repo.state(true);
+  assert.equal(st.computed.general.total, 0); assert.equal(st.computed.subTotals.fuerza, 0);
+  assert.equal((await repo.voidEntry(r.entry.key)).duplicate, true);
+  assert.equal(ledger(fake, 2026).entries.length, 2);
+  const q = await quests.create({ name: 'Gym', size: 'normal', shares: [], objective: { activity: 'gimnasio', count: 1 }, startDay: '2026-09-01' });
+  assert.equal((await quests.state(true)).quests[0].progress, 0, 'la visita anulada no cuenta');
+  assert.ok(q);
+});
+
+test('misión con objetivo: las visitas dan XP y al cumplir hay bonus, una sola vez', async () => {
+  const { acts, quests, repo, fake } = make();
+  const q = await quests.create({ name: 'Gimnasio 3 veces', size: 'normal', shares: [{ sub: 'fuerza', pct: 70 }, { sub: 'disciplina', pct: 30 }], objective: { activity: 'gimnasio', count: 3 }, startDay: '2026-09-07', dueDay: '2026-09-13' });
+  await rejectsWith(quests.claim(q.id), 'invalid');
+  await acts.log('gimnasio', { req: 'g1', day: '2026-09-07' });
+  await acts.log('gimnasio', { req: 'g2', day: '2026-09-09' });
+  await acts.log('gimnasio', { req: 'g0', day: '2026-09-01' });       // antes del inicio: no cuenta
+  await acts.log('gimnasio', { req: 'g9', day: '2026-09-20' });       // después del límite: no cuenta
+  let s = await quests.state(true);
+  assert.equal(s.quests[0].progress, 2); assert.equal(s.quests[0].ready, false);
+  await rejectsWith(quests.claim(q.id), 'invalid');
+  await acts.log('gimnasio', { req: 'g3', day: '2026-09-12' });
+  s = await quests.state(true); assert.equal(s.quests[0].ready, true);
+  const [a, b] = await Promise.all([quests.claim(q.id), quests.claim(q.id)]);
+  assert.ok([a, b].some((x) => x.duplicate), 'la segunda no suma');
+  const rewards = ledger(fake, 2026).entries.filter((e) => e.key === 'quest:' + q.id);
+  assert.equal(rewards.length, 1); assert.equal(rewards[0].xp, 30);
+  assert.deepEqual(plain(rewards[0].splits), [{ sub: 'fuerza', xp: 21 }, { sub: 'disciplina', xp: 9 }]);
+  const total = (await repo.state(true)).computed.general.total;
+  assert.equal(total, 5 * 5 + 30, '5 visitas × 5 XP + bonus 30');
+  assert.equal((await quests.claim(q.id)).duplicate, true);
+  assert.equal((await repo.state(true)).computed.general.total, total);
+  s = await make(fake).quests.state(); assert.equal(s.quests[0].status, 'completada');
+});
+
+test('misión completada: solo lectura (no se edita ni cambia de estado) y se ve completada aunque falle marcarla', async () => {
+  const { quests, repo, fake } = make();
+  const q = await quests.create({ name: 'Pintar un cuadro', size: 'dificil', shares: [{ sub: 'arte', pct: 100 }], steps: [{ text: 'Boceto' }, { text: 'Color' }] });
+  await quests.toggleStep(q.id, (await quests.state()).quests[0].steps[0].id, true);
+  await quests.claim(q.id);
+  await rejectsWith(quests.update(q.id, { name: 'Otro', size: 'epica', shares: [] }), 'invalid');
+  await rejectsWith(quests.setStatus(q.id, 'abandonada'), 'invalid');
+  // simula que quests.json quedó con la misión "pendiente" aunque la recompensa ya se dio
+  const doc = JSON.parse(fake.state.files.get('rpg/quests.json')); doc.quests[0].status = 'pendiente';
+  fake.state.files.set('rpg/quests.json', JSON.stringify(doc));
+  const s = await make(fake).quests.state();
+  assert.equal(s.quests[0].status, 'completada');
+  assert.equal(s.computed.general.total, 60);
+  assert.equal((await make(fake).quests.claim(q.id)).duplicate, true);
+});
+
+test('estados de una misión: pausar, retomar, abandonar y reabrir (sin XP); subtareas sin XP', async () => {
+  const { quests, repo } = make();
+  const q = await quests.create({ name: 'Ordenar el cuarto', size: 'pequena', shares: [], steps: [{ text: 'Armario' }, { text: '  ' }] });
+  assert.equal((await quests.state()).quests[0].steps.length, 1, 'sin subtareas vacías');
+  await quests.setStatus(q.id, 'pausada'); await rejectsWith(quests.claim(q.id), 'invalid');
+  await quests.setStatus(q.id, 'en_curso'); await quests.setStatus(q.id, 'abandonada');
+  await rejectsWith(quests.setStatus(q.id, 'completada'), 'invalid');
+  await rejectsWith(quests.claim(q.id), 'invalid');
+  await quests.setStatus(q.id, 'pendiente');
+  const sid = (await quests.state()).quests[0].steps[0].id;
+  await quests.toggleStep(q.id, sid, true);
+  assert.equal((await repo.state(true)).computed.general.total, 0, 'las subtareas no dan XP');
+  await quests.claim(q.id);
+  assert.equal((await repo.state(true)).computed.general.total, 15);
+});
+
+test('validación de misiones', async () => {
+  const { quests } = make();
+  const ok = { name: 'X', size: 'normal', shares: [] };
+  await rejectsWith(quests.create({ ...ok, name: ' ' }), 'invalid');
+  await rejectsWith(quests.create({ ...ok, size: 'gigante' }), 'invalid');
+  await rejectsWith(quests.create({ ...ok, shares: [{ sub: 'arte', pct: 40 }] }), 'invalid');
+  await rejectsWith(quests.create({ ...ok, objective: { activity: 'gimnasio', count: 0 } }), 'invalid');
+  await rejectsWith(quests.create({ ...ok, startDay: '2026-09-10', dueDay: '2026-09-01' }), 'invalid');
+  await rejectsWith(quests.create({ ...ok, steps: Array.from({ length: 21 }, (_, i) => ({ text: 's' + i })) }), 'invalid');
+  assert.equal((await quests.state()).quests.length, 0);
 });

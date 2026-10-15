@@ -153,6 +153,23 @@
         });
       },
 
+      // Anula un apunte con un ajuste visible que lo compensa exactamente (nada se borra). Solo una vez por apunte.
+      // Las recompensas de misiones y logros no se anulan así.
+      voidEntry: function (key) {
+        var self = this;
+        return loadEntries().then(function (all) {
+          var e = all.filter(function (x) { return x.key === key; })[0];
+          if (!e) throw invalid('Ese apunte ya no existe.');
+          if (e.kind !== 'manual' && e.kind !== 'activity') throw invalid('Este apunte no se puede anular desde aquí.');
+          var label = ('Anulado: ' + e.label).slice(0, R.LIMITS.label);
+          var day = R.today();
+          return self.addEntry({
+            kind: 'adjustment', key: 'void:' + key, label: label, reason: 'Apunte anulado (' + e.label + ', ' + e.day + ')', xp: -e.xp, reverses: key, day: day,
+            points: (e.splits || []).map(function (p) { return { sub: p.sub, xp: -p.xp }; })
+          });
+        });
+      },
+
       // ---- Experiencia ----
       // Añade un apunte al registro. Si ya existe uno con la misma clave NO se vuelve a contar (devuelve { duplicate: true }).
       // Solo se da por hecho cuando GitHub ha confirmado la escritura; si falla, lanza el error y no queda nada a medias.

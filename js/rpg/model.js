@@ -196,13 +196,38 @@
     return (Math.floor(max / 5) + 1) * 5;
   };
 
+  // Fecha de hoy en hora local (AAAA-MM-DD).
+  R.today = function () { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+
+  // Una actividad da como máximo 5 XP en total, en puntos enteros repartidos entre subcategorías (p. ej. 2 + 3).
+  R.ACTIVITY_MAX = 5;
+  R.ACT_ID_RE = /^[a-z0-9][a-z0-9_-]{1,30}$/;
+
+  // Claves de los apuntes que ya se han anulado (un ajuste con `reverses`), y recuento de actividades no anuladas.
+  R.voidedKeys = function (entries) {
+    var out = {};
+    (entries || []).forEach(function (e) { if (e && typeof e.reverses === 'string') out[e.reverses] = true; });
+    return out;
+  };
+  R.activityCount = function (entries, activityId, from, to) {
+    var voided = R.voidedKeys(entries), n = 0;
+    (entries || []).forEach(function (e) {
+      if (!e || e.kind !== 'activity' || e.activity !== activityId || voided[e.key]) return;
+      if (from && e.day < from) return;
+      if (to && e.day > to) return;
+      n++;
+    });
+    return n;
+  };
+
   // Validación de un apunte de experiencia (lanza un error claro). `structure` sirve para comprobar las subcategorías.
+  // La experiencia se reparte con `shares` (porcentajes que suman 100) o con `points` (XP exacta por subcategoría).
   R.sanitizeEntry = function (input, structure, opts) {
     opts = opts || {};
     function bad(msg) { return App.storageError('invalid', msg); }
     if (!input || typeof input !== 'object') throw bad('El apunte no es válido.');
     var kind = input.kind;
-    if (['manual', 'quest', 'achievement', 'adjustment'].indexOf(kind) < 0) throw bad('El tipo de apunte no es válido.');
+    if (['manual', 'quest', 'achievement', 'adjustment', 'activity'].indexOf(kind) < 0) throw bad('El tipo de apunte no es válido.');
     var key = String(input.key || '');
     if (!/^[A-Za-z0-9:_-]{3,80}$/.test(key)) throw bad('El apunte no tiene una clave válida.');
     var label = cleanText(input.label, R.LIMITS.label);
@@ -213,21 +238,42 @@
     if (!isFinite(xp) || Math.floor(xp) !== xp || xp === 0) throw bad('La experiencia debe ser un número entero distinto de 0.');
     if (Math.abs(xp) > R.LIMITS.maxXp) throw bad('Demasiada experiencia de una vez (máximo ' + R.LIMITS.maxXp + ').');
     if (xp < 0 && kind !== 'adjustment') throw bad('Solo un ajuste puede quitar experiencia.');
-    var shares = (input.shares || []).map(function (s) { return { sub: s && s.sub, pct: Number(s && s.pct) }; });
-    var seen = {};
-    shares.forEach(function (s) {
-      if (!isFinite(s.pct) || Math.floor(s.pct) !== s.pct || s.pct <= 0 || s.pct > 100) throw bad('Los porcentajes deben ser enteros entre 1 y 100.');
-      var f = R.findSub(structure, s.sub);
+    var activity = '';
+    if (kind === 'activity') {
+      activity = String(input.activity || '');
+      if (!R.ACT_ID_RE.test(activity)) throw bad('La actividad no es válida.');
+      if (xp > R.ACTIVITY_MAX) throw bad('Una actividad da como máximo ' + R.ACTIVITY_MAX + ' XP.');
+    }
+    function checkSub(id, seen) {
+      var f = R.findSub(structure, id);
       if (!f) throw bad('Esa subcategoría no existe.');
       if (f.sub.archived && kind !== 'adjustment') throw bad('«' + f.sub.name + '» está archivada; desarchívala para darle experiencia.');
-      if (seen[s.sub]) throw bad('Una subcategoría aparece dos veces.');
-      seen[s.sub] = true;
-    });
-    var day = typeof input.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : (opts.today || new Date().toISOString().slice(0, 10));
-    return {
-      key: key, kind: kind, label: label, reason: reason, xp: xp, day: day,
-      splits: R.splitXp(xp, shares),
-      at: typeof input.at === 'string' ? input.at : new Date().toISOString()
-    };
+      if (seen[id]) throw bad('Una subcategoría aparece dos veces.');
+      seen[id] = true;
+    }
+    var seen = {}, splits;
+    if (Array.isArray(input.points)) {
+      var sum = 0;
+      splits = input.points.map(function (p) {
+        var v = Number(p && p.xp);
+        if (!isFinite(v) || Math.floor(v) !== v || v === 0 || (v < 0) !== (xp < 0)) throw bad('Los puntos de cada subcategoría deben ser enteros del mismo signo que la experiencia.');
+        checkSub(p.sub, seen); sum += v;
+        return { sub: p.sub, xp: v };
+      });
+      if (splits.length && sum !== xp) throw bad('Los puntos repartidos (' + sum + ') no coinciden con la experiencia (' + xp + ').');
+    } else {
+      var shares = (input.shares || []).map(function (s) { return { sub: s && s.sub, pct: Number(s && s.pct) }; });
+      shares.forEach(function (s) {
+        if (!isFinite(s.pct) || Math.floor(s.pct) !== s.pct || s.pct <= 0 || s.pct > 100) throw bad('Los porcentajes deben ser enteros entre 1 y 100.');
+        checkSub(s.sub, seen);
+      });
+      splits = R.splitXp(xp, shares);
+    }
+    var day = typeof input.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : (opts.today || R.today());
+    var out = { key: key, kind: kind, label: label, reason: reason, xp: xp, day: day, splits: splits, at: typeof input.at === 'string' ? input.at : new Date().toISOString() };
+    if (activity) out.activity = activity;
+    if (typeof input.quest === 'string' && /^[A-Za-z0-9_]{3,40}$/.test(input.quest)) out.quest = input.quest;
+    if (kind === 'adjustment' && typeof input.reverses === 'string' && /^[A-Za-z0-9:_-]{3,80}$/.test(input.reverses)) out.reverses = input.reverses;
+    return out;
   };
 })(window.App = window.App || {});

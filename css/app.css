@@ -27,7 +27,7 @@ input, select { font: inherit; color: inherit; }
 
 /* ============ ESTRUCTURA ============ */
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; }
-.main { min-width: 0; padding: clamp(22px, 4.5vw, 52px); outline: none; transition: background-color 0.3s ease; }
+.main { min-width: 0; padding: clamp(22px, 4.5vw, 52px); outline: none; min-height: 100vh; min-height: 100dvh; transition: background-color 0.3s ease; }
 .view { max-width: var(--content-max); margin-inline: auto; animation: open 0.45s ease both; }
 @keyframes open { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -687,3 +687,33 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
   .rd-name { font-size: 21px; }
   .rd-lv { font-size: 16px; }
 }
+
+/* ---------- Misiones y actividades ---------- */
+.tabs { display: flex; gap: 8px; margin: 0 0 16px; flex-wrap: wrap; }
+.tab { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--edge); color: var(--ink); text-decoration: none; font-weight: 700; }
+.tab:hover { border-color: var(--accent); }
+.tab[aria-current="page"] { background: var(--pink-pastel); color: #2A1A24; border-color: transparent; }
+.act-grid, .mq-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.mq-list { grid-template-columns: 1fr; }
+.act-card, .mq-card { padding: 14px; border: 1.5px solid var(--edge); border-radius: var(--r-card); background: var(--surface); display: grid; gap: 8px; align-content: start; }
+.act-card.archived, .mq-card[data-status="abandonada"] { opacity: .72; border-style: dashed; }
+.mq-card[data-status="completada"] { border-color: color-mix(in srgb, var(--m-bien, #8FD3A8) 70%, transparent); }
+.act-top { display: flex; gap: 12px; align-items: center; }
+.act-name h3, .mq-head h3 { margin: 0; font-size: 1.08rem; overflow-wrap: anywhere; }
+.act-name p, .mq-meta { margin: 2px 0 0; font-size: .88rem; }
+.act-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.act-log { min-height: 40px; padding: 0 18px; }
+.mq-head { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.mq-obj { margin: 0; font-size: .95rem; }
+.mq-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.mq-steps label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.mq-steps input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--accent); }
+.mq-sec { margin-top: 16px; }
+.mq-sec > summary, .archived > summary { cursor: pointer; font-weight: 700; font-family: var(--font-display); font-size: 1.25rem; }
+.pk-groups { display: grid; gap: 4px; }
+.pk-main { margin: 8px 0 0; font-size: .85rem; font-weight: 700; color: var(--ink-soft); }
+.pk-caps { padding: 6px 4px; max-height: none; overflow: visible; }
+.rpg-dialog textarea { width: 100%; padding: 10px 12px; border-radius: var(--r-ctl); border: 1.5px solid var(--edge); background: var(--surface); color: var(--ink); font: inherit; }
+.rpg-dialog .shares .checkline { margin-bottom: 10px; }
+.hist .mini { min-height: 28px; padding: 0 10px; margin-left: 6px; background: transparent; color: var(--ink); border-color: var(--edge); }
+.recent .hist .mini { color: var(--paper-ink, inherit); }

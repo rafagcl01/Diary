@@ -66,10 +66,13 @@
   }
 
   function recentHtml(entries) {
-    var last = entries.slice(-6).reverse();
-    if (!last.length) return '<section class="card recent"><h2>Últimas recompensas</h2><p class="soft">Aún no hay experiencia. Cuando completes una misión o apuntes una actividad, aparecerá aquí.</p></section>';
+    var last = entries.slice(-6).reverse(), voided = R.voidedKeys(entries);
+    if (!last.length) return '<section class="card recent"><h2>Últimas recompensas</h2><p class="soft">Aún no hay experiencia. Cuando completes una misión o registres una actividad, aparecerá aquí.</p></section>';
     return '<section class="card recent"><h2>Últimas recompensas</h2><ul class="hist">' + last.map(function (e) {
-      return '<li><span>' + esc(e.label) + (e.kind === 'adjustment' ? ' <em>(ajuste: ' + esc(e.reason || '') + ')</em>' : '') + '</span><span class="soft">' + esc(fmtDay(e.day)) + '</span><strong>' + (e.xp > 0 ? '+' : '') + e.xp + ' XP</strong></li>';
+      var canVoid = (e.kind === 'manual' || e.kind === 'activity') && !voided[e.key];
+      return '<li><span>' + esc(e.label) + (e.kind === 'adjustment' ? ' <em>(ajuste: ' + esc(e.reason || '') + ')</em>' : '') + (voided[e.key] ? ' <em>(anulado)</em>' : '') +
+        (canVoid ? ' <button type="button" class="mini" data-act="void" data-key="' + esc(e.key) + '" aria-label="Anular: ' + esc(e.label) + '">Anular</button>' : '') +
+        '</span><span class="soft">' + esc(fmtDay(e.day)) + '</span><strong>' + (e.xp > 0 ? '+' : '') + e.xp + ' XP</strong></li>';
     }).join('') + '</ul></section>';
   }
 
@@ -239,6 +242,7 @@
           return;
         }
         var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
+        if (act === 'void') return repo.voidEntry(t.getAttribute('data-key')).then(function (r) { return reload().then(function () { say(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado: queda en el historial como un ajuste.'); }); }).catch(function (e) { say(e.message); });
         if (act === 'close') return closeDialog();
         if (act === 'xp') return openXp();
         if (act === 'adjust') return openAdjust();

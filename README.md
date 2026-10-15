@@ -329,3 +329,26 @@ Fondo de estrella de cinco puntas con las puntas unidas por un pentágono; el pr
 
 ### Límites conocidos
 No hay misiones ni logros todavía. «Registrar actividades» es un apunte manual rápido. No hay deshacer: se corrige con un ajuste.
+
+## Fase 5B-1: actividades y misiones
+
+**Misiones** tiene dos pestañas: *Misiones* y *Actividades*.
+
+### Actividades (poca XP, registro rápido)
+- Vienen 19 predefinidas (gimnasio, caminar, dormir bien, leer un libro, tarot, quedar con amigos…) y puedes crear, editar y archivar las tuyas.
+- Cada una da **como máximo 5 XP**, en puntos enteros repartidos entre subcategorías (p. ej. Leer un libro: 2 Lectura + 3 Conocimiento). El tope es la constante `R.ACTIVITY_MAX`.
+- «Registrar» suma al día elegido (hoy por defecto). Cada apunte guarda una copia de sus puntos: editar la actividad después no cambia lo ya registrado.
+- **Anular:** tras registrar (o en «Últimas recompensas» de la ficha) puedes anular un apunte. No se borra: se añade un ajuste visible que lo compensa exactamente, una sola vez. Una visita anulada deja de contar para las misiones.
+
+### Misiones
+- Nombre, descripción, tamaño (15/30/60/100 XP), reparto por porcentajes entre subcategorías (o solo nivel general), fechas (desde / hasta opcional) y subtareas **sin XP**.
+- **Objetivo opcional:** «hacer *Ir al gimnasio* N veces». Cuenta los registros no anulados entre las fechas. Las visitas dan su XP normal y, al cumplir, **Completar** da el bonus de la misión.
+- Estados: pendiente, en curso, pausada, completada, abandonada (se puede reabrir sin XP). Completar solo si está pendiente o en curso y cumple el objetivo.
+- **Una sola recompensa:** clave `quest:<id>` en el registro. Doble clic, reintento u otro dispositivo no la repiten. Se escribe primero el registro y después se marca la misión; si falla lo segundo, se ve completada igualmente.
+- Una misión completada es de solo lectura.
+
+### Datos
+`rpg/activities.json` (actividades), `rpg/quests.json` (misiones). El registro de XP sigue en `rpg/ledger-AAAA.json` con los tipos `activity`, `quest` y `adjustment` (con `reverses` al anular).
+
+### Pendiente
+B2: misiones diarias/semanales que se repiten y catálogo de misiones predefinidas. B3: jefes finales con varios pasos. Después: logros, títulos y colección.
