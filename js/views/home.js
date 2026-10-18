@@ -75,7 +75,7 @@
           '</div>' +
 
           '<div class="three">' +
-            '<article class="card"><h3>Misiones activas</h3><p>Ninguna activa. Tú decides cuándo empezar una.</p></article>' +
+            '<article class="card"><h3>Misiones</h3><p>Tus actividades, misiones semanales y jefes están en tu personaje.</p><p style="margin-top: 10px"><a href="#/personaje" class="link">Ver personaje</a></p></article>' +
             '<article class="card" id="home-memories"><h3>Hace un año</h3><div id="home-memories-body"><p>Aparecerán recuerdos cuando tengas entradas de años anteriores.</p></div></article>' +
             '<article class="card" id="home-people"><h3>Personas recientes</h3><div id="home-people-body"><p>Aquí verás con quién has compartido tus últimos recuerdos.</p><p style="margin-top: 10px"><a href="#/personas" class="link">Ver personas</a></p></div></article>' +
           '</div>' +

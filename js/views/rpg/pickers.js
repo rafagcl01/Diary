@@ -21,7 +21,7 @@
     summaryText: function (values, mode) {
       var t = P.pickers.total(values);
       if (mode === 'pct') return 'Suman ' + t + '%' + (t === 100 || t === 0 ? '' : ' (deben sumar 100)');
-      return 'Suman ' + t + ' de ' + R.ACTIVITY_MAX + ' XP' + (t > R.ACTIVITY_MAX ? ' (el máximo es ' + R.ACTIVITY_MAX + ')' : '');
+      return 'Suman ' + t + ' de ' + R.ACTIVITY_XP + ' puntos' + (t === R.ACTIVITY_XP ? '' : ' (deben ser ' + R.ACTIVITY_XP + ')');
     },
     toList: function (values, mode) {
       return Object.keys(values).map(function (k) { return mode === 'pct' ? { sub: k, pct: values[k] } : { sub: k, xp: values[k] }; });
@@ -34,7 +34,7 @@
         }).join('') + '</ul></div>';
       }).join('') + '</div>' +
       (picked.length ? '<div class="share-rows">' + picked.map(function (id) {
-        return '<label class="share-row"><span>' + esc(names[id] || id) + '</span><input type="number" inputmode="numeric" min="1" max="' + (mode === 'pct' ? 100 : R.ACTIVITY_MAX) + '" step="1" data-pkval="' + esc(id) + '" value="' + values[id] + '"><span>' + (mode === 'pct' ? '%' : 'XP') + '</span></label>';
+        return '<label class="share-row"><span>' + esc(names[id] || id) + '</span><input type="number" inputmode="numeric" min="1" max="' + (mode === 'pct' ? 100 : R.ACTIVITY_XP) + '" step="1" data-pkval="' + esc(id) + '" value="' + values[id] + '"><span>' + (mode === 'pct' ? '%' : 'XP') + '</span></label>';
       }).join('') + '</div>' : '') +
       '<p class="soft" data-pk-total role="status">' + (picked.length ? P.pickers.summaryText(values, mode) : (mode === 'pct' ? 'Sin subcategorías: solo sube el nivel general.' : 'Elige al menos una subcategoría.')) + '</p>';
     }

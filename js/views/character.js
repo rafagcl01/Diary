@@ -1,6 +1,6 @@
 // Ficha del personaje: todo cabe en una pantalla. A la izquierda, nivel y últimas recompensas; a la derecha, el radar.
 // Al pulsar un atributo, el radar se convierte en el de sus subcategorías (flecha arriba a la izquierda para volver).
-// La experiencia solo entra por acciones explícitas (actividades, misiones, apuntes). El diario no da XP.
+// Debajo van tres columnas: Actividades, Misiones semanales y Jefes finales. La XP solo entra por acciones explícitas; el diario no da XP.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
   App.views = App.views || {};
@@ -18,8 +18,6 @@
         bar(g.fraction, 'Nivel ' + g.level + ': ' + g.into + ' de ' + g.need + ' XP') +
         '</div>' +
       '<div class="btn-row char-actions">' +
-        '<a class="btn" href="#/misiones/actividades">Registrar actividad</a>' +
-        '<button type="button" class="btn secondary" data-act="xp">Apunte manual</button>' +
         '<button type="button" class="btn secondary" data-act="profile">Editar personaje</button>' +
         '<button type="button" class="btn secondary" data-act="adjust">Corregir XP</button></div>' +
     '</section>';
@@ -78,25 +76,41 @@
         App.pageHeader('Tu personaje', 'Tu nivel, tus atributos y tu progreso.', 'ficha de personaje') + App.lace() + '<div id="rpg-body"></div>' +
         '<dialog class="confirm rpg-dialog" id="rpg-dialog" aria-labelledby="rpg-dtitle"></dialog></div>';
       var $ = function (s) { return root.querySelector(s); };
-      var body = $('#rpg-body'), view = $('.rpg-view');
+      var body = $('#rpg-body');
       if (!repo) {
         body.innerHTML = '<section class="card stitched empty"><div class="empty-icon">' + icon('star') + '</div><h2>Conecta tus datos para ver tu personaje</h2>' +
           '<p>Tu experiencia se guarda en tu repositorio de datos, junto al diario. Nunca solo en el navegador.</p><a class="btn secondary" href="#/ajustes">Conectar mis datos</a></section>';
         return;
       }
-      body.innerHTML = '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>';
+      body.innerHTML = '<div id="rpg-top"><div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div></div>' +
+        '<div class="char-cols"><section class="card col" id="col-act" aria-label="Actividades"></section><section class="card col" id="col-wk" aria-label="Misiones semanales"></section><section class="card col" id="col-boss" aria-label="Jefes finales"></section></div>';
+      var top = $('#rpg-top'), panels = [];
       var st = null, nav = { level: 'main', main: null, sel: null }, note = '', form = null;
 
       function paint() {
         var c = st.computed;
         if (nav.level === 'sub' && !c.mains.some(function (m) { return m.id === nav.main; })) nav = { level: 'main', main: null, sel: null };
-        body.innerHTML = '<div class="char-grid">' + heroHtml(st) + '<div class="char-radar">' + radarCard(c, nav) + '</div>' +
+        top.innerHTML = '<div class="char-grid">' + heroHtml(st) + '<div class="char-radar">' + radarCard(c, nav) + '</div>' +
           '<div class="char-side"><p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>' + recentHtml(st.entries) +
-          '<nav class="btn-row" aria-label="Más sobre tu personaje"><a class="btn secondary" href="#/misiones">Misiones activas</a><a class="btn secondary" href="#/coleccion">Colección</a></nav></div></div>';
+          '<nav class="btn-row" aria-label="Más sobre tu personaje"><a class="btn secondary" href="#/coleccion">Colección</a></nav></div></div>';
         nav.anim = false;
       }
+      function on(type, fn) { top.addEventListener(type, fn); $('#rpg-dialog').addEventListener(type, fn); }
       function focusSel(sel) { var el = root.querySelector(sel); if (el && el.focus) el.focus(); }
       function reload() { return repo.state(true).then(function (s) { st = s; paint(); }); }
+      // Tras cualquier cambio de XP: da las recompensas pendientes, refresca la ficha y avisa de lo conseguido.
+      function afterChange(day, pre) {
+        var before = st.computed.general.level;
+        return R.syncRewards(day).catch(function (e) { say((e && e.message) || 'No se pudieron comprobar las recompensas.'); return []; }).then(function (ev) {
+          var events = (pre || []).concat(ev);
+          return repo.state(true).then(function (s) {
+            st = s; paint();
+            if (s.computed.general.level > before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + s.computed.general.level });
+            V.toast.events(events);
+            return Promise.all(panels.map(function (p) { return p.reload(); }));
+          });
+        });
+      }
       function say(msg) { note = msg; var el = $('#rpg-msg'); if (el) el.textContent = msg; }
       function mainById(id) { return st.computed.mains.filter(function (m) { return m.id === id; })[0]; }
 
@@ -114,17 +128,6 @@
       function repaintShares() { var el = $('#rpg-shares'); if (el) el.innerHTML = sharesBlock(); }
       function sharesList() { return V.pickers.toList(form.shares, 'pct'); }
 
-      function openXp() {
-        form = { mode: 'xp', req: R.newRequestId(), size: 'normal', shares: {} };
-        openDialog('<h3 id="rpg-dtitle">Apunte manual</h3>' +
-          '<p class="soft">Para algo que no está entre tus actividades ni misiones. Cada apunte cuenta una sola vez.</p>' +
-          '<label class="field"><span>¿Qué has hecho?</span><input id="xp-label" type="text" maxlength="' + R.LIMITS.label + '" autocomplete="off" placeholder="Por ejemplo, Sesión de dibujo"></label>' +
-          '<fieldset class="symbols"><legend>Tamaño</legend><ul class="emo-caps" aria-label="Tamaño">' + R.QUEST_SIZES.map(function (z) {
-            return '<li><button type="button" class="emo-cap" data-size="' + z.id + '" aria-pressed="' + (z.id === form.size) + '"><span>' + z.label + ' · ' + z.xp + ' XP</span></button></li>';
-          }).join('') + '</ul></fieldset>' +
-          '<fieldset class="shares"><legend>¿A qué subcategorías va?</legend><div id="rpg-shares">' + sharesBlock() + '</div></fieldset>' + DMSG +
-          '<div class="btn-row"><button type="button" class="btn" data-act="xp-save">Sumar experiencia</button><button type="button" class="btn secondary" data-act="close">Cancelar</button></div>');
-      }
       function openAdjust() {
         form = { mode: 'adjust', req: R.newRequestId(), shares: {} };
         openDialog('<h3 id="rpg-dtitle">Corregir experiencia</h3>' +
@@ -192,7 +195,7 @@
 
       // Guarda un apunte y solo entonces anuncia la recompensa (cuando GitHub ha confirmado).
       function saveEntry(input) {
-        var before = st.computed.general.level, btn = $('[data-act="xp-save"]') || $('[data-act="adjust-save"]');
+        var before = st.computed.general.level, btn = $('[data-act="adjust-save"]');
         if (btn) btn.disabled = true;
         dmsg('Guardando…', 'info');
         return repo.addEntry(input).then(function (r) {
@@ -213,25 +216,20 @@
       }
       function manageOp(promise) { return promise.then(reload).then(openManage).catch(function (e) { dmsg(e.message); }); }
 
-      view.addEventListener('click', function (ev) {
-        var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-main],[data-sub],[data-pk],[data-size]') : null;
+      on('click', function (ev) {
+        var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-main],[data-sub],[data-pk]') : null;
         if (!t) return;
         var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
         if (!act) {
-          var main = t.getAttribute('data-main'), sub = t.getAttribute('data-sub'), pk = t.getAttribute('data-pk'), size = t.getAttribute('data-size');
+          var main = t.getAttribute('data-main'), sub = t.getAttribute('data-sub'), pk = t.getAttribute('data-pk');
           if (main) { nav = { level: 'sub', main: main, sel: null, anim: true }; paint(); return focusSel('.rd-back'); }
           if (sub) { nav.sel = nav.sel === sub ? null : sub; paint(); return focusSel('.rd-label.on') || focusSel('.rd-fallback button[aria-pressed="true"]'); }
           if (pk && form) { V.pickers.toggle(form.shares, pk, 'pct'); return repaintShares(); }
-          if (size && form) {
-            form.size = size;
-            Array.prototype.forEach.call(dlg().querySelectorAll('[data-size]'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-size') === size)); });
-          }
           return;
         }
         if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
-        if (act === 'void') return repo.voidEntry(t.getAttribute('data-key')).then(function (r) { return reload().then(function () { say(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado: queda en el historial como un ajuste.'); }); }).catch(function (e) { say(e.message); });
+        if (act === 'void') return repo.voidEntry(t.getAttribute('data-key')).then(function (r) { return afterChange().then(function () { say(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado: queda en el historial como un ajuste.'); }); }).catch(function (e) { say(e.message); });
         if (act === 'close') return closeDialog();
-        if (act === 'xp') return openXp();
         if (act === 'adjust') return openAdjust();
         if (act === 'profile') return openProfile();
         if (act === 'sub-manage') return openManage();
@@ -247,16 +245,12 @@
           return guard(form.id ? repo.updateSub(form.id, data) : repo.createSub(nav.main, data), form.back);
         }
         if (act === 'main-save') return guard(repo.updateMain(form.id, { name: $('#sb-name').value, description: $('#sb-desc').value, icon: checkedValue('sb-icon') }), true);
-        if (act === 'xp-save') {
-          var z = R.QUEST_SIZES.filter(function (q) { return q.id === form.size; })[0];
-          return saveEntry({ kind: 'manual', key: 'manual:' + form.req, label: $('#xp-label').value, xp: z.xp, shares: sharesList(), day: R.today() });
-        }
         if (act === 'adjust-save') {
           var amount = Number($('#xp-amount').value), dir = Number($('#xp-dir').value) < 0 ? -1 : 1;
           return saveEntry({ kind: 'adjustment', key: 'adjust:' + form.req, label: $('#xp-label').value, reason: $('#xp-reason').value, xp: dir * amount, shares: sharesList(), day: R.today() });
         }
       });
-      view.addEventListener('input', function (ev) {
+      on('input', function (ev) {
         var t = ev.target, id = t && t.getAttribute ? t.getAttribute('data-pkval') : null;
         if (!id || !form) return;
         form.shares[id] = Math.floor(Number(t.value)) || 0;
@@ -269,15 +263,24 @@
         var m = t ? mainById(t.getAttribute('data-main')) : null, el = $('#rd-info');
         if (m && el) el.innerHTML = mainInfo(m);
       }
-      view.addEventListener('mouseover', peek);
-      view.addEventListener('focusin', peek);
-      view.addEventListener('keydown', function (ev) {
+      on('mouseover', peek);
+      on('focusin', peek);
+      on('keydown', function (ev) {
         var t = ev.target && ev.target.closest ? ev.target.closest('.rd-label') : null;
         if (t && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); t.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
       });
 
-      repo.state().then(function (s) { st = s; paint(); }).catch(function (err) {
-        body.innerHTML = '<div class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>';
+      repo.state().then(function (s) {
+        st = s; paint();
+        var ctx = { rpg: repo, acts: R.activities(), weekly: R.weekly(), bosses: R.bosses(), afterChange: afterChange };
+        panels = [V.activitiesPanel($('#col-act'), ctx), V.weeklyPanel($('#col-wk'), ctx), V.bossPanel($('#col-boss'), ctx)];
+        // Primero se dan las recompensas que estuvieran pendientes (por ejemplo, de otra pestaña) y luego se pintan las columnas.
+        return R.syncRewards().catch(function () { return []; }).then(function (ev) {
+          if (ev.length) { return afterChange(null, ev); }
+          return Promise.all(panels.map(function (p) { return p.reload(); }));
+        });
+      }).catch(function (err) {
+        top.innerHTML = '<div class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>';
       });
     }
   };

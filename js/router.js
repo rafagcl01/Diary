@@ -15,6 +15,7 @@
 
     function resolve() {
       var route = App.parseHash(location.hash);
+      if (route.section === 'misiones') { location.replace('#/personaje'); return; }   // la antigua sección de misiones vive ahora en Personaje
       var section = sections.filter(function (s) { return s.id === route.section; })[0] || sections[0];
       onRoute(section, { initial: initial, params: section.id === route.section ? route.params : [] });
       initial = false;

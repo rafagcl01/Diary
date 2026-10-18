@@ -1,4 +1,4 @@
-// Actividades: la forma más sencilla (y la que menos XP da) de avanzar. Cada una da como máximo 5 XP,
+// Actividades: la forma más sencilla (y la que menos XP da) de avanzar. Todas dan lo mismo: 5 XP,
 // en puntos enteros repartidos entre subcategorías (por ejemplo, Leer: 2 Lectura + 3 Conocimiento).
 // Vienen unas predefinidas; el usuario puede crear las suyas, editarlas y archivarlas. Se guardan en rpg/activities.json.
 // Al registrar una, el apunte guarda una copia de sus puntos: cambiar la actividad después no cambia el pasado.
@@ -49,7 +49,7 @@
       return { sub: p.sub, xp: v };
     });
     if (!points.length) throw invalid('Elige al menos una subcategoría.');
-    if (total > R.ACTIVITY_MAX) throw invalid('Una actividad da como máximo ' + R.ACTIVITY_MAX + ' XP en total (ahora suma ' + total + ').');
+    if (total !== R.ACTIVITY_XP) throw invalid('Toda actividad da ' + R.ACTIVITY_XP + ' XP: reparte exactamente ' + R.ACTIVITY_XP + ' puntos (ahora ' + total + ').');
     return { id: base && base.id ? base.id : R.newActivityId(), name: name, icon: icon, points: points, archived: !!(input.archived === undefined ? (base && base.archived) : input.archived) };
   };
 
@@ -132,6 +132,14 @@
         });
       },
 
+      // Registra una actividad puntual (que no se guarda para repetir). Cuenta XP como cualquiera, pero no cuenta para objetivos.
+      logOnce: function (o) {
+        return rpg.state().then(function (st) {
+          var a = R.sanitizeActivity({ name: o.name, icon: 'star', points: o.points }, st.structure, { id: 'puntual' });
+          return rpg.addEntry({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: 'puntual', label: a.name, xp: R.activityXp(a), points: a.points, day: o.day });
+        });
+      },
+
       // Registra una actividad hecha el día `o.day` (hoy por defecto). `o.req` es la clave de este toque: repetirlo no suma otra vez.
       log: function (id, o) {
         o = o || {};
@@ -139,6 +147,7 @@
           var a = r[0].filter(function (x) { return x.id === id; })[0];
           if (!a) throw invalid('Esa actividad ya no existe.');
           if (a.archived) throw invalid('Esa actividad está archivada.');
+          if (R.activityXp(a) !== R.ACTIVITY_XP) throw invalid('Esta actividad no suma ' + R.ACTIVITY_XP + ' puntos: edítala para ajustarla.');
           return rpg.addEntry({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: a.id, label: a.name, xp: R.activityXp(a), points: a.points, day: o.day });
         });
       }

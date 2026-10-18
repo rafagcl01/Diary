@@ -199,8 +199,9 @@
   // Fecha de hoy en hora local (AAAA-MM-DD).
   R.today = function () { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
 
-  // Una actividad da como máximo 5 XP en total, en puntos enteros repartidos entre subcategorías (p. ej. 2 + 3).
+  // Toda actividad da exactamente 5 XP, en puntos enteros repartidos entre subcategorías (p. ej. 2 + 3).
   R.ACTIVITY_MAX = 5;
+  R.ACTIVITY_XP = 5;
   R.ACT_ID_RE = /^[a-z0-9][a-z0-9_-]{1,30}$/;
 
   // Claves de los apuntes que ya se han anulado (un ajuste con `reverses`), y recuento de actividades no anuladas.

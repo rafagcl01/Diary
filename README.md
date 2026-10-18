@@ -331,25 +331,16 @@ La escala (2, 3, 5, 10, 15…) crece sola y se indica bajo el gráfico. Mientras
 ### Límites conocidos
 No hay misiones ni logros todavía. «Registrar actividades» es un apunte manual rápido. No hay deshacer: se corrige con un ajuste.
 
-## Fase 5B-1: actividades y misiones
+## Fase 5B: actividades, misiones semanales y jefes (en la ficha del personaje)
 
-**Misiones** tiene dos pestañas: *Misiones* y *Actividades*.
+Todo vive en **Personaje**, en tres columnas bajo el radar (la sección «Misiones» ya no existe; `#/misiones` lleva a Personaje).
 
-### Actividades (poca XP, registro rápido)
-- Vienen 19 predefinidas (gimnasio, caminar, dormir bien, leer un libro, tarot, quedar con amigos…) y puedes crear, editar y archivar las tuyas.
-- Cada una da **como máximo 5 XP**, en puntos enteros repartidos entre subcategorías (p. ej. Leer un libro: 2 Lectura + 3 Conocimiento). El tope es la constante `R.ACTIVITY_MAX`.
-- «Registrar» suma al día elegido (hoy por defecto). Cada apunte guarda una copia de sus puntos: editar la actividad después no cambia lo ya registrado.
-- **Anular:** tras registrar (o en «Últimas recompensas» de la ficha) puedes anular un apunte. No se borra: se añade un ajuste visible que lo compensa exactamente, una sola vez. Una visita anulada deja de contar para las misiones.
+- **Actividades:** todas dan exactamente **5 XP**, repartidos en puntos enteros entre subcategorías. Hay 19 predefinidas; puedes crear las tuyas, editarlas y archivarlas. Al crear una, eliges si **solo se registra esta vez** (puntual, no se guarda) o si **se guarda para repetirla**. Cada registro guarda su copia de puntos y se puede **anular** (ajuste visible que lo compensa).
+- **Misiones semanales** (de lunes a domingo, se renuevan solas): XP 15/30/60/100 según tamaño. Dos modos: *ligada a una actividad* («X veces a la semana»: se completa sola al registrarla, sin botón de reclamar) o *casillas* (una o varias, que marcas tú).
+- **Jefes finales:** varios pasos (check o actividad × veces). Cada paso da 5 XP; derrotarlo da 250 / 400 / 600 XP. Imagen: dibujo incluido (SVG), o **enlace directo a un GIF** de Giphy, Tenor o Imgur (no se descarga ni se guarda en tu repositorio; si no carga, se muestra el dibujo).
+- **Avisos:** al completar una misión, un paso, un jefe o subir de nivel aparece una notificación.
+- **Datos:** `rpg/activities.json`, `rpg/weekly.json`, `rpg/bosses.json`; las recompensas van al registro `rpg/ledger-AAAA.json` con claves únicas (`weekly:<id>:<semana>`, `boss:<id>[:<paso>]`), así que nunca se dan dos veces. `rpg/quests.json` (versión anterior) no se toca ni se usa.
+- **Seguridad:** la política de contenido solo permite imágenes de `giphy.com`, `tenor.com` e `imgur.com` (además de las propias).
+- **Límites conocidos:** anular una visita después de que una misión o paso ya diera su recompensa no la retira (se corrige con «Corregir XP»). Al crear subcategorías, la media del atributo en el radar baja.
 
-### Misiones
-- Nombre, descripción, tamaño (15/30/60/100 XP), reparto por porcentajes entre subcategorías (o solo nivel general), fechas (desde / hasta opcional) y subtareas **sin XP**.
-- **Objetivo opcional:** «hacer *Ir al gimnasio* N veces». Cuenta los registros no anulados entre las fechas. Las visitas dan su XP normal y, al cumplir, **Completar** da el bonus de la misión.
-- Estados: pendiente, en curso, pausada, completada, abandonada (se puede reabrir sin XP). Completar solo si está pendiente o en curso y cumple el objetivo.
-- **Una sola recompensa:** clave `quest:<id>` en el registro. Doble clic, reintento u otro dispositivo no la repiten. Se escribe primero el registro y después se marca la misión; si falla lo segundo, se ve completada igualmente.
-- Una misión completada es de solo lectura.
-
-### Datos
-`rpg/activities.json` (actividades), `rpg/quests.json` (misiones). El registro de XP sigue en `rpg/ledger-AAAA.json` con los tipos `activity`, `quest` y `adjustment` (con `reverses` al anular).
-
-### Pendiente
-B2: misiones diarias/semanales que se repiten y catálogo de misiones predefinidas. B3: jefes finales con varios pasos. Después: logros, títulos y colección.
+Siguiente: logros, títulos y colección (5C).
