@@ -75,13 +75,17 @@
 
   App.createActivityRepo = function (store, rpg) {
     var cache = null;
+    var pending = null;
     function load(force) {
       if (cache && !force) return Promise.resolve(cache);
-      return store.readJson(PATH, null).then(function (doc) {
+      if (pending && !force) return pending;
+      var p = store.readJson(PATH, null).then(function (doc) {
         if (doc && !Array.isArray(doc.activities)) throw invalid('El archivo de actividades está dañado. No lo toco; revísalo en GitHub.');
-        cache = R.buildActivities(doc);
+        cache = R.buildActivities(doc); pending = null;
         return cache;
-      });
+      }, function (e) { pending = null; throw e; });
+      pending = p;
+      return p;
     }
     function mutate(message, change) {
       var result;

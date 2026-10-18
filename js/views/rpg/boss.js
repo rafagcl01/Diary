@@ -24,7 +24,7 @@
     var bosses = ctx.bosses, acts = ctx.acts, rpg = ctx.rpg;
     host.innerHTML = '<div class="col-head"><h2>Jefes finales</h2><button type="button" class="btn secondary" data-act="new">Nuevo</button></div>' +
       '<p class="soft col-lead">Retos grandes con varios pasos. Cada paso da un poco de XP; derrotarlo da mucha.</p>' +
-      '<p class="msg" id="bs-msg" role="status" data-kind="ok"></p><div id="bs-body" class="col-scroll"></div>' +
+      '<p class="msg" id="bs-msg" role="status" data-kind="ok"></p><div id="bs-body"></div>' +
       '<dialog class="confirm rpg-dialog" id="bs-dialog" aria-labelledby="bs-dtitle"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#bs-body');
     var state = null, st = null, actList = [], form = null, busy = false;
@@ -38,7 +38,7 @@
         (done.length ? '<details class="archived"><summary>Derrotados (' + done.length + ')</summary><ul class="bs-list">' + done.map(function (b) { return card(b, actNames()); }).join('') + '</ul></details>' : '') +
         (arch.length ? '<details class="archived"><summary>Archivados (' + arch.length + ')</summary><ul class="bs-list">' + arch.map(function (b) { return card(b, actNames()); }).join('') + '</ul></details>' : '');
     }
-    function reload() { return Promise.all([bosses.state(true), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); }); }
+    function reload() { return Promise.all([bosses.state(), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); }); }
     function say(t) { $('#bs-msg').textContent = t || ''; }
     function dlg() { return $('#bs-dialog'); }
     function dmsg(t) { var el = $('#bs-dmsg'); if (el) el.textContent = t || ''; }

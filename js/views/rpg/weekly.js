@@ -40,7 +40,7 @@
         (arch.length ? '<details class="archived"><summary>Archivadas (' + arch.length + ')</summary><ul class="wk-list">' + arch.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul></details>' : '');
     }
     function reload() {
-      return Promise.all([weekly.state(true), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
+      return Promise.all([weekly.state(), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
     }
     function say(t) { $('#wk-msg').textContent = t || ''; }
     function dlg() { return $('#wk-dialog'); }

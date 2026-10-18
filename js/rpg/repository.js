@@ -12,18 +12,29 @@
   R.AVATARS = ['mended', 'moon', 'star', 'rose', 'eye', 'key', 'locket', 'ghost', 'skull', 'cat', 'butterfly', 'cherry', 'crown', 'bow'];
 
   App.createRpgRepo = function (store) {
-    var cache = { structure: null, entries: null, profile: null };
+    var cache = { structure: null, entries: null, profile: null }, stamp = {}, pending = {};
+    // Lecturas a GitHub: una sola a la vez por archivo, y un «recargar» suave (force) no repite lo leído hace menos de 4 s.
+    // Tras escribir nosotros (hard) siempre se relee. Así abrir la ficha no hace decenas de llamadas repetidas.
+    function cached(kind, force, hard, read) {
+      if (cache[kind] && !(force && (hard || Date.now() - (stamp[kind] || 0) > 4000))) return Promise.resolve(cache[kind]);
+      if (pending[kind] && !hard) return pending[kind];
+      var p = read().then(function (v) { cache[kind] = v; stamp[kind] = Date.now(); pending[kind] = null; return v; }, function (e) { pending[kind] = null; throw e; });
+      pending[kind] = p;
+      return p;
+    }
 
-    function loadStructure(force) {
-      if (cache.structure && !force) return Promise.resolve(cache.structure);
-      return store.readJson(ATTRS, null).then(function (doc) {
-        if (doc && !Array.isArray(doc.attributes)) throw invalid('El archivo de atributos está dañado. No lo toco para no perder nada; revísalo en GitHub.');
-        cache.structure = R.buildStructure(doc);
-        return cache.structure;
+    function loadStructure(force, hard) {
+      return cached('structure', force, hard, function () {
+        return store.readJson(ATTRS, null).then(function (doc) {
+          if (doc && !Array.isArray(doc.attributes)) throw invalid('El archivo de atributos está dañado. No lo toco para no perder nada; revísalo en GitHub.');
+          return R.buildStructure(doc);
+        });
       });
     }
-    function loadEntries(force) {
-      if (cache.entries && !force) return Promise.resolve(cache.entries);
+    function loadEntries(force, hard) {
+      return cached('entries', force, hard, function () { return readEntries(); });
+    }
+    function readEntries() {
       return store.listFiles(LEDGER_PREFIX).then(function (paths) {
         return Promise.all(paths.map(function (p) {
           return store.readJson(p, null).then(function (doc) {
@@ -34,16 +45,15 @@
       }).then(function (lists) {
         var all = [].concat.apply([], lists).filter(function (e) { return e && typeof e.key === 'string' && typeof e.xp === 'number'; });
         all.sort(function (a, b) { return (a.at || '') < (b.at || '') ? -1 : (a.at || '') > (b.at || '') ? 1 : 0; });
-        cache.entries = all;
         return all;
       });
     }
-    function loadProfile(force) {
-      if (cache.profile && !force) return Promise.resolve(cache.profile);
-      return store.readJson(PROFILE, null).then(function (doc) {
-        var d = doc && typeof doc === 'object' ? doc : {};
-        cache.profile = { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended' };
-        return cache.profile;
+    function loadProfile(force, hard) {
+      return cached('profile', force, hard, function () {
+        return store.readJson(PROFILE, null).then(function (doc) {
+          var d = doc && typeof doc === 'object' ? doc : {};
+          return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended' };
+        });
       });
     }
 
@@ -55,7 +65,7 @@
         var st = R.buildStructure(doc);
         result = change(st);
         return R.structureToDoc(st);
-      }, { fallback: null, message: message }).then(function () { return loadStructure(true); }).then(function () { return result; });
+      }, { fallback: null, message: message }).then(function () { return loadStructure(true, true); }).then(function () { return result; });
     }
     function checkName(main, name, exceptId) {
       var n = R.cleanText(name, R.LIMITS.name);
@@ -85,7 +95,7 @@
         var name = R.cleanText(input && input.name, R.LIMITS.name);
         var avatar = input && R.AVATARS.indexOf(input.avatar) >= 0 ? input.avatar : 'mended';
         return store.writeJson(PROFILE, { version: 1, name: name, avatar: avatar }, { force: true, message: 'Actualiza el personaje' })
-          .then(function () { return loadProfile(true); });
+          .then(function () { return loadProfile(true, true); });
       },
 
       // ---- Atributos y subcategorías ----
@@ -185,7 +195,7 @@
             var id = 'xp_' + (list.length + 1);
             return { version: 1, year: Number(year), entries: list.concat([Object.assign({ id: id }, entry)]) };
           }, { fallback: null, message: entry.kind === 'adjustment' ? 'Ajusta la experiencia' : 'Suma experiencia' }).then(function () {
-            return loadEntries(true);
+            return loadEntries(true, true);
           }).then(function (all) {
             return { duplicate: dup, entry: all.filter(function (e) { return e.key === entry.key; })[0] };
           });

@@ -3,41 +3,33 @@
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util, K = V.pickers;
 
-  function chips(a, names) { return a.points.map(function (p) { return '<span class="chip">' + esc(names[p.sub] || p.sub) + ' <small>+' + p.xp + '</small></span>'; }).join(''); }
-  function row(a, names) {
-    return '<li class="act-row' + (a.archived ? ' archived' : '') + '" data-name="' + esc(R.fold(a.name)) + '"><span class="sub-ic">' + icon(a.icon) + '</span>' +
-      '<div class="act-info"><strong>' + esc(a.name) + '</strong><div class="act-chips">' + chips(a, names) + '</div></div>' +
-      '<div class="act-btns">' + (a.archived ? '' : '<button type="button" class="btn act-log" data-act="log" data-id="' + esc(a.id) + '" aria-label="Registrar: ' + esc(a.name) + '">Registrar</button>') +
-      '<button type="button" class="mini" data-act="edit" data-id="' + esc(a.id) + '" aria-label="Editar: ' + esc(a.name) + '">Editar</button></div></li>';
+  function cap(a, names, edit) {
+    var detail = a.points.map(function (p) { return (names[p.sub] || p.sub) + ' +' + p.xp; }).join(', ');
+    return '<li><button type="button" class="emo-cap act-cap' + (a.archived ? ' archived' : '') + '" data-act="cap" data-id="' + esc(a.id) + '" title="' + esc(detail) + '" aria-label="' +
+      (edit ? 'Editar: ' : 'Registrar: ') + esc(a.name) + ' (' + esc(detail) + ')">' + icon(a.icon) + '<span>' + esc(a.name) + '</span></button></li>';
   }
 
   V.activitiesPanel = function (host, ctx) {
     var acts = ctx.acts, rpg = ctx.rpg;
-    host.innerHTML = '<div class="col-head"><h2>Actividades</h2><button type="button" class="btn secondary" data-act="new">Nueva</button></div>' +
-      '<p class="soft col-lead">Todas dan ' + R.ACTIVITY_XP + ' XP. Pulsa «Registrar» al hacerlas.</p>' +
-      '<div class="act-tools"><label class="field inline"><span class="sr">Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '" aria-label="Día del registro"></label>' +
-      '<label class="searchbox"><span class="sr">Buscar actividad</span><input id="act-q" type="search" placeholder="Buscar" autocomplete="off"></label></div>' +
-      '<p class="msg" id="act-msg" role="status" data-kind="ok"></p><div id="act-body" class="col-scroll"></div>' +
+    host.innerHTML = '<div class="col-head"><h2>Actividades</h2><button type="button" class="mini" data-act="mode" aria-pressed="false">Editar</button></div>' +
+      '<p class="soft col-lead">Pulsa una para registrarla: todas dan ' + R.ACTIVITY_XP + ' XP.</p>' +
+      '<label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '"></label>' +
+      '<p class="msg" id="act-msg" role="status" data-kind="ok"></p><div id="act-body"></div>' +
       '<dialog class="confirm rpg-dialog" id="act-dialog" aria-labelledby="act-dtitle"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#act-body');
-    var list = [], st = null, form = null, busy = false;
+    var list = [], st = null, form = null, busy = false, edit = false;
 
     function names() { return U.subNames(st.structure); }
     function paint() {
-      var active = list.filter(function (a) { return !a.archived; }), arch = list.filter(function (a) { return a.archived; });
-      body.innerHTML = '<ul class="act-list">' + active.map(function (a) { return row(a, names()); }).join('') + '</ul>' +
-        (arch.length ? '<details class="archived"><summary>Archivadas (' + arch.length + ')</summary><ul class="act-list">' + arch.map(function (a) { return row(a, names()); }).join('') + '</ul></details>' : '');
-      filter();
-    }
-    function filter() {
-      var q = R.fold($('#act-q').value);
-      Array.prototype.forEach.call(body.querySelectorAll('.act-row'), function (li) { li.hidden = !!q && li.getAttribute('data-name').indexOf(q) < 0; });
+      var shown = list.filter(function (a) { return edit || !a.archived; });
+      body.innerHTML = '<ul class="emo-caps act-caps" aria-label="Actividades">' + shown.map(function (a) { return cap(a, names(), edit); }).join('') +
+        '<li><button type="button" class="emo-cap act-cap act-plus" data-act="new" aria-label="Nueva actividad"><span aria-hidden="true">+</span></button></li></ul>';
     }
     function note(text, key) {
       var el = $('#act-msg'); el.textContent = text || '';
       if (text && key) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mini'; b.setAttribute('data-act', 'undo'); b.setAttribute('data-key', key); b.textContent = 'Anular'; el.appendChild(document.createTextNode(' ')); el.appendChild(b); }
     }
-    function reload() { return Promise.all([acts.list(true), rpg.state()]).then(function (r) { list = r[0]; st = r[1]; paint(); }); }
+    function reload() { return Promise.all([acts.list(), rpg.state()]).then(function (r) { list = r[0]; st = r[1]; paint(); }); }
     function dlg() { return $('#act-dialog'); }
     function dmsg(t) { var el = $('#act-dmsg'); if (el) el.textContent = t || ''; }
     function pickHtml() { return K.html(K.groups(st.structure, false), names(), form.values, 'pts'); }
@@ -73,7 +65,8 @@
       var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
       if (act === 'close') return dlg().close();
       if (act === 'new') return openForm(null);
-      if (act === 'edit') return openForm(list.filter(function (a) { return a.id === id; })[0]);
+      if (act === 'mode') { edit = !edit; t.setAttribute('aria-pressed', String(edit)); t.textContent = edit ? 'Listo' : 'Editar'; return paint(); }
+      if (act === 'cap' && edit) return openForm(list.filter(function (a) { return a.id === id; })[0]);
       if (act === 'archive') return acts.setArchived(form.id, t.getAttribute('data-to') === '1').then(reload).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
       if (act === 'undo') {
         if (busy) return; busy = true;
@@ -94,18 +87,17 @@
         return go.then(function (r) { dlg().close(); return reload().then(function () { return logged(r, d); }); })
           .catch(function (e) { dmsg(e.message); }).then(function () { busy = false; });
       }
-      if (act === 'log') {
+      if (act === 'cap') {
         if (busy) return; busy = true;
-        Array.prototype.forEach.call(host.querySelectorAll('.act-log'), function (b) { b.disabled = true; });
+        Array.prototype.forEach.call(host.querySelectorAll('.act-cap'), function (b) { b.disabled = true; });
         var d2 = day();
         return acts.log(id, { req: R.newRequestId(), day: d2 }).then(function (r) { return logged(r, d2); })
           .catch(function (e) { note((e && e.message) || 'No se pudo guardar. No se ha sumado nada.'); })
-          .then(function () { busy = false; Array.prototype.forEach.call(host.querySelectorAll('.act-log'), function (b) { b.disabled = false; }); });
+          .then(function () { busy = false; Array.prototype.forEach.call(host.querySelectorAll('.act-cap'), function (b) { b.disabled = false; }); });
       }
     });
     host.addEventListener('input', function (ev) {
       var t = ev.target;
-      if (t && t.id === 'act-q') return filter();
       var id = t && t.getAttribute ? t.getAttribute('data-pkval') : null;
       if (!id || !form) return;
       form.values[id] = Math.floor(Number(t.value)) || 0;

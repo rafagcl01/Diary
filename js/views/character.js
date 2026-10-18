@@ -83,7 +83,7 @@
         return;
       }
       body.innerHTML = '<div id="rpg-top"><div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div></div>' +
-        '<div class="char-cols"><section class="card col" id="col-act" aria-label="Actividades"></section><section class="card col" id="col-wk" aria-label="Misiones semanales"></section><section class="card col" id="col-boss" aria-label="Jefes finales"></section></div>';
+        '<div class="char-cols"><section class="card col" id="col-act" aria-label="Actividades"></section><section class="card col" id="col-wk" aria-label="Misiones semanales"></section></div><section class="card col col-wide" id="col-boss" aria-label="Jefes finales"></section>';
       var top = $('#rpg-top'), panels = [];
       var st = null, nav = { level: 'main', main: null, sel: null }, note = '', form = null;
 

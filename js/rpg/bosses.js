@@ -97,9 +97,13 @@
       if (doc && (typeof doc !== 'object' || !Array.isArray(doc.bosses))) throw invalid('El archivo de jefes está dañado. No lo toco; revísalo en GitHub.');
       return doc ? doc.bosses : [];
     }
+    var pending = null;
     function loadRaw(force) {
       if (cache && !force) return Promise.resolve(cache);
-      return store.readJson(PATH, null).then(function (doc) { cache = ensure(doc).filter(function (b) { return b && R.BOSS_ID_RE.test(b.id); }); return cache; });
+      if (pending && !force) return pending;
+      var p = store.readJson(PATH, null).then(function (doc) { cache = ensure(doc).filter(function (b) { return b && R.BOSS_ID_RE.test(b.id); }); pending = null; return cache; }, function (e) { pending = null; throw e; });
+      pending = p;
+      return p;
     }
     function mutate(message, change) {
       var result;
@@ -155,7 +159,7 @@
       },
       // Marca un paso de tipo check (una sola vez, no se deshace). Devuelve los eventos de recompensa.
       completeStep: function (id, stepId) {
-        return Promise.all([loadRaw(true), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var b = r[0].filter(function (x) { return x.id === id; })[0];
           if (!b) throw invalid('Ese jefe ya no existe.');
           var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
@@ -170,7 +174,7 @@
       // Da las recompensas que falten: pasos de actividad cumplidos y derrota del jefe. Idempotente. Devuelve eventos.
       sync: function () {
         var events = [];
-        return Promise.all([loadRaw(true), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var bosses = r[0].filter(function (b) { return !b.archived; });
           return bosses.reduce(function (chain, raw) {
             return chain.then(function () { return rpg.state(true); }).then(function (st) {

@@ -84,13 +84,17 @@
       if (doc && (typeof doc !== 'object' || !Array.isArray(doc.missions))) throw invalid('El archivo de misiones semanales está dañado. No lo toco; revísalo en GitHub.');
       return doc ? { missions: doc.missions, progress: doc.progress && typeof doc.progress === 'object' ? doc.progress : {} } : { missions: [], progress: {} };
     }
+    var pending = null;
     function loadRaw(force) {
       if (cache && !force) return Promise.resolve(cache);
-      return store.readJson(PATH, null).then(function (doc) {
+      if (pending && !force) return pending;
+      var p = store.readJson(PATH, null).then(function (doc) {
         var d = ensure(doc);
-        cache = { missions: d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id); }), progress: d.progress };
+        cache = { missions: d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id); }), progress: d.progress }; pending = null;
         return cache;
-      });
+      }, function (e) { pending = null; throw e; });
+      pending = p;
+      return p;
     }
     function mutate(message, change) {
       var result;
@@ -140,7 +144,7 @@
       // Marca o desmarca una casilla de esta semana. Si la misión ya está completada, no se toca. Devuelve los eventos de recompensa.
       toggleCheck: function (id, index, checked, week) {
         week = week || R.weekKey(R.today());
-        return Promise.all([loadRaw(true), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var m = r[0].missions.filter(function (x) { return x.id === id; })[0];
           if (!m) throw invalid('Esa misión ya no existe.');
           if (m.mode !== 'checks') throw invalid('Esta misión se completa sola al registrar la actividad.');
@@ -156,7 +160,7 @@
       // Da las recompensas que falten (misiones completadas en las semanas indicadas). Idempotente. Devuelve [{ type, label, xp }].
       sync: function (weeks) {
         weeks = (weeks && weeks.length ? weeks : [R.weekKey(R.today())]).filter(function (w, i, a) { return a.indexOf(w) === i; });
-        return Promise.all([loadRaw(true), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var todo = [];
           r[0].missions.forEach(function (m) {
             if (m.archived) return;
