@@ -318,8 +318,9 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 ### Atributos y subcategorías (personalizables)
 Vitalidad (Fuerza, Salud, Resistencia, Descanso, Autocuidado) · Espíritu (Conocimiento, Disciplina, Brujería) · Vínculos (Amistad, Amor, Familia, Conexión) · Aventura (Experiencias, Valentía, Exploración) · Creatividad (Arte, Lectura, Películas). Puedes crear, renombrar, describir, cambiar el icono, reordenar y archivar subcategorías, y renombrar los cinco atributos. Archivar o renombrar conserva su XP e historial (se identifican por un id fijo). Brujería tiene una tarjeta propia, más mágica y misteriosa.
 
-### El radar
-Fondo de estrella de cinco puntas con las puntas unidas por un pentágono; el progreso es un polígono relleno translúcido. Las puntas son botones (ratón, táctil y teclado) y enseñan sus subcategorías. La escala (2, 3, 5, 10, 15…) crece sola y se indica bajo el gráfico. Mientras no cambies la estructura, ganar XP nunca encoge el polígono. **Ojo:** crear una subcategoría nueva baja un poco la media de su atributo (cuenta como una más a nivel 1); archivarla (con XP) no cambia nada.
+### La ficha y el radar
+La ficha cabe en una pantalla: a la izquierda, nivel y últimas recompensas; a la derecha, el radar (en móvil, todo apilado). Fondo de estrella de cinco puntas con las puntas unidas por un pentágono; el progreso es un polígono relleno translúcido. **Pulsar un atributo convierte el radar en el de sus subcategorías**, con una flecha arriba a la izquierda para volver. Pasar el ratón o enfocar una punta enseña su resumen; pulsar una subcategoría enseña su detalle (nivel, XP, historial, editar). El botón **Gestionar** abre la lista para crear, renombrar, reordenar y archivar subcategorías. Con otro número de ejes el fondo se adapta (triángulo, cuadrado…). Todo es accesible con teclado.
+La escala (2, 3, 5, 10, 15…) crece sola y se indica bajo el gráfico. Mientras no cambies la estructura, ganar XP nunca encoge el polígono. **Ojo:** crear una subcategoría nueva baja un poco la media de su atributo (cuenta como una más a nivel 1); archivarla (con XP) no cambia nada.
 
 ### Dónde se guarda (repositorio de datos, sin cifrar)
 `rpg/profile.json`, `rpg/attributes.json` y `rpg/ledger-AAAA.json` (solo se añaden apunte). El nivel nunca se guarda: se calcula del registro.

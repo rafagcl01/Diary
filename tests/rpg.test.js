@@ -175,6 +175,10 @@ test('radar SVG: pentágono, estrella, polígono relleno, cinco puntas accesible
   assert.match(html, /class="rd-outer"/); assert.match(html, /class="rd-area"/);
   assert.equal((html.match(/role="button"/g) || []).length, 5);
   assert.match(html, /aria-pressed="true"/);
+  assert.equal((html.match(/data-main=/g) || []).length, 5);
+  const subs = App.rpgViews.radar(comp.mains[1].subs.map((s) => ({ id: s.id, name: s.name, level: s.level, fraction: s.fraction, value: s.progress, magic: s.id === 'brujeria' })), { kind: 'sub', selected: 'brujeria' });
+  assert.equal((subs.match(/role="button"/g) || []).length, 3, 'tres subcategorías de Espíritu');
+  assert.match(subs, /data-sub="brujeria"/); assert.match(subs, /rd-label on magic/); assert.doesNotMatch(subs, /class="rd-star"/, 'con 3 ejes no hay diagonales');
   for (const n of ['Vitalidad', 'Espíritu', 'Vínculos', 'Aventura', 'Creatividad']) assert.ok(html.includes(n), n);
   assert.match(html, /Vitalidad, nivel 1/);
 });
