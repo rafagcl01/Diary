@@ -37,14 +37,14 @@
       var dy = s < -0.5 ? -8 : s > 0.5 ? 14 : 0;
       var pct = Math.round(m.fraction * 100);
       var text = m.name + ', nivel ' + m.level + ', ' + pct + ' por ciento hacia el siguiente';
-      return '<g class="rd-label' + (m.id === sel ? ' on' : '') + (m.magic ? ' magic' : '') + '" data-' + kind + '="' + esc(m.id) + '" role="button" tabindex="0" aria-pressed="' + (m.id === sel) + '" aria-label="' + esc(text) + '">' +
+      return '<g style="--i:' + i + '" class="rd-label' + (m.id === sel ? ' on' : '') + (m.magic ? ' magic' : '') + '" data-' + kind + '="' + esc(m.id) + '" role="button" tabindex="0" aria-pressed="' + (m.id === sel) + '" aria-label="' + esc(text) + '">' +
         '<title>' + esc(text) + '</title>' +
         '<rect class="rd-hit" x="' + (anchor === 'end' ? x - 98 : anchor === 'middle' ? x - 50 : x - 4) + '" y="' + (y + dy - 22) + '" width="102" height="42" rx="12"/>' +
         '<text class="rd-name" x="' + x.toFixed(1) + '" y="' + (y + dy - 3).toFixed(1) + '" text-anchor="' + anchor + '">' + (m.magic ? '✦ ' : '') + esc(m.name) + '</text>' +
         '<text class="rd-lv" x="' + x.toFixed(1) + '" y="' + (y + dy + 15).toFixed(1) + '" text-anchor="' + anchor + '">Nv ' + m.level + ' · ' + pct + '%</text></g>';
     }).join('');
     var summary = items.map(function (m) { return m.name + ' nivel ' + m.level; }).join(', ');
-    return '<figure class="radar" data-cap="' + cap + '" data-kind="' + kind + '">' +
+    return '<figure class="radar' + (o.animate ? ' rd-anim' : '') + '" data-cap="' + cap + '" data-kind="' + kind + '">' +
       '<svg class="radar-svg" viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="Radar de ' + (kind === 'sub' ? 'subcategorías' : 'atributos') + ': ' + esc(summary) + '">' +
         '<defs><linearGradient id="rd-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--rd-a, #F08BB5)"/><stop offset="1" stop-color="var(--rd-b, #B9A7E0)"/></linearGradient></defs>' +
         '<g aria-hidden="true"><circle class="rd-halo" cx="' + CX + '" cy="' + CY + '" r="' + (RAD + 12) + '"/>' + rings + '<polygon class="rd-outer" points="' + poly(items.map(function () { return RAD; })) + '"/>' + star.join('') + spokes +

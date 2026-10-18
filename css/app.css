@@ -772,3 +772,12 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 .sub-info[data-magic] .xpbar > span { background: linear-gradient(90deg, #9B7BD6, #F08BB5, #E9D8FF); }
 .sub-info[data-magic] .mini { color: #F1E6FF; border-color: rgba(214, 190, 255, .45); }
 .sub-info[data-magic]::after { content: "✦"; position: absolute; top: 8px; right: 14px; color: #E9D8FF; font-size: .9rem; animation: twinkle 3.2s ease-in-out infinite; pointer-events: none; }
+
+/* Al entrar en un atributo (o volver), las etiquetas aparecen una a una y el polígono crece desde el centro */
+@keyframes rd-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rd-grow { from { opacity: 0; transform: scale(.15); } to { opacity: 1; transform: none; } }
+.rd-anim .rd-label { animation: rd-in .5s ease backwards; animation-delay: calc(var(--i, 0) * 90ms + 150ms); }
+.rd-anim .rd-area { transform-box: view-box; transform-origin: 220px 200px; animation: rd-grow .65s cubic-bezier(.2, .8, .3, 1) backwards; }
+.rd-anim .rd-dot { animation: rd-in .5s ease backwards; animation-delay: .5s; }
+.rd-anim .rd-star, .rd-anim .rd-outer { animation: rd-in .45s ease backwards; }
+.radar-card:has(.rd-anim) .info { animation: rd-in .5s ease .35s backwards; }

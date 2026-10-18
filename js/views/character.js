@@ -52,7 +52,7 @@
   function radarCard(c, nav) {
     if (nav.level === 'main') {
       return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus cinco atributos</h2></div>' +
-        V.radar(c.mains, { selected: '', kind: 'main' }) +
+        V.radar(c.mains, { selected: '', kind: 'main', animate: nav.anim }) +
         '<div class="info" id="rd-info" aria-live="polite"><p class="soft">Pulsa un atributo para ver sus subcategorías.</p></div></section>';
     }
     var m = c.mains.filter(function (x) { return x.id === nav.main; })[0];
@@ -60,7 +60,7 @@
     var items = active.map(function (s) { return { id: s.id, name: s.name, level: s.level, fraction: s.fraction, value: s.progress, magic: s.id === 'brujeria' }; });
     var sel = active.filter(function (s) { return s.id === nav.sel; })[0];
     var magic = sel && sel.id === 'brujeria';
-    var chart = items.length >= 3 ? V.radar(items, { selected: sel ? sel.id : '', kind: 'sub' }) :
+    var chart = items.length >= 3 ? V.radar(items, { selected: sel ? sel.id : '', kind: 'sub', animate: nav.anim }) :
       '<div class="rd-fallback"><p class="soft">Con menos de 3 subcategorías activas no hay gráfico. Elige una o recupera alguna en «Gestionar».</p>' +
       active.map(function (s) { return '<button type="button" class="emo-cap" data-sub="' + esc(s.id) + '" aria-pressed="' + (!!sel && sel.id === s.id) + '">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button>'; }).join(' ') + '</div>';
     return '<section class="card radar-card" data-level="sub" data-theme-main="' + esc(m.id) + '"' + (magic ? ' data-magic-sel="1"' : '') + ' aria-labelledby="radar-title">' +
@@ -93,6 +93,7 @@
         body.innerHTML = '<div class="char-grid">' + heroHtml(st) + '<div class="char-radar">' + radarCard(c, nav) + '</div>' +
           '<div class="char-side"><p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>' + recentHtml(st.entries) +
           '<nav class="btn-row" aria-label="Más sobre tu personaje"><a class="btn secondary" href="#/misiones">Misiones activas</a><a class="btn secondary" href="#/coleccion">Colección</a></nav></div></div>';
+        nav.anim = false;
       }
       function focusSel(sel) { var el = root.querySelector(sel); if (el && el.focus) el.focus(); }
       function reload() { return repo.state(true).then(function (s) { st = s; paint(); }); }
@@ -218,7 +219,7 @@
         var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
         if (!act) {
           var main = t.getAttribute('data-main'), sub = t.getAttribute('data-sub'), pk = t.getAttribute('data-pk'), size = t.getAttribute('data-size');
-          if (main) { nav = { level: 'sub', main: main, sel: null }; paint(); return focusSel('.rd-back'); }
+          if (main) { nav = { level: 'sub', main: main, sel: null, anim: true }; paint(); return focusSel('.rd-back'); }
           if (sub) { nav.sel = nav.sel === sub ? null : sub; paint(); return focusSel('.rd-label.on') || focusSel('.rd-fallback button[aria-pressed="true"]'); }
           if (pk && form) { V.pickers.toggle(form.shares, pk, 'pct'); return repaintShares(); }
           if (size && form) {
@@ -227,7 +228,7 @@
           }
           return;
         }
-        if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
+        if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
         if (act === 'void') return repo.voidEntry(t.getAttribute('data-key')).then(function (r) { return reload().then(function () { say(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado: queda en el historial como un ajuste.'); }); }).catch(function (e) { say(e.message); });
         if (act === 'close') return closeDialog();
         if (act === 'xp') return openXp();
