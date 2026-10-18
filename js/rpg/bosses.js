@@ -73,7 +73,7 @@
     return {
       id: base && base.id ? base.id : R.newBossId(), name: name, description: R.cleanText(input.description, R.BOSS_LIMITS.description),
       tier: input.tier, shares: shares, image: image, startDay: startDay, steps: steps,
-      archived: !!(base && base.archived), createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
+      createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
     };
   };
 
@@ -97,11 +97,16 @@
       if (doc && (typeof doc !== 'object' || !Array.isArray(doc.bosses))) throw invalid('El archivo de jefes está dañado. No lo toco; revísalo en GitHub.');
       return doc ? doc.bosses : [];
     }
-    var pending = null;
+    var pending = null, hasArchived = false;
     function loadRaw(force) {
       if (cache && !force) return Promise.resolve(cache);
       if (pending && !force) return pending;
-      var p = store.readJson(PATH, null).then(function (doc) { cache = ensure(doc).filter(function (b) { return b && R.BOSS_ID_RE.test(b.id); }); pending = null; return cache; }, function (e) { pending = null; throw e; });
+      // Los archivados (sistema anterior) ya no existen para la aplicación: purgeArchived los borra del archivo.
+      var p = store.readJson(PATH, null).then(function (doc) {
+        var all = ensure(doc);
+        hasArchived = all.some(function (b) { return b && b.archived; });
+        cache = all.filter(function (b) { return b && R.BOSS_ID_RE.test(b.id) && !b.archived; }); pending = null; return cache;
+      }, function (e) { pending = null; throw e; });
       pending = p;
       return p;
     }
@@ -152,12 +157,23 @@
           });
         });
       },
-      setArchived: function (id, archived) {
+      // Elimina el jefe (vivo o derrotado). La XP que ya dieron sus pasos y su derrota (en el registro) se queda.
+      remove: function (id) {
         return Promise.resolve().then(function () {
-          return mutate('Archiva un jefe', function (list) { var i = find(list, id); list[i] = Object.assign({}, list[i], { archived: !!archived }); return list[i]; });
+          return mutate('Elimina un jefe', function (list) { var i = find(list, id), b = list[i]; list.splice(i, 1); return b; });
         });
       },
-      // Marca un paso de tipo check (una sola vez, no se deshace). Devuelve los eventos de recompensa.
+      // Borra del archivo los jefes archivados con el sistema anterior. Solo escribe si hay alguno.
+      purgeArchived: function () {
+        return loadRaw().then(function () {
+          if (!hasArchived) return 0;
+          var n = 0;
+          return mutate('Elimina los jefes archivados', function (list) {
+            for (var i = list.length - 1; i >= 0; i--) if (list[i] && list[i].archived) { list.splice(i, 1); n++; }
+          }).then(function () { return n; });
+        });
+      },
+      // Marca un paso de tipo check (da sus 5 XP una sola vez; ver uncompleteStep para desmarcarlo). Devuelve los eventos de recompensa.
       completeStep: function (id, stepId) {
         return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var b = r[0].filter(function (x) { return x.id === id; })[0];
@@ -165,18 +181,31 @@
           var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
           if (!s) throw invalid('Ese paso no existe.');
           if (s.activity) throw invalid('Este paso se completa solo al registrar la actividad.');
-          if (b.archived) throw invalid('Ese jefe está archivado.');
           if (r[1].entries.some(function (e) { return e.key === 'boss:' + id; })) throw invalid('Ese jefe ya está derrotado.');
           var events = [];
           return grant(b, 'boss:' + id + ':' + stepId, s.text, R.BOSS_STEP_XP, events, 'step').then(function () { return events; });
         }).then(function (first) { return api.sync().then(function (more) { return first.concat(more); }); });
       },
+      // Desmarca un paso de tipo check: se borra su apunte (sus 5 XP dejan de contar). Volver a marcarlo los da otra vez,
+      // una sola vez (la clave es la misma). Con el jefe ya derrotado, los pasos quedan fijos.
+      uncompleteStep: function (id, stepId) {
+        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+          var b = r[0].filter(function (x) { return x.id === id; })[0];
+          if (!b) throw invalid('Ese jefe ya no existe.');
+          var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
+          if (!s) throw invalid('Ese paso no existe.');
+          if (s.activity) throw invalid('Este paso se completa solo al registrar la actividad.');
+          if (r[1].entries.some(function (e) { return e.key === 'boss:' + id; })) throw invalid('Ese jefe ya está derrotado: sus pasos no se pueden desmarcar.');
+          var key = 'boss:' + id + ':' + stepId;
+          if (!r[1].entries.some(function (e) { return e.key === key; })) return [];
+          return rpg.removeEntry(key).then(function () { return []; });
+        });
+      },
       // Da las recompensas que falten: pasos de actividad cumplidos y derrota del jefe. Idempotente. Devuelve eventos.
       sync: function () {
         var events = [];
         return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
-          var bosses = r[0].filter(function (b) { return !b.archived; });
-          return bosses.reduce(function (chain, raw) {
+          return r[0].reduce(function (chain, raw) {
             return chain.then(function () { return rpg.state(true); }).then(function (st) {
               var v = R.bossView(raw, st.entries);
               if (v.defeated) return null;

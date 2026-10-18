@@ -3,15 +3,17 @@
 // Modelo: UNA página por día (en el código, `entry`). Cada página tiene varias entradas (en el código,
 // `blocks`) y cada entrada lleva sus propias etiquetas y su estado de ánimo (opcional). Se guarda en entries/AAAA-MM.json:
 //   { day: "2026-10-13", title, favorite, createdAt, updatedAt,
-//     blocks: [{ id: "b_…", text, tags: [], mood: "bien" | null, emotions: ["em_…"], people: ["pe_…"] }] }
+//     blocks: [{ id: "b_…", text, tags: [], mood: "bien" | null, emotions: ["em_…"], people: ["pe_…"], activities: ["gimnasio"] }] }
 // `mood` es uno de cinco niveles (muy-bien … muy-mal) y es lo único que cuenta para el porcentaje de ánimo.
 // `people` son identificadores de personas (people.json); el vínculo es un dato estructurado, no texto en el párrafo.
 // `emotions` son identificadores de la biblioteca de emociones (emotions.json): son independientes del ánimo.
+// `activities` son identificadores de actividades (rpg/activities.json). Al guardar la página se registran en el personaje
+// (una sola vez por entrada y actividad); quitarlas después no resta XP. No cuentan para el porcentaje de ánimo.
 // El día es la identidad de la página. Los campos desconocidos se conservan al editar.
 (function (App) {
   var D = (App.diary = App.diary || {});
 
-  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10, people: 20 };
+  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10, people: 20, activities: 10 };
   var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
   var MOOD_RE = /^[a-z][a-z0-9-]{0,29}$/;
@@ -19,6 +21,7 @@
   D.EMOTION_ID_RE = EMOTION_ID_RE;
   var PERSON_ID_RE = /^pe_[0-9a-f]{8}$/;
   D.PERSON_ID_RE = PERSON_ID_RE;
+  var ACTIVITY_ID_RE = /^[a-z0-9][a-z0-9_-]{1,30}$/;   // el mismo formato que R.ACT_ID_RE
   function skipKey(k) { return k === '__proto__' || k === 'constructor' || k === 'prototype'; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function invalid(msg) { return App.storageError('invalid', msg); }
@@ -134,9 +137,18 @@
     return out.slice(0, LIMITS.people);
   };
 
+  // Actividades de una entrada: identificadores de rpg/activities.json ('puntual' no vale: no se puede volver a encontrar).
+  D.uniqueActivityIds = function (list) {
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      if (typeof id === 'string' && ACTIVITY_ID_RE.test(id) && id !== 'puntual' && !seen[id]) { seen[id] = true; out.push(id); }
+    });
+    return out.slice(0, LIMITS.activities);
+  };
+
   // ---- Bloques ----
   D.blockHasContent = function (b) {
-    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length) || (b.people && b.people.length)));
+    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length) || (b.people && b.people.length) || (b.activities && b.activities.length)));
   };
 
   // Devuelve el bloque limpio (puede estar vacío). Conserva campos desconocidos.
@@ -154,6 +166,7 @@
     out.tags = D.uniqueTags(out.tags);
     out.emotions = D.uniqueEmotionIds(out.emotions);
     out.people = D.uniquePersonIds(out.people);
+    out.activities = D.uniqueActivityIds(out.activities);
     var mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
     if (mood !== null && !D.isKnownMood(mood)) {
       // Un estado que no es de los cinco (por ejemplo, de la versión anterior): se pasa a su nivel y se conserva el original.

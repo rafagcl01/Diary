@@ -27,11 +27,30 @@
     while (xp >= need && level < 999) { xp -= need; level++; need = curve.base + curve.step * (level - 1); }
     return { level: level, into: xp, need: need, fraction: need ? xp / need : 0, total: Math.max(0, Math.floor(Number(total) || 0)) };
   };
+  // Marcos del avatar según el nivel general (solo decoración). Para cambiarlos basta con tocar esta lista
+  // (y su dibujo en views/rpg/avatar.js, por id). Ordenados por nivel; el primero debe empezar en el nivel 1.
+  R.AVATAR_FRAMES = [
+    { id: 'puntada', name: 'Puntada', level: 1 },
+    { id: 'encaje', name: 'Encaje', level: 5 },
+    { id: 'rosas', name: 'Rosas y espinas', level: 10 },
+    { id: 'alas', name: 'Alas de murciélago', level: 20 },
+    { id: 'corona', name: 'Corona vampírica', level: 35 }
+  ];
+  // El marco de un nivel y el siguiente (null si ya tienes el último).
+  R.frameFor = function (level) {
+    var list = R.AVATAR_FRAMES, cur = list[0], next = null;
+    for (var i = 0; i < list.length; i++) { if (level >= list[i].level) cur = list[i]; else { next = list[i]; break; } }
+    return { frame: cur, next: next };
+  };
+  // Foto del avatar: JPEG cuadrado de 320 px guardado en rpg/profile.json.
+  R.AVATAR_PHOTO = { px: 320, max: 80000 };
+  R.isAvatarPhoto = function (s) { return typeof s === 'string' && s.length <= R.AVATAR_PHOTO.max && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(s); };
+
   // Progreso continuo de un nivel (nivel−1 + fracción): sirve para el radar.
   R.progressOf = function (total, curve) { var i = R.levelInfo(total, curve); return (i.level - 1) + i.fraction; };
 
   // ---- Catálogo por defecto (el usuario puede renombrar, describir, cambiar iconos, reordenar y archivar las subcategorías) ----
-  R.MAIN_IDS = ['vitalidad', 'espiritu', 'vinculos', 'aventura', 'creatividad'];
+  R.MAIN_IDS = ['vitalidad', 'espiritu', 'vinculos', 'aventura', 'creatividad', 'inteligencia', 'yo_futuro'];
   R.DEFAULT_ATTRIBUTES = [
     { id: 'vitalidad', name: 'Vitalidad', icon: 'heart', description: 'Cuerpo, salud física y autocuidado.', subs: [
       { id: 'fuerza', name: 'Fuerza', icon: 'dumbbell', description: 'Gimnasio y entrenamiento.' },
@@ -60,12 +79,24 @@
       { id: 'arte', name: 'Arte', icon: 'pencil', description: 'Dibujo, escultura digital, modelado 3D y texturizado.' },
       { id: 'lectura', name: 'Lectura', icon: 'book', description: 'Libros, cómics y manga.' },
       { id: 'peliculas', name: 'Películas', icon: 'film', description: 'Cine y series.' }
+    ] },
+    // Añadidos después: a quien ya tenía datos le aparecen solos (ver buildStructure) a nivel 1, sin tocar lo demás.
+    { id: 'inteligencia', name: 'Inteligencia', icon: 'spark', description: 'Pensar, aprender idiomas y comunicarte.', subs: [
+      { id: 'logica', name: 'Lógica', icon: 'key', description: 'Razonamiento, resolución de problemas y desafíos mentales.' },
+      { id: 'idioma', name: 'Idioma', icon: 'globe', description: 'Aprendizaje y práctica de idiomas.' },
+      { id: 'comunicacion', name: 'Comunicación', icon: 'speech', description: 'Expresión oral, argumentación, debates y capacidad para expresar ideas e intercambiar opiniones.' }
+    ] },
+    { id: 'yo_futuro', name: 'Yo futuro', icon: 'flag', description: 'Construir la vida que quieres tener.', subs: [
+      { id: 'finanzas', name: 'Finanzas', icon: 'coin', description: 'Ahorro, gestión del dinero, control de gastos y planificación económica.' },
+      { id: 'carrera', name: 'Carrera profesional', icon: 'briefcase', description: 'Búsqueda de empleo, mejora del portfolio, preparación de entrevistas y progreso profesional.' },
+      { id: 'objetivos', name: 'Objetivos personales', icon: 'flag', description: 'Avanzar en metas importantes, completar proyectos personales y construir la vida que quieres tener.' }
     ] }
   ];
 
   // Galería de iconos para atributos y subcategorías (los dibujos viven en icons.js).
   R.ICONS = ['heart', 'dumbbell', 'leaf', 'bolt', 'moon', 'mirror', 'star', 'book', 'key', 'tarot', 'spark', 'eye', 'people', 'butterfly', 'rose', 'locket', 'bow',
-    'compass', 'sun', 'candle', 'umbrella', 'pencil', 'film', 'ghost', 'skull', 'cat', 'cross', 'cherry', 'cloud', 'drop', 'crown', 'flower', 'mended'];
+    'compass', 'sun', 'candle', 'umbrella', 'pencil', 'film', 'ghost', 'skull', 'cat', 'cross', 'cherry', 'cloud', 'drop', 'crown', 'flower', 'mended',
+    'globe', 'speech', 'coin', 'briefcase', 'flag'];
   R.isIcon = function (id) { return R.ICONS.indexOf(id) >= 0; };
 
   function cleanText(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }

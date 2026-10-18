@@ -34,6 +34,11 @@
     tarot: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 8.5l1 2.5 2.5.3-1.9 1.7.6 2.5-2.2-1.3-2.2 1.3.6-2.5-1.9-1.7 2.5-.3z"/>',
     spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="M12 8.5l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>',
     pentagram: '<path d="M12.0 3.6L17.3 19.9L3.4 9.8L20.6 9.8L6.7 19.9z"/><circle cx="12" cy="12.6" r="9" opacity=".45"/>',
+    globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3.2 3 13.8 0 17M12 3.5c-3 3.2-3 13.8 0 17"/>',
+    speech: '<path d="M4 5h16v10.5H11l-5 4v-4H4z"/><path d="M8.5 10.3h.01M12 10.3h.01M15.5 10.3h.01"/>',
+    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M12 6.5v11M14.6 9.4c0-1.1-1.1-1.9-2.6-1.9s-2.6.8-2.6 2 1.2 1.7 2.6 2.2 2.6 1.1 2.6 2.3-1.1 2-2.6 2-2.6-.8-2.6-1.9"/>',
+    briefcase: '<rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M9 7.5V5.5h6v2M3 12.5h18M11 12.5v2h2v-2"/>',
+    flag: '<path d="M6 21V3.5M6 4h11.5l-2.3 4.2 2.3 4.3H6"/>',
     // Galería de símbolos para las emociones (línea fina, estética pastel goth / creepy cute)
     ghost: '<path d="M6 20V11a6 6 0 0 1 12 0v9l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5z"/><path d="M9.5 11h.01M14.5 11h.01"/>',
     skull: '<path d="M12 4c-4 0-7 2.8-7 6.5 0 2.2 1 3.8 2.5 4.8V19h9v-3.7c1.5-1 2.5-2.6 2.5-4.8C19 6.8 16 4 12 4z"/><path d="M9.5 11.5h.01M14.5 11.5h.01M10.5 19v-2.5M13.5 19v-2.5M12 14l-.8 1.5h1.6z"/>',

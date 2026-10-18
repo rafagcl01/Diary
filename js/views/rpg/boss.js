@@ -2,22 +2,30 @@
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util, K = V.pickers;
 
-  function card(b, actNames) {
+  // Un jefe derrotado ya no se edita, pero se puede eliminar desde su tarjeta (con confirmación en la misma tarjeta).
+  function defeatedTools(b, asking) {
+    return asking
+      ? '<div class="sub-tools del-row"><span class="del-ask">¿Eliminar este jefe? La XP que ya te dio se queda.</span><button type="button" class="mini danger" data-act="del-yes" data-id="' + esc(b.id) + '">Sí, eliminar</button><button type="button" class="mini" data-act="del-no">No</button></div>'
+      : '<div class="sub-tools"><button type="button" class="mini" data-act="del-card" data-id="' + esc(b.id) + '">Eliminar</button></div>';
+  }
+  function card(b, actNames, asking) {
     var left = b.steps.length - b.doneCount, hp = b.steps.length ? left / b.steps.length : 0;
     var tier = R.BOSS_TIERS.filter(function (t) { return t.id === b.tier; })[0];
+    // Cada paso con la casilla compartida. Los de check se marcan y desmarcan (sus 5 XP van y vienen, nunca dos veces);
+    // los de actividad se marcan solos y su casilla no se pulsa. Con el jefe derrotado, todo queda fijo.
     var steps = '<ul class="bs-steps" aria-label="Pasos de ' + esc(b.name) + '">' + b.steps.map(function (s) {
-      var right = s.done ? '<span class="tag ok">Hecho ✓</span>' :
-        s.activity ? '<span class="soft">' + esc(actNames[s.activity] || 'Actividad') + ' · ' + s.count + ' de ' + s.target + '</span>' :
-        (b.defeated ? '' : '<button type="button" class="mini" data-act="step" data-id="' + esc(b.id) + '" data-step="' + esc(s.id) + '">Hecho</button>');
-      return '<li data-done="' + s.done + '"><span class="bs-text">' + esc(s.text) + '</span>' + right + '</li>';
+      var fixed = b.defeated || !!s.activity;
+      return '<li data-done="' + s.done + '"><label class="bs-check"><input type="checkbox"' + (s.done ? ' checked' : '') + (fixed ? ' disabled' : '') +
+          (s.activity ? '' : ' data-bstep="' + esc(s.id) + '" data-id="' + esc(b.id) + '"') + '><span class="bs-text">' + esc(s.text) + '</span></label>' +
+        (s.activity ? '<span class="soft bs-act">' + esc(actNames[s.activity] || 'Actividad') + ' · ' + s.count + ' de ' + s.target + '</span>' : '') + '</li>';
     }).join('') + '</ul>';
-    return '<li class="bs-card" data-tier="' + b.tier + '" data-defeated="' + b.defeated + '">' + V.bossImage(b) +
-      '<div class="bs-head"><h3>' + esc(b.name) + '</h3><span class="tag">' + esc(tier.label) + '</span></div>' +
+    return '<li class="bs-card' + (b.defeated ? '' : ' has-edit') + '" data-tier="' + b.tier + '" data-defeated="' + b.defeated + '">' + V.bossImage(b) +
+      '<div class="bs-head"><h3>' + esc(b.name) + '</h3><span class="tag card-tag">' + esc(tier.label) + '</span></div>' +
       (b.description ? '<p class="soft">' + esc(b.description) + '</p>' : '') +
       (b.defeated ? '<p class="bs-win">¡Derrotado! +' + b.rewardXp + ' XP</p>' :
         '<div class="hpbar" role="img" aria-label="Vida: quedan ' + left + ' de ' + b.steps.length + ' pasos"><span style="width:' + Math.round(hp * 100) + '%"></span></div>' +
         '<p class="soft bs-hp">Vida: ' + left + ' de ' + b.steps.length + ' pasos · +' + R.BOSS_STEP_XP + ' XP por paso · +' + b.xp + ' XP al derrotarlo</p>') +
-      steps + (b.defeated ? '' : '<div class="sub-tools"><button type="button" class="mini" data-act="edit" data-id="' + esc(b.id) + '">Editar</button></div>') + '</li>';
+      steps + (b.defeated ? defeatedTools(b, asking === b.id) : App.ui.editButton('data-act="edit" data-id="' + esc(b.id) + '"', 'Editar ' + b.name)) + '</li>';
   }
 
   V.bossPanel = function (host, ctx) {
@@ -27,18 +35,41 @@
       '<p class="msg" id="bs-msg" role="status" data-kind="ok"></p><div id="bs-body"></div>' +
       '<dialog class="confirm rpg-dialog" id="bs-dialog" aria-labelledby="bs-dtitle"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#bs-body');
-    var state = null, st = null, actList = [], form = null, busy = false;
+    var state = null, st = null, actList = [], form = null, busy = false, asking = null;
 
     function names() { return U.subNames(st.structure); }
     function actNames() { var o = {}; actList.forEach(function (a) { o[a.id] = a.name; }); return o; }
     function paint() {
-      var live = state.bosses.filter(function (b) { return !b.archived && !b.defeated; });
-      var done = state.bosses.filter(function (b) { return b.defeated; }), arch = state.bosses.filter(function (b) { return b.archived && !b.defeated; });
+      var live = state.bosses.filter(function (b) { return !b.defeated; }), done = state.bosses.filter(function (b) { return b.defeated; });
+      var openDone = !!(asking && done.some(function (b) { return b.id === asking; }));
       body.innerHTML = (live.length ? '<ul class="bs-list">' + live.map(function (b) { return card(b, actNames()); }).join('') + '</ul>' : '<p class="soft">No hay ningún jefe activo. Crea uno y ponle sus pasos.</p>') +
-        (done.length ? '<details class="archived"><summary>Derrotados (' + done.length + ')</summary><ul class="bs-list">' + done.map(function (b) { return card(b, actNames()); }).join('') + '</ul></details>' : '') +
-        (arch.length ? '<details class="archived"><summary>Archivados (' + arch.length + ')</summary><ul class="bs-list">' + arch.map(function (b) { return card(b, actNames()); }).join('') + '</ul></details>' : '');
+        (done.length ? '<details class="archived"' + (openDone ? ' open' : '') + '><summary>Derrotados (' + done.length + ')</summary><ul class="bs-list">' + done.map(function (b) { return card(b, actNames(), asking); }).join('') + '</ul></details>' : '');
     }
-    function reload() { return Promise.all([bosses.state(), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); }); }
+    // Antes de pintar, se borran los archivados del sistema anterior (si los hay).
+    function reload() {
+      return bosses.purgeArchived().catch(function () {}).then(function () {
+        return Promise.all([bosses.state(), acts.list(), rpg.state()]);
+      }).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
+    }
+    function actionsHtml() {
+      return '<button type="button" class="btn" data-act="save">Guardar</button>' +
+        (form.id ? '<button type="button" class="btn secondary" data-act="del">Eliminar</button>' : '') +
+        '<button type="button" class="btn secondary" data-act="close">Cancelar</button>';
+    }
+    function askHtml() {
+      return '<p class="del-ask">¿Eliminar este jefe? No se puede deshacer. La XP que ya te dio se queda.</p>' +
+        '<button type="button" class="btn danger" data-act="del-yes" data-id="' + esc(form.id) + '">Sí, eliminar</button><button type="button" class="btn secondary" data-act="del-no">No</button>';
+    }
+    function removeBoss(id, inDialog) {
+      if (busy) return; busy = true;
+      var b = state.bosses.filter(function (x) { return x.id === id; })[0];
+      return bosses.remove(id).then(function () { asking = null; return reload(); }).then(function () {
+        if (inDialog) dlg().close();
+        say('Jefe eliminado' + (b ? ': ' + b.name : '') + '.');
+      }).catch(function (e) {
+        if (inDialog) { dmsg(e.message); $('#bs-actions').innerHTML = actionsHtml(); } else { asking = null; paint(); say(e.message); }
+      }).then(function () { busy = false; });
+    }
     function say(t) { $('#bs-msg').textContent = t || ''; }
     function dlg() { return $('#bs-dialog'); }
     function dmsg(t) { var el = $('#bs-dmsg'); if (el) el.textContent = t || ''; }
@@ -66,7 +97,7 @@
         return '<li class="bs-row"><input type="text" data-s="text" data-i="' + i + '" maxlength="' + R.BOSS_LIMITS.step + '" placeholder="Paso ' + (i + 1) + '" value="' + esc(s.text) + '" aria-label="Paso ' + (i + 1) + '">' +
           '<select data-s="activity" data-i="' + i + '" aria-label="Cómo se completa el paso ' + (i + 1) + '"' + (s.done ? ' disabled' : '') + '><option value="">Check (lo marco yo)</option>' +
           actList.filter(function (a) { return !a.archived || a.id === s.activity; }).map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === s.activity ? ' selected' : '') + '>Actividad: ' + esc(a.name) + '</option>'; }).join('') + '</select>' +
-          (s.activity ? '<input type="number" data-s="count" data-i="' + i + '" min="1" max="' + R.BOSS_LIMITS.target + '" value="' + s.count + '" aria-label="Veces del paso ' + (i + 1) + '"' + (s.done ? ' disabled' : '') + '>' : '') +
+          (s.activity ? App.ui.stepper({ value: s.count, min: 1, max: R.BOSS_LIMITS.target, label: 'Veces del paso ' + (i + 1), attrs: 'data-s="count" data-i="' + i + '"', disabled: s.done }) : '') +
           (s.done ? '<span class="tag ok">Hecho</span>' : '<button type="button" class="mini" data-act="step-del" data-i="' + i + '" aria-label="Quitar el paso ' + (i + 1) + '">×</button>') + '</li>';
       }).join('');
     }
@@ -85,9 +116,7 @@
         '<fieldset class="shares"><legend>Pasos (cada uno da ' + R.BOSS_STEP_XP + ' XP)</legend><ul class="bs-rows" id="bf-steps">' + stepRows() + '</ul><button type="button" class="mini" data-act="step-add">Añadir paso</button></fieldset>' +
         '<fieldset class="shares"><legend>¿A qué subcategorías va la XP?</legend><p class="soft">Opcional. Sin ninguna, solo sube el nivel general.</p><div id="bf-pick">' + pickHtml() + '</div></fieldset>' +
         '<p class="msg" id="bs-dmsg" role="status" data-kind="error"></p>' +
-        '<div class="btn-row"><button type="button" class="btn" data-act="save">Guardar</button>' +
-        (b ? '<button type="button" class="btn secondary" data-act="archive" data-to="' + (b.archived ? '0' : '1') + '">' + (b.archived ? 'Recuperar' : 'Archivar') + '</button>' : '') +
-        '<button type="button" class="btn secondary" data-act="close">Cancelar</button></div>';
+        '<div class="btn-row" id="bs-actions">' + actionsHtml() + '</div>';
       dlg().showModal(); preview();
     }
     function setPressed(sel, attr, val) { Array.prototype.forEach.call(dlg().querySelectorAll(sel), function (x) { x.setAttribute('aria-pressed', String(x.getAttribute(attr) === val)); }); }
@@ -105,12 +134,11 @@
       if (act === 'edit') return openForm(state.bosses.filter(function (b) { return b.id === id; })[0]);
       if (act === 'step-add') { if (form.steps.length < R.BOSS_LIMITS.steps) { form.steps.push({ text: '', activity: null, count: 1 }); $('#bf-steps').innerHTML = stepRows(); } return; }
       if (act === 'step-del') { form.steps.splice(Number(t.getAttribute('data-i')), 1); $('#bf-steps').innerHTML = stepRows(); return; }
-      if (act === 'archive') return bosses.setArchived(form.id, t.getAttribute('data-to') === '1').then(reload).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
-      if (act === 'step') {
-        if (busy) return; busy = true; t.disabled = true;
-        return bosses.completeStep(id, t.getAttribute('data-step')).then(function (events) { return ctx.afterChange(null, events); })
-          .catch(function (e) { say(e.message); return reload(); }).then(function () { busy = false; });
-      }
+      var inDialog = !!t.closest('#bs-dialog');
+      if (act === 'del') { $('#bs-actions').innerHTML = askHtml(); var y = $('#bs-actions [data-act="del-yes"]'); if (y && y.focus) y.focus(); return; }
+      if (act === 'del-card') { asking = id; paint(); var y2 = body.querySelector('[data-act="del-yes"]'); if (y2 && y2.focus) y2.focus(); return; }
+      if (act === 'del-no') { if (inDialog) $('#bs-actions').innerHTML = actionsHtml(); else { asking = null; paint(); } return; }
+      if (act === 'del-yes') return removeBoss(id, inDialog);
       if (act === 'save') {
         var image = form.imgMode === 'url' ? { kind: 'url', url: form.url } : form.imgMode === 'art' ? { kind: 'art', id: form.art } : null;
         var data = { name: $('#bf-name').value, description: $('#bf-desc').value, tier: form.tier, image: image, shares: K.toList(form.shares, 'pct'), startDay: form.startDay,
@@ -127,6 +155,17 @@
       var i = t.getAttribute && t.getAttribute('data-i'), k = t.getAttribute && t.getAttribute('data-s');
       if (k === 'text') form.steps[Number(i)].text = t.value;
       if (k === 'count') form.steps[Number(i)].count = Math.floor(Number(t.value)) || 1;
+    });
+    // Marcar o desmarcar un paso de check. Mientras se guarda, las casillas no se pulsan (nada se cuenta dos veces).
+    host.addEventListener('change', function (ev) {
+      var t = ev.target, stepId = t && t.getAttribute ? t.getAttribute('data-bstep') : null;
+      if (!stepId) return;
+      if (busy) { t.checked = !t.checked; return; }
+      busy = true;
+      Array.prototype.forEach.call(body.querySelectorAll('[data-bstep]'), function (c) { c.disabled = true; });
+      var job = t.checked ? bosses.completeStep(t.getAttribute('data-id'), stepId) : bosses.uncompleteStep(t.getAttribute('data-id'), stepId);
+      job.then(function (events) { return ctx.afterChange(null, events); })
+        .catch(function (e) { say(e.message); return reload(); }).then(function () { busy = false; });
     });
     host.addEventListener('change', function (ev) {
       var t = ev.target; if (!t || !t.getAttribute || t.getAttribute('data-s') !== 'activity') return;

@@ -59,16 +59,11 @@
               '<article class="card" id="home-recent"><h3>Entradas recientes</h3><div id="home-recent-body"><p class="soft">Conecta tus datos para ver aquí tus últimas entradas.</p></div></article>' +
             '</div>' +
 
-            '<aside class="card dark" aria-label="Tu personaje">' +
-              '<div class="portrait-mini">' +
-                '<div class="sigil">' + sigil + '</div>' +
-                '<div><p class="level">Nivel 1</p><p class="soft">Tu historia acaba de empezar</p></div>' +
-              '</div>' +
-              '<div class="thread" role="progressbar" aria-label="Experiencia" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width: 0%"></i></div>' +
-              '<p class="soft" style="margin: 8px 0 16px; font-size: .9rem">0 de 100 XP para el nivel 2</p>' +
-              '<p class="soft" style="font-size: .85rem; margin-bottom: 8px">Atributos iniciales, a tu gusto</p>' +
-              '<div class="chips">' +
-                '<span class="chip">Vínculos</span><span class="chip">Creatividad</span><span class="chip">Sabiduría</span><span class="chip">Vitalidad</span><span class="chip">Aventura</span>' +
+            // Tu personaje: se rellena con los datos reales (ver fillCharacter) y se repinta solo cuando cambian.
+            '<aside class="card dark home-char" aria-label="Tu personaje">' +
+              '<div id="home-char-body">' +
+                '<div class="portrait-mini"><div class="sigil">' + sigil + '</div>' +
+                  '<div><p class="level">Tu personaje</p><p class="soft">' + (App.connection.isConfigured() ? 'Cargando…' : 'Conecta tus datos para ver tu nivel y tus atributos.') + '</p></div></div>' +
               '</div>' +
               '<div style="margin-top: 18px"><a class="btn secondary" href="#/personaje">Ver personaje</a></div>' +
             '</aside>' +
@@ -87,6 +82,7 @@
 
       wireMood(root);
       fillDiary(root);
+      fillCharacter(root);
     }
   };
 
@@ -123,6 +119,31 @@
         save.disabled = false;
       }).catch(function (err) { say(App.escapeHtml(err.message || 'No se pudo guardar.'), 'error'); save.disabled = false; });
     });
+  }
+
+  // Tarjeta del personaje: sale del mismo repositorio que la ficha (única fuente de verdad: el registro de XP, el perfil y
+  // los atributos guardados). Nada se calcula aparte. Se apunta a sus cambios para repintarse sin recargar la página.
+  function fillCharacter(root) {
+    var R = App.rpg, V = App.rpgViews, repo = R && R.repo ? R.repo() : null;
+    var body = root.querySelector('#home-char-body');
+    if (!repo || !body || !V || !V.avatar) return;
+    var esc = App.escapeHtml, off = null;
+    function gone() { return body.isConnected === false; }
+    function paint(st) {
+      if (gone()) { if (off) off(); return; }
+      var g = st.computed.general, fr = R.frameFor(g.level);
+      body.innerHTML = '<div class="home-char-top">' + V.avatar(st.profile, g.level, { size: 'small', label: 'Tu avatar, con el marco ' + fr.frame.name }) +
+          '<div><p class="home-char-name">' + esc(st.profile.name || 'Tu personaje') + '</p><p class="level">Nivel ' + g.level + '</p></div></div>' +
+        '<div class="thread" role="progressbar" aria-label="Experiencia del nivel ' + g.level + '" aria-valuemin="0" aria-valuemax="' + g.need + '" aria-valuenow="' + g.into + '"><i style="width: ' + Math.round(g.fraction * 100) + '%"></i></div>' +
+        '<p class="soft home-char-xp">' + g.into + ' de ' + g.need + ' XP para el nivel ' + (g.level + 1) + ' · ' + g.total + ' en total</p>' +
+        '<ul class="chips home-char-attrs" aria-label="Tus atributos">' + st.computed.mains.map(function (m) {
+          return '<li class="chip">' + esc(m.name) + '<b>Nv ' + m.level + '</b></li>';
+        }).join('') + '</ul>';
+    }
+    function load(force) { return repo.state(force).then(paint).catch(function () { var s = !gone() && body.querySelector('.soft'); if (s) s.textContent = 'No se pudo cargar tu personaje ahora mismo.'; }); }
+    body.addEventListener('error', V.avatarFallback, true);   // GIF del avatar que no carga: se ve el símbolo
+    off = repo.onChange(function () { if (gone()) { off(); return; } load(false); });
+    load(true);
   }
 
   // Rellena "Entradas recientes" y "Hace un año" si hay datos conectados (no bloquea la pantalla).

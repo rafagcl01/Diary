@@ -9,29 +9,20 @@
 
   // ---- Piezas de HTML ----
   function heroHtml(st) {
-    var g = st.computed.general, p = st.profile;
+    var g = st.computed.general, p = st.profile, fr = R.frameFor(g.level);
     return '<section class="card paper sheet char-hero" aria-labelledby="char-name">' +
-      '<span class="avatar char-avatar">' + icon(p.avatar) + '</span>' +
+      V.avatar(p, g.level, { size: 'large' }) +
       '<div class="char-id"><h2 id="char-name">' + esc(p.name || 'Tu personaje') + '</h2>' +
         '<p class="char-title soft">Título: ninguno todavía</p>' +
         '<p class="char-level"><strong>Nivel ' + g.level + '</strong> <span class="soft">· ' + g.into + ' / ' + g.need + ' XP · ' + g.total + ' en total</span></p>' +
         bar(g.fraction, 'Nivel ' + g.level + ': ' + g.into + ' de ' + g.need + ' XP') +
+        '<p class="char-frame-name"><span class="frame-tag">' + esc(fr.frame.name) + '</span>' +
+          (fr.next ? '<span class="soft">Siguiente marco: ' + esc(fr.next.name) + ', en el nivel ' + fr.next.level + '</span>' : '<span class="soft">Tienes el último marco.</span>') + '</p>' +
         '</div>' +
       '<div class="btn-row char-actions">' +
-        '<button type="button" class="btn secondary" data-act="profile">Editar personaje</button>' +
+        '<a class="btn secondary" href="#/ajustes/personaje">Editar personaje</a>' +
         '<button type="button" class="btn secondary" data-act="adjust">Corregir XP</button></div>' +
     '</section>';
-  }
-
-  function recentHtml(entries) {
-    var last = entries.slice(-3).reverse(), voided = R.voidedKeys(entries);
-    if (!last.length) return '<section class="card recent"><h2>Últimas recompensas</h2><p class="soft">Aún no hay experiencia. Cuando completes una misión o registres una actividad, aparecerá aquí.</p></section>';
-    return '<section class="card recent"><h2>Últimas recompensas</h2><ul class="hist">' + last.map(function (e) {
-      var canVoid = (e.kind === 'manual' || e.kind === 'activity') && !voided[e.key];
-      return '<li><span>' + esc(e.label) + (e.kind === 'adjustment' ? ' <em>(ajuste: ' + esc(e.reason || '') + ')</em>' : '') + (voided[e.key] ? ' <em>(anulado)</em>' : '') +
-        (canVoid ? ' <button type="button" class="mini" data-act="void" data-key="' + esc(e.key) + '" aria-label="Anular: ' + esc(e.label) + '">Anular</button>' : '') +
-        '</span><span class="soft">' + esc(U.fmtDay(e.day)) + '</span><strong>' + (e.xp > 0 ? '+' : '') + e.xp + ' XP</strong></li>';
-    }).join('') + '</ul></section>';
   }
 
   function mainInfo(m) {
@@ -49,7 +40,7 @@
 
   function radarCard(c, nav) {
     if (nav.level === 'main') {
-      return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus cinco atributos</h2></div>' +
+      return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus atributos</h2></div>' +
         V.radar(c.mains, { selected: '', kind: 'main', animate: nav.anim }) +
         '<div class="info" id="rd-info" aria-live="polite"><p class="soft">Pulsa un atributo para ver sus subcategorías.</p></div></section>';
     }
@@ -91,11 +82,12 @@
         var c = st.computed;
         if (nav.level === 'sub' && !c.mains.some(function (m) { return m.id === nav.main; })) nav = { level: 'main', main: null, sel: null };
         top.innerHTML = '<div class="char-grid">' + heroHtml(st) + '<div class="char-radar">' + radarCard(c, nav) + '</div>' +
-          '<div class="char-side"><p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>' + recentHtml(st.entries) +
+          '<div class="char-side"><p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>' +
           '<nav class="btn-row" aria-label="Más sobre tu personaje"><a class="btn secondary" href="#/coleccion">Colección</a></nav></div></div>';
         nav.anim = false;
       }
       function on(type, fn) { top.addEventListener(type, fn); $('#rpg-dialog').addEventListener(type, fn); }
+      top.addEventListener('error', V.avatarFallback, true);   // GIF del avatar que no carga: se ve el símbolo
       function focusSel(sel) { var el = root.querySelector(sel); if (el && el.focus) el.focus(); }
       function reload() { return repo.state(true).then(function (s) { st = s; paint(); }); }
       // Tras cualquier cambio de XP: da las recompensas pendientes, refresca la ficha y avisa de lo conseguido.
@@ -135,17 +127,9 @@
           '<label class="field"><span>¿Qué corriges?</span><input id="xp-label" type="text" maxlength="' + R.LIMITS.label + '" autocomplete="off" placeholder="Por ejemplo, Apunté dos veces el gimnasio"></label>' +
           '<label class="field"><span>Motivo</span><input id="xp-reason" type="text" maxlength="' + R.LIMITS.reason + '" autocomplete="off"></label>' +
           '<div class="adj-row"><label class="field"><span>Acción</span><select id="xp-dir"><option value="-1">Quitar</option><option value="1">Añadir</option></select></label>' +
-          '<label class="field"><span>XP</span><input id="xp-amount" type="number" inputmode="numeric" min="1" max="' + R.LIMITS.maxXp + '" step="1"></label></div>' +
+          '<div class="field"><span id="xp-amount-l">XP</span>' + App.ui.stepper({ id: 'xp-amount', value: 10, min: 1, max: R.LIMITS.maxXp, step: 5, attrs: 'aria-labelledby="xp-amount-l"' }) + '</div></div>' +
           '<fieldset class="shares"><legend>¿A qué subcategorías afecta?</legend><div id="rpg-shares">' + sharesBlock() + '</div></fieldset>' + DMSG +
           '<div class="btn-row"><button type="button" class="btn" data-act="adjust-save">Guardar ajuste</button><button type="button" class="btn secondary" data-act="close">Cancelar</button></div>');
-      }
-      function openProfile() {
-        var p = st.profile;
-        form = { mode: 'profile' };
-        openDialog('<h3 id="rpg-dtitle">Tu personaje</h3>' +
-          '<label class="field"><span>Nombre</span><input id="pf-name" type="text" maxlength="' + R.LIMITS.name + '" autocomplete="off" value="' + esc(p.name) + '"></label>' +
-          U.symbolGrid('pf-avatar', R.AVATARS, p.avatar) + DMSG +
-          '<div class="btn-row"><button type="button" class="btn" data-act="profile-save">Guardar</button><button type="button" class="btn secondary" data-act="close">Cancelar</button></div>');
       }
       function openManage() {
         var m = mainById(nav.main); if (!m) return closeDialog();
@@ -228,10 +212,8 @@
           return;
         }
         if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
-        if (act === 'void') return repo.voidEntry(t.getAttribute('data-key')).then(function (r) { return afterChange().then(function () { say(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado: queda en el historial como un ajuste.'); }); }).catch(function (e) { say(e.message); });
         if (act === 'close') return closeDialog();
         if (act === 'adjust') return openAdjust();
-        if (act === 'profile') return openProfile();
         if (act === 'sub-manage') return openManage();
         if (act === 'sub-new') return openSub(null, true);
         if (act === 'main-edit') return openMain();
@@ -239,7 +221,6 @@
         if (act === 'sub-edit') { var f = R.findSub(st.structure, id); return f && openSub(f.sub, t.getAttribute('data-back') === '1'); }
         if (act === 'sub-up' || act === 'sub-down') return manageOp(repo.moveSub(id, act === 'sub-up' ? -1 : 1));
         if (act === 'sub-archive') return manageOp(repo.setArchived(id, t.getAttribute('data-to') === '1'));
-        if (act === 'profile-save') return guard(repo.saveProfile({ name: $('#pf-name').value, avatar: checkedValue('pf-avatar') }), false);
         if (act === 'sub-save') {
           var data = { name: $('#sb-name').value, description: $('#sb-desc').value, icon: checkedValue('sb-icon') };
           return guard(form.id ? repo.updateSub(form.id, data) : repo.createSub(nav.main, data), form.back);

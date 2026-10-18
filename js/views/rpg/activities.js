@@ -1,108 +1,124 @@
-// Panel «Actividades» de la ficha: registrar con un toque lo que has hecho (todas dan 5 XP) y crear las tuyas.
-// Una actividad nueva puede registrarse solo esa vez o guardarse para repetirla.
+// Panel «Actividades» de la ficha: un botón «Añadir actividad» abre la ventana con todas (ver activity-picker.js)
+// y debajo se ven las últimas registradas, también las apuntadas desde el diario. Todas dan 5 XP.
+// Cada registro se puede borrar del todo con su cruz (se pide confirmar en la misma fila); «Ver historial» las enseña todas.
 (function (App) {
-  var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util, K = V.pickers;
+  var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
+  var RECENT = 10;   // la columna tiene su propio scroll: caben más
 
-  function cap(a, names, edit) {
-    var detail = a.points.map(function (p) { return (names[p.sub] || p.sub) + ' +' + p.xp; }).join(', ');
-    return '<li><button type="button" class="emo-cap act-cap' + (a.archived ? ' archived' : '') + '" data-act="cap" data-id="' + esc(a.id) + '" title="' + esc(detail) + '" aria-label="' +
-      (edit ? 'Editar: ' : 'Registrar: ') + esc(a.name) + ' (' + esc(detail) + ')">' + icon(a.icon) + '<span>' + esc(a.name) + '</span></button></li>';
+  function monthLabel(key) {
+    var d = new Date(key + '-15T12:00:00');
+    return isNaN(d.getTime()) ? key : d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   }
 
   V.activitiesPanel = function (host, ctx) {
     var acts = ctx.acts, rpg = ctx.rpg;
-    host.innerHTML = '<div class="col-head"><h2>Actividades</h2><button type="button" class="mini" data-act="mode" aria-pressed="false">Editar</button></div>' +
-      '<p class="soft col-lead">Pulsa una para registrarla: todas dan ' + R.ACTIVITY_XP + ' XP.</p>' +
+    host.innerHTML = '<div class="col-head"><h2>Actividades</h2></div>' +
+      '<p class="soft col-lead">Todas dan ' + R.ACTIVITY_XP + ' XP. También puedes apuntarlas en una entrada del diario.</p>' +
       '<label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '"></label>' +
-      '<p class="msg" id="act-msg" role="status" data-kind="ok"></p><div id="act-body"></div>' +
-      '<dialog class="confirm rpg-dialog" id="act-dialog" aria-labelledby="act-dtitle"></dialog>';
+      '<button type="button" class="act-add" data-act="add" aria-haspopup="dialog">' + icon('pencil') + '<span>Añadir actividad</span></button>' +
+      '<p class="msg" id="act-msg" role="status" data-kind="ok"></p>' +
+      '<h3 class="act-recent-h">Últimas registradas</h3><div id="act-body" class="col-scroll"></div>' +
+      '<button type="button" class="act-hist-link" data-act="hist" aria-haspopup="dialog">Ver historial</button>' +
+      '<dialog class="confirm rpg-dialog act-dialog" id="act-dialog"></dialog>' +
+      '<dialog class="confirm rpg-dialog act-hist" id="act-hist" aria-labelledby="act-hist-title"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#act-body');
-    var list = [], st = null, form = null, busy = false, edit = false;
+    var all = [], icons = {}, asking = null, busy = false;
 
-    function names() { return U.subNames(st.structure); }
-    function paint() {
-      var shown = list.filter(function (a) { return edit || !a.archived; });
-      body.innerHTML = '<ul class="emo-caps act-caps" aria-label="Actividades">' + shown.map(function (a) { return cap(a, names(), edit); }).join('') +
-        '<li><button type="button" class="emo-cap act-cap act-plus" data-act="new" aria-label="Nueva actividad"><span aria-hidden="true">+</span></button></li></ul>';
-    }
-    function note(text, key) {
-      var el = $('#act-msg'); el.textContent = text || '';
-      if (text && key) { var b = document.createElement('button'); b.type = 'button'; b.className = 'mini'; b.setAttribute('data-act', 'undo'); b.setAttribute('data-key', key); b.textContent = 'Anular'; el.appendChild(document.createTextNode(' ')); el.appendChild(b); }
-    }
-    function reload() { return Promise.all([acts.list(), rpg.state()]).then(function (r) { list = r[0]; st = r[1]; paint(); }); }
-    function dlg() { return $('#act-dialog'); }
-    function dmsg(t) { var el = $('#act-dmsg'); if (el) el.textContent = t || ''; }
-    function pickHtml() { return K.html(K.groups(st.structure, false), names(), form.values, 'pts'); }
     function day() { return $('#act-day').value || R.today(); }
+    function note(text, kind) { var el = $('#act-msg'); el.textContent = text || ''; el.setAttribute('data-kind', kind || 'ok'); }
 
-    function openForm(a) {
-      form = { id: a ? a.id : null, values: {} };
-      if (a) a.points.forEach(function (p) { form.values[p.sub] = p.xp; });
-      dlg().innerHTML = '<h3 id="act-dtitle">' + (a ? 'Editar actividad' : 'Nueva actividad') + '</h3>' +
-        (a ? '<p class="soft">Lo ya registrado no cambia: cada apunte guarda sus propios puntos.</p>' : '<p class="soft">Se registra ahora. Si quieres repetirla otras veces, guárdala.</p>') +
-        '<label class="field"><span>Nombre</span><input id="af-name" type="text" maxlength="' + R.ACTIVITY_LIMITS.name + '" autocomplete="off" value="' + esc(a ? a.name : '') + '"></label>' +
-        (a ? U.symbolGrid('af-icon', R.ICONS, a.icon) : '<label class="checkline"><input type="checkbox" id="af-save"><span>Guardar para repetirla otras veces</span></label>') +
-        '<fieldset class="shares"><legend>Reparte exactamente ' + R.ACTIVITY_XP + ' puntos</legend><div id="af-pick">' + pickHtml() + '</div></fieldset>' +
-        '<p class="msg" id="act-dmsg" role="status" data-kind="error"></p>' +
-        '<div class="btn-row"><button type="button" class="btn" data-act="save">' + (a ? 'Guardar' : 'Registrar') + '</button>' +
-        (a ? '<button type="button" class="btn secondary" data-act="archive" data-to="' + (a.archived ? '0' : '1') + '">' + (a.archived ? 'Recuperar' : 'Archivar') + '</button>' : '') +
-        '<button type="button" class="btn secondary" data-act="close">Cancelar</button></div>';
-      dlg().showModal();
+    // Lo registrado, del más reciente al más antiguo. Lo anulado con el sistema anterior no se enseña.
+    function done() {
+      var voided = R.voidedKeys(all);
+      return all.filter(function (e) { return e.kind === 'activity' && !voided[e.key]; })
+        .sort(function (a, b) { return a.day !== b.day ? (a.day < b.day ? 1 : -1) : ((a.at || '') < (b.at || '') ? 1 : -1); });
     }
-    function checked(name) { var el = host.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : undefined; }
+    function row(e) {
+      var end = asking === e.key
+        ? '<span class="act-ask">¿Borrar? <button type="button" class="mini" data-act="del-yes" data-key="' + esc(e.key) + '">Sí</button><button type="button" class="mini" data-act="del-no">No</button></span>'
+        : '<span class="act-xp">+' + e.xp + ' XP</span><button type="button" class="act-del" data-act="del" data-key="' + esc(e.key) + '" aria-label="Borrar: ' + esc(e.label) + ', ' + esc(U.fmtDay(e.day)) + '">×</button>';
+      return '<li' + (asking === e.key ? ' data-asking="true"' : '') + '>' + icon(icons[e.activity] || 'star') + '<span>' + esc(e.label) +
+        (R.isDiaryKey(e.key) ? ' <span class="act-from" title="Apuntada en el diario">Diario</span>' : '') +
+        '<small>' + esc(U.fmtDay(e.day)) + '</small></span><span class="act-end">' + end + '</span></li>';
+    }
+    function paintRecent() {
+      var last = done().slice(0, RECENT);
+      body.innerHTML = last.length ? '<ul class="act-recent">' + last.map(row).join('') + '</ul>' : '<p class="soft">Todavía no has registrado ninguna.</p>';
+    }
+    function paintHistory() {
+      var list = done(), xp = list.reduce(function (t, e) { return t + e.xp; }, 0), groups = [], last = null;
+      list.forEach(function (e) {
+        var k = String(e.day).slice(0, 7);
+        if (!last || last.key !== k) { last = { key: k, items: [] }; groups.push(last); }
+        last.items.push(e);
+      });
+      $('#act-hist').innerHTML = '<h3 id="act-hist-title">Historial de actividades</h3>' +
+        '<p class="soft act-total">' + list.length + (list.length === 1 ? ' actividad' : ' actividades') + ' · <b>' + xp + ' XP</b> en total</p>' +
+        '<p class="msg" id="act-hmsg" role="status" data-kind="error"></p>' +
+        (groups.length ? groups.map(function (g) {
+          return '<h4 class="act-month">' + esc(monthLabel(g.key)) + '</h4><ul class="act-recent">' + g.items.map(row).join('') + '</ul>';
+        }).join('') : '<p class="soft">Todavía no has registrado ninguna.</p>') +
+        '<div class="btn-row"><button type="button" class="btn secondary" data-act="hist-close">Cerrar</button></div>';
+    }
+    function paint() { paintRecent(); if ($('#act-hist').open) paintHistory(); }
+    function reload() {
+      return Promise.all([rpg.entries(true), acts.list()]).then(function (r) {
+        all = r[0]; icons = {}; r[1].forEach(function (a) { icons[a.id] = a.icon; });
+        paint();
+      });
+    }
 
-    // Tras guardar un registro: avisos de misiones/jefes y refresco de la ficha.
-    function logged(r, d) {
-      note(r.duplicate ? 'Ese apunte ya estaba guardado.' : '+' + r.entry.xp + ' XP · ' + r.entry.label, r.duplicate ? '' : r.entry.key);
+    // Registra las elegidas de una en una con el día del selector; luego avisos y refresco de la ficha.
+    function logMany(ids) {
+      var d = day(), saved = [];
+      return ids.reduce(function (p, id) {
+        return p.then(function () { return acts.log(id, { req: R.newRequestId(), day: d }).then(function (r) { if (!r.duplicate) saved.push(r.entry); }); });
+      }, Promise.resolve()).then(function () { return finish(saved, d); }, function (e) {
+        if (saved.length) finish(saved, d);   // lo que ya se guardó se queda; se avisa del resto
+        throw e;
+      });
+    }
+    function finish(saved, d) {
+      var xp = saved.reduce(function (t, e) { return t + e.xp; }, 0);
+      note(saved.length ? '+' + xp + ' XP · ' + saved.map(function (e) { return e.label; }).join(', ') : 'Esos registros ya estaban guardados.');
       return ctx.afterChange(d);
     }
 
+    var picker = V.activityPicker($('#act-dialog'), {
+      acts: acts, rpg: rpg, allowOnce: true, requireOne: true,
+      acceptLabel: function (n, xp) { return n ? 'Registrar ' + n + ' · +' + xp + ' XP' : 'Registrar'; },
+      onAccept: logMany,
+      onOnce: function (input) {
+        var d = day();
+        return acts.logOnce({ name: input.name, points: input.points, req: R.newRequestId(), day: d }).then(function (r) { return finish(r.duplicate ? [] : [r.entry], d); });
+      }
+    });
+
     host.addEventListener('click', function (ev) {
-      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-pk]') : null;
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
       if (!t) return;
-      var pk = t.getAttribute('data-pk');
-      if (pk && form) { K.toggle(form.values, pk, 'pts'); $('#af-pick').innerHTML = pickHtml(); return; }
-      var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
-      if (act === 'close') return dlg().close();
-      if (act === 'new') return openForm(null);
-      if (act === 'mode') { edit = !edit; t.setAttribute('aria-pressed', String(edit)); t.textContent = edit ? 'Listo' : 'Editar'; return paint(); }
-      if (act === 'cap' && edit) return openForm(list.filter(function (a) { return a.id === id; })[0]);
-      if (act === 'archive') return acts.setArchived(form.id, t.getAttribute('data-to') === '1').then(reload).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
-      if (act === 'undo') {
+      var act = t.getAttribute('data-act'), inHist = !!t.closest('#act-hist');
+      if (act === 'add') { note(''); return picker.open({ title: 'Añadir actividad' }); }
+      if (act === 'hist') { asking = null; paintHistory(); paintRecent(); return $('#act-hist').showModal(); }
+      if (act === 'hist-close') { asking = null; paintRecent(); return $('#act-hist').close(); }
+      if (act === 'del') { asking = t.getAttribute('data-key'); paint(); var y = host.querySelector((inHist ? '#act-hist ' : '#act-body ') + '[data-act="del-yes"]'); if (y && y.focus) y.focus(); return; }
+      if (act === 'del-no') { asking = null; return paint(); }
+      if (act === 'del-yes') {
         if (busy) return; busy = true;
-        return rpg.voidEntry(t.getAttribute('data-key')).then(function (r) { note(r.duplicate ? 'Ese apunte ya estaba anulado.' : 'Apunte anulado (queda en el historial como ajuste).'); return ctx.afterChange(); })
-          .catch(function (e) { note(e.message); }).then(function () { busy = false; });
-      }
-      if (act === 'save') {
-        var points = K.toList(form.values, 'pts');
-        if (form.id) {
-          var a0 = list.filter(function (a) { return a.id === form.id; })[0];
-          return acts.update(form.id, { name: $('#af-name').value, icon: checked('af-icon') || a0.icon, points: points }).then(reload).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
-        }
-        if (busy) return; busy = true;
-        var d = day(), name = $('#af-name').value, keep = $('#af-save').checked, req = R.newRequestId();
-        var go = keep
-          ? acts.create({ name: name, icon: 'star', points: points }).then(function (a) { return acts.log(a.id, { req: req, day: d }); })
-          : acts.logOnce({ name: name, points: points, req: req, day: d });
-        return go.then(function (r) { dlg().close(); return reload().then(function () { return logged(r, d); }); })
-          .catch(function (e) { dmsg(e.message); }).then(function () { busy = false; });
-      }
-      if (act === 'cap') {
-        if (busy) return; busy = true;
-        Array.prototype.forEach.call(host.querySelectorAll('.act-cap'), function (b) { b.disabled = true; });
-        var d2 = day();
-        return acts.log(id, { req: R.newRequestId(), day: d2 }).then(function (r) { return logged(r, d2); })
-          .catch(function (e) { note((e && e.message) || 'No se pudo guardar. No se ha sumado nada.'); })
-          .then(function () { busy = false; Array.prototype.forEach.call(host.querySelectorAll('.act-cap'), function (b) { b.disabled = false; }); });
+        var key = t.getAttribute('data-key'), e0 = all.filter(function (x) { return x.key === key; })[0];
+        return R.deleteActivityEntry(key).then(function () {
+          asking = null;
+          note('Borrado: ' + (e0 ? e0.label + ' (−' + e0.xp + ' XP)' : 'la actividad') + (e0 && R.isDiaryKey(key) ? '. También se ha quitado de su entrada del diario.' : '.'));
+          return ctx.afterChange();
+        }).catch(function (e) {
+          asking = null; paint();
+          var m = (e && e.message) || 'No se pudo borrar.';
+          if (inHist) { var hm = $('#act-hmsg'); if (hm) hm.textContent = m; } else note(m, 'error');
+        }).then(function () { busy = false; });
       }
     });
-    host.addEventListener('input', function (ev) {
-      var t = ev.target;
-      var id = t && t.getAttribute ? t.getAttribute('data-pkval') : null;
-      if (!id || !form) return;
-      form.values[id] = Math.floor(Number(t.value)) || 0;
-      var el = host.querySelector('[data-pk-total]'); if (el) el.textContent = K.summaryText(form.values, 'pts');
-    });
+    // Esc o cerrar la ventana del historial: se olvida la confirmación pendiente.
+    $('#act-hist').addEventListener('close', function () { if (asking) { asking = null; paintRecent(); } });
 
     return { reload: function () { return reload().catch(function (err) { body.innerHTML = '<div class="msg" data-kind="error">No se pudieron cargar las actividades. ' + esc(err.message || '') + '</div>'; }); } };
   };

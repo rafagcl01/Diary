@@ -8,27 +8,7 @@
   var PHOTO_PX = 160;
 
   // Reduce la foto elegida a una miniatura cuadrada JPEG (recortada al centro) para guardarla dentro de people.json.
-  function shrinkPhoto(file) {
-    return new Promise(function (resolve, reject) {
-      if (!file || !/^image\//.test(file.type)) { reject(new Error('Ese archivo no es una imagen.')); return; }
-      var url = URL.createObjectURL(file), img = new Image();
-      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('No se pudo leer esa imagen.')); };
-      img.onload = function () {
-        URL.revokeObjectURL(url);
-        var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas');
-        c.width = c.height = PHOTO_PX;
-        var g = c.getContext('2d');
-        g.fillStyle = '#fff'; g.fillRect(0, 0, PHOTO_PX, PHOTO_PX);
-        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, PHOTO_PX, PHOTO_PX);
-        for (var q = 0.8; q >= 0.4; q -= 0.1) {
-          var data = c.toDataURL('image/jpeg', q);
-          if (data.length <= D.PEOPLE_LIMITS.photo) { resolve(data); return; }
-        }
-        reject(new Error('Esa imagen no se puede reducir lo bastante. Prueba con otra.'));
-      };
-      img.src = url;
-    });
-  }
+  function shrinkPhoto(file) { return App.shrinkPhoto(file, PHOTO_PX, D.PEOPLE_LIMITS.photo); }
   // Cápsulas del menú de relaciones: igual que el de emociones, sin símbolo, y el círculo "+" al final
   function relCaps(lib, staged) {
     return lib.map(function (r) {
@@ -83,11 +63,10 @@
             '<div class="field"><span id="bd-l">Cumpleaños <small>(opcional; el año también)</small></span>' +
               '<div class="bday-row" role="group" aria-labelledby="bd-l">' +
                 '<input id="p-bd-d" type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="Día" aria-label="Día" value="' + esc(bDay) + '">' +
-                '<div class="dd" id="p-bd-dd"><input type="hidden" id="p-bd-m" value="' + (bMonth || '') + '">' +
-                  '<button type="button" class="dd-btn" id="p-bd-mbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="p-bd-mlist" aria-label="Mes"><span id="p-bd-mtxt">' + (bMonth ? MONTHS[bMonth - 1] : 'Mes') + '</span></button>' +
-                  '<ul class="dd-list" id="p-bd-mlist" role="listbox" aria-label="Mes" hidden>' +
-                    ['Sin indicar'].concat(MONTHS).map(function (m, i) { return '<li role="presentation"><button type="button" class="dd-opt" role="option" data-month="' + (i || '') + '" aria-selected="' + ((bMonth || 0) === i) + '">' + m + '</button></li>'; }).join('') +
-                  '</ul></div>' +
+                // El desplegable compartido (components.js) se monta solo sobre este <select>.
+                '<select id="p-bd-m" aria-label="Mes">' +
+                  ['Mes'].concat(MONTHS).map(function (m, i) { return '<option value="' + (i || '') + '"' + ((bMonth || 0) === i ? ' selected' : '') + '>' + m + '</option>'; }).join('') +
+                '</select>' +
                 '<input id="p-bd-y" type="text" inputmode="numeric" maxlength="4" placeholder="Año" aria-label="Año (opcional)" value="' + esc(bYear) + '"></div></div>' +
             '<div class="field"><span id="ph-l">Foto <small>(opcional)</small></span>' +
               '<div class="photo-row"><input id="p-photo" class="sr" type="file" accept="image/*" aria-labelledby="ph-l">' +
@@ -171,14 +150,6 @@
           repo.renameRelation(old, name).then(function () { return repo.list(true); }).then(function (l) { people = l; applyLocal(); })
             .catch(function (err) { relSay(err && err.message ? err.message : 'No se pudo guardar la relación.', 'error'); });
         }
-        function setMonth(n) {
-          $('#p-bd-m').value = n ? String(n) : '';
-          $('#p-bd-mtxt').textContent = n ? MONTHS[n - 1] : 'Mes';
-          if (view.querySelectorAll) view.querySelectorAll('.dd-opt').forEach(function (o) { o.setAttribute('aria-selected', String((+o.dataset.month || 0) === (n || 0))); });
-        }
-        function monthList(open) {
-          $('#p-bd-mlist').hidden = !open; $('#p-bd-mbtn').setAttribute('aria-expanded', String(open));
-        }
         function addTo(list, raw, max) {
           String(raw).split(',').forEach(function (x) { x = x.replace(/\s+/g, ' ').trim(); if (x && list.length < max && list.map(D.fold).indexOf(D.fold(x)) < 0) list.push(x); });
         }
@@ -192,16 +163,6 @@
         view.addEventListener('keydown', function (e) {
           var t = e.target;
           if (t.id === 'rel-name' && e.key === 'Enter') { e.preventDefault(); saveRel(); return; }
-          var opts = view.querySelectorAll ? Array.prototype.slice.call(view.querySelectorAll('.dd-opt')) : [];
-          if (t.id === 'p-bd-mbtn' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-            e.preventDefault(); monthList(true);
-            var cur = opts.filter(function (o) { return o.getAttribute('aria-selected') === 'true'; })[0] || opts[0]; if (cur && cur.focus) cur.focus(); return;
-          }
-          if (t.classList && t.classList.contains && t.classList.contains('dd-opt')) {
-            var at = opts.indexOf(t);
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var nx = opts[(at + (e.key === 'ArrowDown' ? 1 : opts.length - 1)) % opts.length]; if (nx) nx.focus(); return; }
-            if (e.key === 'Escape') { e.preventDefault(); monthList(false); $('#p-bd-mbtn').focus(); return; }
-          }
           if ((t.id === 'p-nick' || t.id === 'p-tag') && (e.key === 'Enter' || e.key === ',')) {
             e.preventDefault(); commitInputs();
           }
@@ -218,10 +179,6 @@
         });
         view.addEventListener('click', function (e) {
           var t = e.target; if (!t || !t.closest) return;
-          var mo = t.closest('[data-month]');
-          if (mo) { setMonth(+mo.dataset.month || 0); monthList(false); $('#p-bd-mbtn').focus(); return; }
-          if (t.closest('#p-bd-mbtn')) { monthList($('#p-bd-mlist').hidden); return; }
-          if (!t.closest('.dd')) monthList(false);
           if (t.closest('#p-rel-open')) { openRel(); return; }
           var rc = t.closest('[data-rel-toggle]');
           if (rc) { stageRel(rc.dataset.relToggle, relStaged.map(D.fold).indexOf(D.fold(rc.dataset.relToggle)) < 0); return; }

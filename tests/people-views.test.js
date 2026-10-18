@@ -8,7 +8,7 @@ import { createFakeGithub } from './helpers/fake-github.js';
 
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
-const FILES = ['icons', 'prefs', 'ui', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
+const FILES = ['icons', 'prefs', 'ui', 'components', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
   'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/deco', 'views/diary/html', 'views/diary/list', 'views/diary/read',
   'views/people/html', 'views/diary/people-picker', 'views/diary/editor', 'views/diary', 'views/people/list', 'views/people/card', 'views/people/form', 'views/people', 'views/mood', 'views/home'];
 
@@ -427,18 +427,14 @@ test('formulario: el menú de relaciones tiene "+", el mes es un desplegable pro
   const view = root.els['.people-view'];
   const h = view.innerHTML;
   assert.match(h, /id="p-rel-open"/); assert.match(h, /id="rel-dialog"/); assert.doesNotMatch(h, /p-rel-panel|p-rel-plus/);
-  assert.doesNotMatch(h, /type="number"/, 'sin flechas en el día'); assert.doesNotMatch(h, /<select/, 'sin el desplegable nativo');
-  const click = (map) => fire(view, 'click', { target: target(map) });
+  assert.doesNotMatch(h, /type="number"/, 'sin flechas en el día');
+  // mes: un <select> sobre el que se monta el desplegable compartido (components.js); «Mes» es sin indicar
+  assert.match(h, /<select id="p-bd-m" aria-label="Mes"><option value="" selected>Mes<\/option><option value="1">enero<\/option>/);
+  assert.equal((h.match(/<option /g) || []).length, 13);
   // día: solo dígitos
   const day = { id: 'p-bd-d', value: '1a4x' }; fire(view, 'input', { target: day }); assert.equal(day.value, '14');
-  // mes: abrir, elegir, cerrar; "Sin indicar" lo quita
-  root.querySelector('#p-bd-mlist').hidden = true;   // el HTML real lo trae oculto; el documento de pruebas no lo refleja
-  click({ '#p-bd-mbtn': {} }); assert.equal(root.querySelector('#p-bd-mlist').hidden, false);
-  click({ '[data-month]': { dataset: { month: '5' } } });
-  assert.equal(root.querySelector('#p-bd-m').value, '5'); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'mayo'); assert.equal(root.querySelector('#p-bd-mlist').hidden, true);
-  root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14';
+  root.querySelector('#p-name').value = 'Lola'; root.querySelector('#p-bd-d').value = '14'; root.querySelector('#p-bd-m').value = '5';
   root.els['#p-save'].handlers.click[0](); await tick(80);
   const saved = JSON.parse(fake.state.files.get('people.json')).people[0];
   assert.equal(saved.birthday, '05-14'); assert.deepEqual(plain(saved.relations), []);
-  click({ '[data-month]': { dataset: { month: '' } } }); assert.equal(root.querySelector('#p-bd-m').value, ''); assert.equal(root.querySelector('#p-bd-mtxt').textContent, 'Mes');
 });

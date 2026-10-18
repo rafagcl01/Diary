@@ -19,6 +19,15 @@
     var items = (ids || []).map(function (id) { return byId && byId[id] ? emotionChip(byId[id]) : ''; }).join('');
     return items ? '<ul class="chips entry-emotions" aria-label="' + (label || 'Emociones') + '">' + items + '</ul>' : '';
   }
+  // Actividades de una entrada (cápsulas oscuras, con su XP). `a` puede faltar si la actividad no se pudo cargar.
+  function activityChip(a, id, extra) {
+    var xp = a && App.rpg && App.rpg.activityXp ? App.rpg.activityXp(a) : 0;
+    return '<li class="chip act-chip">' + icon(a ? a.icon : 'star') + '<span>' + esc(a ? a.name : id) + '</span>' + (xp ? '<i>+' + xp + ' XP</i>' : '') + (extra || '') + '</li>';
+  }
+  function activityList(ids, actsById, label) {
+    var items = (ids || []).map(function (id) { return actsById && actsById[id] ? activityChip(actsById[id], id) : ''; }).join('');
+    return items ? '<ul class="chips entry-activities" aria-label="' + (label || 'Actividades') + '">' + items + '</ul>' : '';
+  }
   function paragraphs(text) {
     return String(text).split(/\n[ \t]*\n/).map(function (p) { return p.trim(); }).filter(Boolean)
       .map(function (p) { return '<p>' + esc(p).replace(/\n/g, '<br>') + '</p>'; }).join('');
@@ -47,7 +56,7 @@
   }
 
   App.diaryHtml = {
-    face: face, moodTag: moodTag, emotionChip: emotionChip, emotionList: emotionList, paragraphs: paragraphs, tagList: tagList, sheetHead: sheetHead,
+    face: face, moodTag: moodTag, emotionChip: emotionChip, emotionList: emotionList, activityChip: activityChip, paragraphs: paragraphs, tagList: tagList, sheetHead: sheetHead,
 
     // Una página en la cronología (con su porcentaje de ánimo)
     item: function (entry) {
@@ -122,12 +131,14 @@
     },
 
     // Una página leída: la fecha y el título dentro de la hoja, el porcentaje de ánimo arriba y cada entrada con su
-    // texto, su estado, sus emociones, sus personas y sus etiquetas. `byId` es el mapa de emociones y `peopleById` el de
-    // personas (pueden faltar). Las personas son enlaces a su ficha; los controles de vínculo solo existen en el editor.
-    sheet: function (entry, byId, peopleById) {
+    // texto, su estado, sus emociones, sus personas, sus actividades y sus etiquetas. `byId` es el mapa de emociones,
+    // `peopleById` el de personas y `actsById` el de actividades (pueden faltar). Las personas son enlaces a su ficha;
+    // los controles de vínculo solo existen en el editor.
+    sheet: function (entry, byId, peopleById, actsById) {
       var blocks = entry.blocks.map(function (b) {
         var meta = (b.mood ? moodTag(b.mood) : '') + emotionList(b.emotions, byId, 'Emociones de la entrada') +
-          (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') + tagList(b.tags, 'Etiquetas de la entrada');
+          (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') +
+          activityList(b.activities, actsById, 'Actividades de la entrada') + tagList(b.tags, 'Etiquetas de la entrada');
         return '<section class="block-read">' + (b.text ? paragraphs(b.text) : '') + (meta ? '<div class="block-meta-read">' + meta + '</div>' : '') + '</section>';
       }).join('<hr class="stitch-line">');
       var pct = D.dayMood(entry).percent;

@@ -58,7 +58,7 @@
     return {
       id: base && base.id ? base.id : R.newWeeklyId(), name: name, description: R.cleanText(input.description, R.WEEKLY_LIMITS.description),
       size: input.size, shares: shares, mode: input.mode, activity: activity, target: target,
-      archived: !!(base && base.archived), createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
+      createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
     };
   };
 
@@ -90,7 +90,8 @@
       if (pending && !force) return pending;
       var p = store.readJson(PATH, null).then(function (doc) {
         var d = ensure(doc);
-        cache = { missions: d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id); }), progress: d.progress }; pending = null;
+        // Las archivadas (sistema anterior) ya no existen para la aplicación: purgeArchived las borra del archivo.
+        cache = { missions: d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id) && !m.archived; }), progress: d.progress, hasArchived: d.missions.some(function (m) { return m && m.archived; }) }; pending = null;
         return cache;
       }, function (e) { pending = null; throw e; });
       pending = p;
@@ -133,12 +134,30 @@
           });
         });
       },
-      // Archivar conserva el historial de semanas; la misión deja de aparecer.
-      setArchived: function (id, archived) {
+      // Elimina la misión y sus casillas marcadas. La XP que ya dio (en el registro) se queda.
+      remove: function (id) {
         return Promise.resolve().then(function () {
-          return mutate('Archiva una misión semanal', function (d) {
-            var i = find(d.missions, id); d.missions[i] = Object.assign({}, d.missions[i], { archived: !!archived }); return d.missions[i];
+          return mutate('Elimina una misión semanal', function (d) {
+            var i = find(d.missions, id), m = d.missions[i];
+            d.missions.splice(i, 1);
+            Object.keys(d.progress).forEach(function (k) { if (k.indexOf(id + '|') === 0) delete d.progress[k]; });
+            return m;
           });
+        });
+      },
+      // Borra del archivo las misiones archivadas con el sistema anterior (y sus casillas). Solo escribe si hay alguna.
+      purgeArchived: function () {
+        return loadRaw().then(function (c) {
+          if (!c.hasArchived) return 0;
+          var n = 0;
+          return mutate('Elimina las misiones archivadas', function (d) {
+            for (var i = d.missions.length - 1; i >= 0; i--) {
+              var m = d.missions[i];
+              if (!m || !m.archived) continue;
+              d.missions.splice(i, 1); n++;
+              Object.keys(d.progress).forEach(function (k) { if (k.indexOf(m.id + '|') === 0) delete d.progress[k]; });
+            }
+          }).then(function () { return n; });
         });
       },
       // Marca o desmarca una casilla de esta semana. Si la misión ya está completada, no se toca. Devuelve los eventos de recompensa.
@@ -163,7 +182,6 @@
         return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
           var todo = [];
           r[0].missions.forEach(function (m) {
-            if (m.archived) return;
             weeks.forEach(function (w) { var v = R.weeklyView(m, w, r[1].entries, r[0].progress); if (v.ready) todo.push(v); });
           });
           var events = [];

@@ -49,14 +49,13 @@
     var rels = (p.relations || []).slice(0, 3).map(function (r) { return '<span class="cap">' + esc(r) + '</span>'; });
     if ((p.relations || []).length > 3) rels.push('<span class="cap">+' + (p.relations.length - 3) + '</span>');
     if (p.met) rels.push('<span class="cap">Desde ' + esc(D.formatMet(p.met)) + '</span>');
-    return '<li><a class="person-card" href="#/personas/' + esc(p.id) + '" aria-label="Ficha de ' + esc(p.name) + '">' +
+    return '<li><a class="person-card" href="#/personas/' + esc(p.id) + '" aria-label="Abrir la ficha de ' + esc(p.name) + '">' +
       '<span class="tape" aria-hidden="true"></span>' + avatar(p, 'large') +
       '<span class="pc-name">' + esc(p.name) + '</span>' +
       '<span class="pc-nick">' + (p.nicknames.length ? '“' + esc(p.nicknames[0]) + '”' : 'sin apodo') + '</span>' +
       '<span class="pc-caps">' + rels.join('') + '</span>' +
       (p.birthday ? '<span class="pc-bday">' + icon('star') + 'Cumple el ' + esc(D.formatBirthday(p.birthday)) + '</span>' : '') +
-      '<span class="pc-count">' + (n ? plural(n, 'recuerdo vinculado', 'recuerdos vinculados') : 'Sin recuerdos todavía') + '</span>' +
-      '<span class="btn secondary pc-open">Abrir ficha</span></a></li>';
+      '<span class="pc-count">' + (n ? plural(n, 'recuerdo vinculado', 'recuerdos vinculados') : 'Sin recuerdos todavía') + '</span></a></li>';
   }
 
   // Un fragmento vinculado a la persona, con su fecha, TODO su texto (el contexto original) y el enlace a la página.

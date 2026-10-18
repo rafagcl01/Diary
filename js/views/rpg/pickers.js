@@ -20,7 +20,7 @@
     },
     summaryText: function (values, mode) {
       var t = P.pickers.total(values);
-      if (mode === 'pct') return 'Suman ' + t + '%' + (t === 100 || t === 0 ? '' : ' (deben sumar 100)');
+      if (mode === 'pct') return 'Suman ' + t + '%' + (t === 100 || t === 0 ? '' : t < 100 ? ' (faltan ' + (100 - t) + ' para 100)' : ' (sobran ' + (t - 100) + ')');
       return 'Suman ' + t + ' de ' + R.ACTIVITY_XP + ' puntos' + (t === R.ACTIVITY_XP ? '' : ' (deben ser ' + R.ACTIVITY_XP + ')');
     },
     toList: function (values, mode) {
@@ -33,8 +33,11 @@
           return '<li><button type="button" class="emo-cap" data-pk="' + esc(s.id) + '" aria-pressed="' + (values[s.id] !== undefined) + '">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button></li>';
         }).join('') + '</ul></div>';
       }).join('') + '</div>' +
+      // Cada reparto con el número compartido (− y +): de 5 en 5 en porcentajes y de 1 en 1 en puntos; también se escribe.
       (picked.length ? '<div class="share-rows">' + picked.map(function (id) {
-        return '<label class="share-row"><span>' + esc(names[id] || id) + '</span><input type="number" inputmode="numeric" min="1" max="' + (mode === 'pct' ? 100 : R.ACTIVITY_XP) + '" step="1" data-pkval="' + esc(id) + '" value="' + values[id] + '"><span>' + (mode === 'pct' ? '%' : 'XP') + '</span></label>';
+        var name = names[id] || id, pct = mode === 'pct';
+        return '<div class="share-row"><span>' + esc(name) + '</span>' +
+          App.ui.stepper({ value: values[id], min: 1, max: pct ? 100 : R.ACTIVITY_XP, step: pct ? 5 : 1, unit: pct ? '%' : 'XP', label: name + (pct ? ' (porcentaje)' : ' (puntos)'), attrs: 'data-pkval="' + esc(id) + '"' }) + '</div>';
       }).join('') + '</div>' : '') +
       '<p class="soft" data-pk-total role="status">' + (picked.length ? P.pickers.summaryText(values, mode) : (mode === 'pct' ? 'Sin subcategorías: solo sube el nivel general.' : 'Elige al menos una subcategoría.')) + '</p>';
     }

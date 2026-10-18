@@ -112,5 +112,14 @@
     }
   }
 
+  // Desplegables de la aplicación: cada <select> que aparezca (en cualquier pantalla o diálogo) se convierte solo.
+  var ddQueued = false;
+  function enhance() { ddQueued = false; App.ui.enhanceSelects(document.body); }
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(function () { if (!ddQueued) { ddQueued = true; Promise.resolve().then(enhance); } })
+      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  }
+
   App.startRouter(sections, show);
+  enhance();
 })(window.App = window.App || {});

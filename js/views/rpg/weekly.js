@@ -10,16 +10,16 @@
         (m.done ? '' : '<p class="soft wk-note">Se completa sola al registrar la actividad.</p>');
     } else {
       body = '<ul class="wk-checks" aria-label="Casillas de ' + esc(m.name) + '">' + m.checks.map(function (c, i) {
-        return '<li><label><input type="checkbox" data-check="' + i + '" data-id="' + esc(m.id) + '"' + (c ? ' checked' : '') + (m.done ? ' disabled' : '') + '><span>' + (m.target === 1 ? esc(m.description || 'Hecho') : 'Casilla ' + (i + 1)) + '</span></label></li>';
+        return '<li><label><input type="checkbox" data-check="' + i + '" data-id="' + esc(m.id) + '"' + (c ? ' checked' : '') + (m.done ? ' disabled' : '') + '><span>' + (m.target === 1 ? esc(m.description || 'Completada esta semana') : 'Casilla ' + (i + 1)) + '</span></label></li>';
       }).join('') + '</ul>' + (m.target > 1 ? U.bar(pct, m.name + ': ' + m.count + ' de ' + m.target) : '');
     }
     var split = m.shares.length ? m.shares.map(function (s) { return '<span class="chip">' + esc(names[s.sub] || s.sub) + ' <small>' + s.pct + '%</small></span>'; }).join('') : '<span class="chip">Nivel general</span>';
-    return '<li class="wk-card" data-done="' + m.done + '"><div class="wk-head"><h3>' + esc(m.name) + '</h3>' +
-      (m.done ? '<span class="tag ok">Completada ✓</span>' : '<span class="tag">+' + m.xp + ' XP</span>') + '</div>' +
+    return '<li class="wk-card has-edit" data-done="' + m.done + '"><div class="wk-head"><h3>' + esc(m.name) + '</h3>' +
+      (m.done ? '<span class="tag ok card-tag">Completada ✓</span>' : '<span class="tag card-tag">+' + m.xp + ' XP</span>') + '</div>' +
       (m.description && m.target !== 1 ? '<p class="soft">' + esc(m.description) + '</p>' : '') + body +
       '<div class="act-chips">' + split + '</div>' +
-      '<div class="sub-tools">' + (m.weeksDone ? '<span class="soft wk-weeks">' + m.weeksDone + (m.weeksDone === 1 ? ' semana completada' : ' semanas completadas') + '</span>' : '') +
-      '<button type="button" class="mini" data-act="edit" data-id="' + esc(m.id) + '">Editar</button></div></li>';
+      (m.weeksDone ? '<p class="soft wk-weeks">' + m.weeksDone + (m.weeksDone === 1 ? ' semana completada' : ' semanas completadas') + '</p>' : '') +
+      App.ui.editButton('data-act="edit" data-id="' + esc(m.id) + '"', 'Editar ' + m.name) + '</li>';
   }
 
   V.weeklyPanel = function (host, ctx) {
@@ -33,14 +33,25 @@
     function names() { return U.subNames(st.structure); }
     function actNames() { var o = {}; actList.forEach(function (a) { o[a.id] = a.name; }); return o; }
     function paint() {
-      var live = state.missions.filter(function (m) { return !m.archived; }), arch = state.missions.filter(function (m) { return m.archived; });
+      var live = state.missions;
       $('#wk-range').textContent = 'Del ' + U.fmtDay(state.range.from) + ' al ' + U.fmtDay(state.range.to) + ' · se renuevan cada lunes';
-      body.innerHTML = (live.length ? '<ul class="wk-list">' + live.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul>' :
-        '<p class="soft">Aún no tienes misiones semanales. Crea una, por ejemplo «Ir al gimnasio 3 veces».</p>') +
-        (arch.length ? '<details class="archived"><summary>Archivadas (' + arch.length + ')</summary><ul class="wk-list">' + arch.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul></details>' : '');
+      body.innerHTML = live.length ? '<ul class="wk-list">' + live.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul>' :
+        '<p class="soft">Aún no tienes misiones semanales. Crea una, por ejemplo «Ir al gimnasio 3 veces».</p>';
     }
+    // Antes de pintar, se borran las archivadas del sistema anterior (si las hay).
     function reload() {
-      return Promise.all([weekly.state(), acts.list(), rpg.state()]).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
+      return weekly.purgeArchived().catch(function () {}).then(function () {
+        return Promise.all([weekly.state(), acts.list(), rpg.state()]);
+      }).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
+    }
+    function actionsHtml() {
+      return '<button type="button" class="btn" data-act="save">Guardar</button>' +
+        (form.id ? '<button type="button" class="btn secondary" data-act="del">Eliminar</button>' : '') +
+        '<button type="button" class="btn secondary" data-act="close">Cancelar</button>';
+    }
+    function askHtml() {
+      return '<p class="del-ask">¿Eliminar esta misión? No se puede deshacer. La XP que ya te dio se queda.</p>' +
+        '<button type="button" class="btn danger" data-act="del-yes">Sí, eliminar</button><button type="button" class="btn secondary" data-act="del-no">No</button>';
     }
     function say(t) { $('#wk-msg').textContent = t || ''; }
     function dlg() { return $('#wk-dialog'); }
@@ -64,15 +75,13 @@
           '<li><button type="button" class="emo-cap" data-mode="activity" aria-pressed="' + (form.mode === 'activity') + '"><span>Haciendo una actividad varias veces (se completa sola)</span></button></li>' +
           '<li><button type="button" class="emo-cap" data-mode="checks" aria-pressed="' + (form.mode === 'checks') + '"><span>Casillas que marco yo</span></button></li></ul>' +
           '<div id="wf-act">' + actPicker() + '</div>' +
-          '<label class="field"><span id="wf-tl">' + targetLabel() + '</span><input id="wf-target" type="number" inputmode="numeric" min="1" max="' + R.WEEKLY_LIMITS.target + '" step="1" value="' + (m ? m.target : 3) + '"></label></fieldset>' +
+          '<div class="field"><span id="wf-tl">' + targetLabel() + '</span>' + App.ui.stepper({ id: 'wf-target', value: m ? m.target : 3, min: 1, max: R.WEEKLY_LIMITS.target, attrs: 'aria-labelledby="wf-tl"' }) + '</div></fieldset>' +
         '<fieldset class="symbols"><legend>XP al completarla (más que una actividad)</legend><ul class="emo-caps" aria-label="Tamaño">' + R.QUEST_SIZES.map(function (z) {
           return '<li><button type="button" class="emo-cap" data-size="' + z.id + '" aria-pressed="' + (z.id === form.size) + '"><span>' + z.label + ' · ' + z.xp + ' XP</span></button></li>';
         }).join('') + '</ul></fieldset>' +
         '<fieldset class="shares"><legend>¿A qué subcategorías va la XP?</legend><p class="soft">Opcional. Sin ninguna, solo sube el nivel general.</p><div id="wf-pick">' + pickHtml() + '</div></fieldset>' +
         '<p class="msg" id="wk-dmsg" role="status" data-kind="error"></p>' +
-        '<div class="btn-row"><button type="button" class="btn" data-act="save">Guardar</button>' +
-        (m ? '<button type="button" class="btn secondary" data-act="archive" data-to="' + (m.archived ? '0' : '1') + '">' + (m.archived ? 'Recuperar' : 'Archivar') + '</button>' : '') +
-        '<button type="button" class="btn secondary" data-act="close">Cancelar</button></div>';
+        '<div class="btn-row" id="wk-actions">' + actionsHtml() + '</div>';
       dlg().showModal();
     }
     function setPressed(sel, attr, val) { Array.prototype.forEach.call(dlg().querySelectorAll(sel), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === val)); }); }
@@ -88,7 +97,14 @@
       if (act === 'close') return dlg().close();
       if (act === 'new') return openForm(null);
       if (act === 'edit') return openForm(state.missions.filter(function (m) { return m.id === id; })[0]);
-      if (act === 'archive') return weekly.setArchived(form.id, t.getAttribute('data-to') === '1').then(reload).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
+      if (act === 'del') { $('#wk-actions').innerHTML = askHtml(); var y = $('[data-act="del-yes"]'); if (y && y.focus) y.focus(); return; }
+      if (act === 'del-no') { $('#wk-actions').innerHTML = actionsHtml(); return; }
+      if (act === 'del-yes') {
+        if (busy) return; busy = true;
+        var name = $('#wf-name').value;
+        return weekly.remove(form.id).then(reload).then(function () { dlg().close(); say('Misión eliminada' + (name ? ': ' + name : '') + '.'); })
+          .catch(function (e) { dmsg(e.message); $('#wk-actions').innerHTML = actionsHtml(); }).then(function () { busy = false; });
+      }
       if (act === 'save') {
         var data = { name: $('#wf-name').value, description: $('#wf-desc').value, size: form.size, shares: K.toList(form.shares, 'pct'), mode: form.mode, activity: form.activity, target: Number($('#wf-target').value) };
         var p = form.id ? weekly.update(form.id, data) : weekly.create(data);

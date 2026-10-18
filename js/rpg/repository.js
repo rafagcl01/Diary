@@ -1,7 +1,7 @@
 // Guardado del personaje en el repositorio de datos (carpeta rpg/):
 //   rpg/profile.json         nombre y avatar
 //   rpg/attributes.json      atributos y subcategorías (nombres, descripciones, iconos, orden, archivadas)
-//   rpg/ledger-AAAA.json     registro de experiencia del año (solo se añaden apuntes; nunca se borran)
+//   rpg/ledger-AAAA.json     registro de experiencia del año (se añaden apuntes; solo las actividades se pueden borrar)
 // El nivel nunca se guarda: se calcula del registro. Un apunte con la misma clave no se vuelve a contar.
 (function (App) {
   var R = App.rpg;
@@ -10,15 +10,34 @@
   function ledgerPath(year) { return LEDGER_PREFIX + year + '.json'; }
 
   R.AVATARS = ['mended', 'moon', 'star', 'rose', 'eye', 'key', 'locket', 'ghost', 'skull', 'cat', 'butterfly', 'cherry', 'crown', 'bow'];
+  // Imagen del avatar (opcional): { kind: 'photo', data: 'data:image/jpeg;base64,…' } o { kind: 'url', url } (GIF de Giphy, Tenor o Imgur).
+  // El símbolo se guarda siempre: es lo que se ve si no hay imagen o si el GIF no carga. Devuelve null si no vale.
+  R.cleanAvatarImage = function (img) {
+    if (!img || typeof img !== 'object') return null;
+    if (img.kind === 'photo' && R.isAvatarPhoto(img.data)) return { kind: 'photo', data: img.data };
+    if (img.kind === 'url' && R.gifUrl) { var u = R.gifUrl(img.url); if (u) return { kind: 'url', url: u }; }
+    return null;
+  };
+
+  R.isBossStepKey = function (key) { return /^boss:bo_[0-9a-f]{8}:st_[0-9a-f]{8}$/.test(String(key)); };
 
   App.createRpgRepo = function (store) {
-    var cache = { structure: null, entries: null, profile: null }, stamp = {}, pending = {};
+    var cache = { structure: null, entries: null, profile: null }, stamp = {}, pending = {}, listeners = [];
+    // Este repositorio es la única fuente de verdad del personaje: las pantallas (ficha, inicio…) leen de aquí y se apuntan
+    // con onChange para repintarse cuando algo cambia (XP, perfil o atributos), sin recargar la página.
+    function notify(kind) {
+      listeners.slice().forEach(function (fn) { try { fn(kind); } catch (e) { /* una pantalla rota no debe frenar al resto */ } });
+    }
     // Lecturas a GitHub: una sola a la vez por archivo, y un «recargar» suave (force) no repite lo leído hace menos de 4 s.
-    // Tras escribir nosotros (hard) siempre se relee. Así abrir la ficha no hace decenas de llamadas repetidas.
+    // Tras escribir nosotros (hard) siempre se relee, y se avisa. Así abrir la ficha no hace decenas de llamadas repetidas.
     function cached(kind, force, hard, read) {
       if (cache[kind] && !(force && (hard || Date.now() - (stamp[kind] || 0) > 4000))) return Promise.resolve(cache[kind]);
       if (pending[kind] && !hard) return pending[kind];
-      var p = read().then(function (v) { cache[kind] = v; stamp[kind] = Date.now(); pending[kind] = null; return v; }, function (e) { pending[kind] = null; throw e; });
+      var p = read().then(function (v) {
+        cache[kind] = v; stamp[kind] = Date.now(); pending[kind] = null;
+        if (hard) notify(kind);
+        return v;
+      }, function (e) { pending[kind] = null; throw e; });
       pending[kind] = p;
       return p;
     }
@@ -52,7 +71,7 @@
       return cached('profile', force, hard, function () {
         return store.readJson(PROFILE, null).then(function (doc) {
           var d = doc && typeof doc === 'object' ? doc : {};
-          return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended' };
+          return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended', image: R.cleanAvatarImage(d.image) };
         });
       });
     }
@@ -90,12 +109,28 @@
         });
       },
       entries: function (force) { return loadEntries(force).then(function (l) { return l.slice(); }); },
+      // fn(kind) se llama tras cada cambio guardado ('entries' | 'profile' | 'structure'). Devuelve la función para darse de baja.
+      onChange: function (fn) {
+        listeners.push(fn);
+        return function () { var i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); };
+      },
 
+      // input: { name, avatar (símbolo), image: null | { kind: 'photo', data } | { kind: 'url', url } }
       saveProfile: function (input) {
-        var name = R.cleanText(input && input.name, R.LIMITS.name);
-        var avatar = input && R.AVATARS.indexOf(input.avatar) >= 0 ? input.avatar : 'mended';
-        return store.writeJson(PROFILE, { version: 1, name: name, avatar: avatar }, { force: true, message: 'Actualiza el personaje' })
-          .then(function () { return loadProfile(true, true); });
+        return Promise.resolve().then(function () {
+          var name = R.cleanText(input && input.name, R.LIMITS.name);
+          var avatar = input && R.AVATARS.indexOf(input.avatar) >= 0 ? input.avatar : 'mended';
+          var image = null;
+          if (input && input.image) {
+            image = R.cleanAvatarImage(input.image);
+            if (!image) throw invalid(input.image.kind === 'url'
+              ? 'El enlace no vale: debe ser https y directo (acabar en .gif) de Giphy, Tenor o Imgur.'
+              : 'Esa foto no se puede guardar. Prueba a elegirla otra vez.');
+          }
+          var doc = { version: 1, name: name, avatar: avatar };
+          if (image) doc.image = image;
+          return store.writeJson(PROFILE, doc, { force: true, message: 'Actualiza el personaje' });
+        }).then(function () { return loadProfile(true, true); });
       },
 
       // ---- Atributos y subcategorías ----
@@ -163,20 +198,24 @@
         });
       },
 
-      // Anula un apunte con un ajuste visible que lo compensa exactamente (nada se borra). Solo una vez por apunte.
-      // Las recompensas de misiones y logros no se anulan así.
-      voidEntry: function (key) {
-        var self = this;
-        return loadEntries().then(function (all) {
+      // Borra del todo un registro (y el ajuste que lo anulara con el sistema anterior, para no restar dos veces).
+      // Solo actividades y pasos de jefe (al desmarcarlos); el resto de recompensas no se tocan. Sus XP dejan de contar.
+      removeEntry: function (key) {
+        return loadEntries(true, true).then(function (all) {
           var e = all.filter(function (x) { return x.key === key; })[0];
-          if (!e) throw invalid('Ese apunte ya no existe.');
-          if (e.kind !== 'manual' && e.kind !== 'activity') throw invalid('Este apunte no se puede anular desde aquí.');
-          var label = ('Anulado: ' + e.label).slice(0, R.LIMITS.label);
-          var day = R.today();
-          return self.addEntry({
-            kind: 'adjustment', key: 'void:' + key, label: label, reason: 'Apunte anulado (' + e.label + ', ' + e.day + ')', xp: -e.xp, reverses: key, day: day,
-            points: (e.splits || []).map(function (p) { return { sub: p.sub, xp: -p.xp }; })
-          });
+          if (!e) throw invalid('Ese registro ya no existe.');
+          if (e.kind !== 'activity' && !R.isBossStepKey(key)) throw invalid('Solo se pueden borrar actividades y pasos de jefe.');
+          var gone = all.filter(function (x) { return x.key === key || (x.kind === 'adjustment' && x.reverses === key); });
+          var years = {}; gone.forEach(function (x) { years[String(x.day).slice(0, 4)] = true; });
+          var drop = {}; gone.forEach(function (x) { drop[x.key] = true; });
+          return Object.keys(years).reduce(function (p, year) {
+            return p.then(function () {
+              return store.updateJson(ledgerPath(year), function (doc) {
+                if (!doc || !Array.isArray(doc.entries)) throw invalid('El registro de experiencia de ' + year + ' está dañado. No lo toco; revísalo en GitHub.');
+                return Object.assign({}, doc, { entries: doc.entries.filter(function (x) { return !(x && drop[x.key]); }) });
+              }, { fallback: null, message: e.kind === 'activity' ? 'Borra una actividad' : 'Desmarca un paso de jefe' });
+            });
+          }, Promise.resolve()).then(function () { return loadEntries(true, true); }).then(function () { return e; });
         });
       },
 

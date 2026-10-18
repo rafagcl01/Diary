@@ -306,7 +306,7 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 
 ## Fase 5A: personaje y atributos (RPG)
 
-**Qué hay:** la ficha del personaje (nombre, avatar, nivel general con barra de XP, últimas recompensas), un radar con **cinco atributos** y sus subcategorías. Las misiones, logros, títulos y colección llegan en las siguientes fases (5B–5D).
+**Qué hay:** la ficha del personaje (nombre, avatar, nivel general con barra de XP), un radar con **cinco atributos** y sus subcategorías. Las misiones, logros, títulos y colección llegan en las siguientes fases (5B–5D).
 
 ### Reglas de la experiencia
 - La XP **solo** entra por acciones explícitas: en esta fase, **«Apuntar actividad»** (tamaño Pequeña 15 / Normal 30 / Difícil 60 / Épica 100 XP) y **«Corregir experiencia»**. El diario, los estados de ánimo y las emociones **no dan ni quitan XP**; editar una entrada tampoco.
@@ -317,6 +317,24 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 
 ### Atributos y subcategorías (personalizables)
 Vitalidad (Fuerza, Salud, Resistencia, Descanso, Autocuidado) · Espíritu (Conocimiento, Disciplina, Brujería) · Vínculos (Amistad, Amor, Familia, Conexión) · Aventura (Experiencias, Valentía, Exploración) · Creatividad (Arte, Lectura, Películas). Puedes crear, renombrar, describir, cambiar el icono, reordenar y archivar subcategorías, y renombrar los cinco atributos. Archivar o renombrar conserva su XP e historial (se identifican por un id fijo). Brujería tiene una tarjeta propia, más mágica y misteriosa.
+
+### Atributos: siete
+Vitalidad, Espíritu, Vínculos, Aventura, Creatividad, **Inteligencia** (Lógica, Idioma, Comunicación) y **Yo futuro** (Finanzas, Carrera profesional, Objetivos personales). Los dos últimos se añadieron después: si ya tenías datos, aparecen solos a nivel 1 y no cambia nada de lo que tenías (nombres, archivados, XP). Usan el mismo sistema de XP y niveles, y salen en el radar, en misiones, jefes, actividades y «Corregir XP». El radar es una estrella de siete puntas {7/3} (cada punta unida con la que está tres más allá).
+
+### Una sola fuente de verdad para el personaje
+La ficha, el inicio y Configuración leen del mismo repositorio (`App.rpg.repo()`: registro de XP, perfil y atributos). Nada se calcula ni se guarda aparte. Cada cambio guardado avisa (`repo.onChange`) y las pantallas abiertas se repintan sin recargar.
+
+### Componentes compartidos (`js/components.js` y el bloque «Componentes compartidos» de `app.css`)
+- **Desplegable:** cada `<select>` se convierte solo en el desplegable de la aplicación (el `<select>` sigue debajo, oculto, guardando el valor).
+- **Número con − y +:** `App.ui.stepper(...)` (porcentajes de 5 en 5, puntos de 1 en 1; también se escribe). Sin flechas del navegador en ningún número.
+- **Casilla:** todas las checkbox comparten estilo y animación.
+- **Barras de desplazamiento:** el mismo estilo en vertical y horizontal.
+- **Lápiz para editar:** `App.ui.editButton(...)` en tarjetas `.has-edit` (misiones y jefes): aparece al pasar el ratón; en táctil se ve siempre.
+- Pasos de jefe con casilla: marcar da 5 XP; desmarcar los quita (se borra el apunte); nunca se cuentan dos veces. Con el jefe derrotado quedan fijos.
+
+### Avatar y marcos
+- El avatar se cambia en *Configuración → Tu personaje* (el botón *Editar personaje* de la ficha lleva ahí): **símbolo** de la galería, **foto** (se recorta cuadrada y se reduce a 320 px en el navegador; se guarda en `rpg/profile.json`, sin cifrar) o **enlace directo a un GIF** de Giphy, Tenor o Imgur (solo se guarda el enlace; si no carga, se ve el símbolo).
+- Alrededor del avatar hay un **marco que mejora con el nivel**: Puntada (1), Encaje (5), Rosas y espinas (10), Alas de murciélago (20) y Corona vampírica (35). Solo es decoración. La lista está en `R.AVATAR_FRAMES` (`js/rpg/model.js`) y cada dibujo en `js/views/rpg/avatar.js`.
 
 ### La ficha y el radar
 La ficha cabe en una pantalla: a la izquierda, nivel y últimas recompensas; a la derecha, el radar (en móvil, todo apilado). Fondo de estrella de cinco puntas con las puntas unidas por un pentágono; el progreso es un polígono relleno translúcido. **Pulsar un atributo convierte el radar en el de sus subcategorías**, con una flecha arriba a la izquierda para volver. Pasar el ratón o enfocar una punta enseña su resumen; pulsar una subcategoría enseña su detalle (nivel, XP, historial, editar). El botón **Gestionar** abre la lista para crear, renombrar, reordenar y archivar subcategorías. Con otro número de ejes el fondo se adapta (triángulo, cuadrado…). Todo es accesible con teclado.
@@ -335,12 +353,14 @@ No hay misiones ni logros todavía. «Registrar actividades» es un apunte manua
 
 Todo vive en **Personaje**, en tres columnas bajo el radar (la sección «Misiones» ya no existe; `#/misiones` lleva a Personaje).
 
-- **Actividades:** todas dan exactamente **5 XP**, repartidos en puntos enteros entre subcategorías. Hay 19 predefinidas; puedes crear las tuyas, editarlas y archivarlas. Al crear una, eliges si **solo se registra esta vez** (puntual, no se guarda) o si **se guarda para repetirla**. Cada registro guarda su copia de puntos y se puede **anular** (ajuste visible que lo compensa).
+- **Actividades:** todas dan exactamente **5 XP**, repartidos en puntos enteros entre subcategorías. Hay 19 predefinidas; puedes crear las tuyas, editarlas y archivarlas. La columna muestra un botón **«Añadir actividad»** y las 3 últimas registradas; el botón abre una ventana con todas (buscador, se marcan una o varias y *Registrar*), **«+ Nueva actividad»** y *Editar*. Al crear una, eliges si **solo se registra esta vez** (puntual, no se guarda) o si **se guarda para repetirla**. Cada registro guarda su copia de puntos. Al pasar el ratón por un registro aparece una **×** para **borrarlo del todo** (se confirma en la misma fila): desaparece de `rpg/ledger-AAAA.json` y sus XP dejan de contar; si venía del diario, también se quita de su entrada. **Ver historial** (abajo a la derecha) enseña todas las actividades registradas por meses, con la misma cruz. Los «anulados» del sistema anterior se quedan en el registro y no se muestran.
+- **Actividades desde el diario:** cada entrada tiene un botón **Actividades** (la misma ventana; desde ahí solo actividades guardadas o nuevas guardadas). La entrada guarda sus identificadores (`"activities": ["gimnasio"]`). Al **guardar la página**, cada par entrada + actividad se registra **una sola vez** (clave `act:blk:<entrada>:<actividad>`) con el día de la página, y aparece el aviso *«Tu personaje se ha actualizado»*. Quitar la actividad de la entrada, o borrar la entrada, **no resta XP**. Si algo falla al registrar, la página queda guardada y basta con volver a guardarla. No cuentan para el porcentaje de ánimo.
 - **Misiones semanales** (de lunes a domingo, se renuevan solas): XP 15/30/60/100 según tamaño. Dos modos: *ligada a una actividad* («X veces a la semana»: se completa sola al registrarla, sin botón de reclamar) o *casillas* (una o varias, que marcas tú).
 - **Jefes finales:** varios pasos (check o actividad × veces). Cada paso da 5 XP; derrotarlo da 250 / 400 / 600 XP. Imagen: dibujo incluido (SVG), o **enlace directo a un GIF** de Giphy, Tenor o Imgur (no se descarga ni se guarda en tu repositorio; si no carga, se muestra el dibujo).
+- **Eliminar misiones y jefes:** no se archivan; *Editar → Eliminar* (los jefes derrotados, desde su tarjeta) los borra de `rpg/weekly.json` / `rpg/bosses.json`, con las casillas marcadas de la misión. Se confirma en el mismo sitio y no se puede deshacer. **La XP que ya dieron se queda** en el registro. Lo que estuviera archivado con la versión anterior se borra solo al abrir Personaje.
 - **Avisos:** al completar una misión, un paso, un jefe o subir de nivel aparece una notificación.
-- **Datos:** `rpg/activities.json`, `rpg/weekly.json`, `rpg/bosses.json`; las recompensas van al registro `rpg/ledger-AAAA.json` con claves únicas (`weekly:<id>:<semana>`, `boss:<id>[:<paso>]`), así que nunca se dan dos veces. `rpg/quests.json` (versión anterior) no se toca ni se usa.
+- **Datos:** `rpg/activities.json`, `rpg/weekly.json`, `rpg/bosses.json`; las recompensas van al registro `rpg/ledger-AAAA.json` con claves únicas (`weekly:<id>:<semana>`, `boss:<id>[:<paso>]`), así que nunca se dan dos veces. `rpg/quests.json` (versión anterior) no se toca ni se usa (su código ya no existe en la aplicación).
 - **Seguridad:** la política de contenido solo permite imágenes de `giphy.com`, `tenor.com` e `imgur.com` (además de las propias).
-- **Límites conocidos:** anular una visita después de que una misión o paso ya diera su recompensa no la retira (se corrige con «Corregir XP»). Al crear subcategorías, la media del atributo en el radar baja.
+- **Límites conocidos:** borrar una actividad después de que una misión o paso ya diera su recompensa no la retira (se corrige con «Corregir XP»). Al crear subcategorías, la media del atributo en el radar baja.
 
 Siguiente: logros, títulos y colección (5C).

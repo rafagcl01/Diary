@@ -1,6 +1,6 @@
-// Gráfico radar del personaje. Con cinco ejes (los atributos) el fondo es una estrella de cinco puntas con sus puntas
-// unidas por un pentágono; con otro número de ejes (las subcategorías de un atributo) se adapta: polígono regular y,
-// si hay cuatro o más, las diagonales "saltando una". El progreso es un polígono relleno y translúcido.
+// Gráfico radar del personaje. El fondo es una estrella con una punta por eje, con las puntas unidas por un polígono:
+// cada punta se une con la que está `floor((n−1)/2)` más allá, la estrella más afilada posible (5 → pentagrama {5/2},
+// 7 → heptagrama {7/3}). Con 4 ejes, las dos diagonales; con 3, solo el triángulo. El progreso es un polígono relleno y translúcido.
 // Las puntas son botones (ratón, táctil y teclado). Solo dibuja: los números salen de App.rpg.computeState.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml;
@@ -22,10 +22,10 @@
     var sel = o.selected || '', n = items.length, kind = o.kind === 'sub' ? 'sub' : 'main';
     var cap = R.radarCap(items);
     var rings = [0.25, 0.5, 0.75].map(function (f) { return '<polygon class="rd-ring" points="' + poly(items.map(function () { return RAD * f; })) + '"/>'; }).join('');
-    var star = [];
+    var star = [], skip = n === 4 ? 2 : Math.floor((n - 1) / 2);
     if (n >= 4) for (var i = 0; i < n; i++) {
       if (n === 4 && i > 1) break;
-      var a = pt(i, n, RAD), b = pt((i + 2) % n, n, RAD);
+      var a = pt(i, n, RAD), b = pt((i + skip) % n, n, RAD);
       star.push('<line class="rd-star" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '"/>');
     }
     var spokes = items.map(function (m, i) { var p = pt(i, n, RAD); return '<line class="rd-spoke" x1="' + CX + '" y1="' + CY + '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '"/>'; }).join('');

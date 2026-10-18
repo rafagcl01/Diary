@@ -8,7 +8,7 @@ import { createFakeGithub } from './helpers/fake-github.js';
 
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
-const FILES = ['icons', 'prefs', 'ui', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
+const FILES = ['icons', 'prefs', 'ui', 'components', 'router', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection',
   'diary/entries', 'diary/repository', 'diary/drafts', 'diary/emotions', 'diary/people', 'diary/stats', 'views/diary/percent', 'views/diary/deco', 'views/diary/html', 'views/diary/list', 'views/diary/read', 'views/people/html', 'views/diary/people-picker', 'views/diary/editor',
   'views/diary', 'views/people/list', 'views/people/card', 'views/people/form', 'views/people', 'views/mood', 'views/home'];
 
@@ -35,7 +35,7 @@ const fakeRoot = () => {
 };
 // Como en un navegador: el evento llega a TODOS los manejadores registrados en el elemento.
 const fire = (el, type, ev) => (el.handlers[type] || []).forEach((h) => h(ev));
-const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+const tick = (ms = 120) => new Promise((r) => setTimeout(r, ms));   // con margen: con 30 ms fallaban a veces en Windows
 const target = (map) => ({ closest: (sel) => map[sel] ?? null });
 const day = (d) => '2026-10-' + String(d).padStart(2, '0');
 const entryOf = (App, over = {}) => App.diary.sanitizeEntry({ day: '2026-10-13', title: 'Un día', blocks: [{ text: 'Texto del día.', mood: 'bien', tags: ['viaje'] }], ...over });
@@ -261,7 +261,7 @@ test('el selector de ánimo del inicio apunta un bloque en la entrada de hoy', a
   assert.match(root.els['#home-mood-msg'].innerHTML, /Elige primero/);
   click({ target: target({ '[data-m]': { dataset: { m: 'mal' } } }) });
   click({ target: target({ '#home-mood-save': {} }) });
-  await tick(60);
+  await tick();
   assert.match(root.els['#home-mood-msg'].innerHTML, /Apuntado en la página de hoy/);
   const today = await repo.get(App.diary.today());
   assert.equal(today.blocks.length, 1); assert.equal(today.blocks[0].mood, 'mal'); assert.equal(today.blocks[0].text, '');
