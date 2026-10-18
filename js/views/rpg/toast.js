@@ -14,7 +14,7 @@
     return box;
   }
 
-  // { kind: 'weekly' | 'boss' | 'step' | 'level' | 'char', title, text, link: { href, label } }
+  // { kind: 'weekly' | 'boss' | 'step' | 'level' | 'char' | 'title' | 'shadow', title, text, link: { href, label } }
   V.toast = {
     show: function (o) {
       var host = container(); if (!host) return;
@@ -34,6 +34,8 @@
         if (e.type === 'weekly') V.toast.show({ kind: 'weekly', title: '¡Misión completada!', text: e.label + ' · +' + e.xp + ' XP' });
         else if (e.type === 'boss') V.toast.show({ kind: 'boss', title: '¡Jefe derrotado!', text: e.label + ' · +' + e.xp + ' XP' });
         else if (e.type === 'step') V.toast.show({ kind: 'step', title: 'Paso completado', text: e.label + ' (' + e.boss + ') · +' + e.xp + ' XP' });
+        else if (e.type === 'todo') V.toast.show({ kind: 'weekly', title: '¡Lista completada!', text: e.label + ' · +' + e.xp + ' XP' });
+        else if (e.type === 'daily') V.toast.show({ kind: 'weekly', title: '¡Día completo!', text: 'Has hecho las tres misiones de hoy · +' + e.xp + ' XP' });
       });
     },
     // Tras guardar una página del diario con actividades (ver R.recordDiaryActivities): qué ha ganado el personaje.

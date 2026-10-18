@@ -3,7 +3,7 @@
 //  - Un paso puede ser un check que marcas tú (una sola vez) o «hacer X actividad N veces» (se completa solo).
 //  - Todo sale del registro de XP: paso = clave `boss:<jefe>:<paso>`, derrota = clave `boss:<jefe>`. Nada se da dos veces.
 //  - La imagen es opcional: un dibujo de la batería incluida o el enlace directo a un GIF/imagen de internet (no se descarga ni se guarda,
-//    solo se guarda el enlace; solo se admiten unos pocos sitios de GIFs).
+//    solo se guarda el enlace; solo se admiten los sitios de R.IMAGE_SITES).
 // Se guardan en rpg/bosses.json.
 (function (App) {
   var R = App.rpg;
@@ -21,13 +21,21 @@
   R.isBossArt = function (id) { return R.BOSS_ART.some(function (a) { return a.id === id; }); };
   R.newBossId = function () { return 'bo_' + R.newSubId().slice(3); };
   R.tierXp = function (id) { var t = R.BOSS_TIERS.filter(function (x) { return x.id === id; })[0]; return t ? t.xp : 0; };
-  // Sitios de GIFs admitidos (el enlace debe ser directo a la imagen).
-  var HOSTS = /^(media[0-9]*\.giphy\.com|i\.giphy\.com|media[0-9]*\.tenor\.com|c\.tenor\.com|i\.imgur\.com)$/i;
-  R.gifUrl = function (url) {
+  // Sitios admitidos para imágenes y GIFs por enlace (avatar y jefes); el enlace debe ser directo a la imagen.
+  // Cada uno tiene que estar también en img-src de la política de seguridad de index.html (lo comprueba una prueba).
+  R.IMAGE_SITES = 'Giphy, Tenor, Imgur, Pinterest, Wikipedia, Unsplash, Google Fotos, Reddit, Tumblr, Flickr o X (Twitter)';
+  var HOSTS = new RegExp('^(' + [
+    'media[0-9]*\\.giphy\\.com', 'i\\.giphy\\.com', 'media[0-9]*\\.tenor\\.com', 'c\\.tenor\\.com', 'i\\.imgur\\.com',
+    'i\\.pinimg\\.com', 'upload\\.wikimedia\\.org', 'images\\.unsplash\\.com', 'plus\\.unsplash\\.com',
+    'lh[0-9]*\\.googleusercontent\\.com', 'i\\.redd\\.it', 'preview\\.redd\\.it', '[0-9]+\\.media\\.tumblr\\.com',
+    'live\\.staticflickr\\.com', 'farm[0-9]*\\.staticflickr\\.com', 'pbs\\.twimg\\.com'
+  ].join('|') + ')$', 'i');
+  R.imageUrl = function (url) {
     var u; try { u = new URL(String(url || '')); } catch (e) { return null; }
     if (u.protocol !== 'https:' || !HOSTS.test(u.hostname) || String(url).length > R.BOSS_LIMITS.url) return null;
     return u.href;
   };
+  R.gifUrl = R.imageUrl;   // nombre antiguo
 
   R.sanitizeBoss = function (input, structure, base) {
     if (!input || typeof input !== 'object') throw invalid('El jefe no es válido.');
@@ -48,8 +56,8 @@
     if (shares.length && total !== 100) throw invalid('Los porcentajes deben sumar 100 (ahora suman ' + total + ').');
     var image = null;
     if (input.image && input.image.kind === 'url') {
-      var u = R.gifUrl(input.image.url);
-      if (!u) throw invalid('El enlace de la imagen no vale: debe ser https y directo (acabar en .gif) de Giphy, Tenor o Imgur.');
+      var u = R.imageUrl(input.image.url);
+      if (!u) throw invalid('El enlace de la imagen no vale: debe ser https y directo a la imagen, de ' + R.IMAGE_SITES + '.');
       image = { kind: 'url', url: u };
     } else if (input.image && input.image.kind === 'art') {
       if (!R.isBossArt(input.image.id)) throw invalid('Elige un dibujo de la lista.');
@@ -175,7 +183,7 @@
       },
       // Marca un paso de tipo check (da sus 5 XP una sola vez; ver uncompleteStep para desmarcarlo). Devuelve los eventos de recompensa.
       completeStep: function (id, stepId) {
-        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
           var b = r[0].filter(function (x) { return x.id === id; })[0];
           if (!b) throw invalid('Ese jefe ya no existe.');
           var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
@@ -189,7 +197,7 @@
       // Desmarca un paso de tipo check: se borra su apunte (sus 5 XP dejan de contar). Volver a marcarlo los da otra vez,
       // una sola vez (la clave es la misma). Con el jefe ya derrotado, los pasos quedan fijos.
       uncompleteStep: function (id, stepId) {
-        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
           var b = r[0].filter(function (x) { return x.id === id; })[0];
           if (!b) throw invalid('Ese jefe ya no existe.');
           var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
@@ -204,14 +212,14 @@
       // Da las recompensas que falten: pasos de actividad cumplidos y derrota del jefe. Idempotente. Devuelve eventos.
       sync: function () {
         var events = [];
-        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
           return r[0].reduce(function (chain, raw) {
-            return chain.then(function () { return rpg.state(true); }).then(function (st) {
+            return chain.then(function () { return rpg.state(); }).then(function (st) {
               var v = R.bossView(raw, st.entries);
               if (v.defeated) return null;
               var ready = v.steps.filter(function (s) { return s.ready; });
               return ready.reduce(function (c, s) { return c.then(function () { return grant(raw, 'boss:' + raw.id + ':' + s.id, s.text, R.BOSS_STEP_XP, events, 'step'); }); }, Promise.resolve())
-                .then(function () { return rpg.state(true); }).then(function (st2) {
+                .then(function () { return rpg.state(); }).then(function (st2) {
                   var v2 = R.bossView(raw, st2.entries);
                   if (!v2.defeated && v2.allDone) return grant(raw, 'boss:' + raw.id, raw.name, R.tierXp(raw.tier), events, 'boss');
                 });
@@ -239,6 +247,10 @@
     return Promise.resolve(weekly ? weekly.sync(weeks) : []).then(function (e1) {
       events = events.concat(e1);
       return bosses ? bosses.sync() : [];
-    }).then(function (e2) { return events.concat(e2); });
+    }).then(function (e2) {
+      events = events.concat(e2);
+      var todos = R.todos ? R.todos() : null;   // listas de tareas (rpg/todos.js)
+      return todos ? todos.sync() : [];
+    }).then(function (e3) { return events.concat(e3); });
   };
 })(window.App = window.App || {});

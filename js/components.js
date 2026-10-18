@@ -36,7 +36,92 @@
 
   // ---- Lápiz para editar una tarjeta ----
   ui.editButton = function (attrs, label) {
-    return '<button type="button" class="edit-fab" ' + attrs + ' aria-label="' + esc(label) + '" title="Editar">' + icon('pencil') + '</button>';
+    return '<button type="button" class="edit-fab" ' + attrs + ' data-menu-label="Editar" aria-label="' + esc(label) + '" title="Editar">' + icon('pencil') + '</button>';
+  };
+  // ---- Confirmación en la misma fila (antes de quitar algo que dio XP) ----
+  // questionHtml es HTML de confianza (escapa antes lo que venga del usuario). yesAttrs / noAttrs: atributos de cada botón.
+  ui.askRow = function (questionHtml, yesAttrs, noAttrs, yesLabel) {
+    return '<div class="ask-row" role="group" aria-label="Confirmar"><span class="ask-q">' + questionHtml + '</span>' +
+      '<button type="button" class="mini danger" ' + yesAttrs + '>' + esc(yesLabel || 'Sí, quitar') + '</button>' +
+      '<button type="button" class="mini" ' + noAttrs + '>No</button></div>';
+  };
+  ui.xpText = function (xp) { return '<b>' + xp + ' XP</b>'; };
+  // Al desmarcar una casilla que dio XP: la casilla vuelve a marcarse y debajo, en su fila (`rowSel`), se pregunta.
+  // «Sí» la desmarca de verdad y llama a onYes(); «No» la deja como estaba. Una sola pregunta abierta por fila.
+  ui.askUncheck = function (box, rowSel, questionHtml, onYes) {
+    var row = box.closest(rowSel); if (!row) { onYes(); return; }
+    box.checked = true;
+    var old = row.querySelector('.ask-row'); if (old) old.parentNode.removeChild(old);
+    row.insertAdjacentHTML('beforeend', ui.askRow(questionHtml, 'data-ask="yes"', 'data-ask="no"', 'Sí, desmarcar'));
+    row.setAttribute('data-asking', 'true');
+    var ask = row.querySelector('.ask-row');
+    function close() { if (ask.parentNode) ask.parentNode.removeChild(ask); row.removeAttribute('data-asking'); }
+    ask.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-ask]') : null;
+      if (!b) return;
+      e.stopPropagation();
+      close();
+      if (b.getAttribute('data-ask') === 'yes') { box.checked = false; onYes(); } else if (box.focus) box.focus();
+    });
+    var yes = ask.querySelector('[data-ask="yes"]'); if (yes && yes.focus) yes.focus();
+  };
+
+  // El mismo lápiz cuando editar es ir a otra pantalla.
+  ui.editLink = function (href, label) {
+    return '<a class="edit-fab" href="' + esc(href) + '" data-menu-label="' + esc(label) + '" aria-label="' + esc(label) + '" title="Editar">' + icon('pencil') + '</a>';
+  };
+
+  // ---- Menú «⋯» para pantallas táctiles (sin ratón no hay «pasar por encima») ----
+  // Una tarjeta o fila con controles que solo aparecen al pasar el ratón es un «anfitrión»: `.has-edit` o
+  // `[data-menu-host]`. Sus controles llevan `data-menu-label`. En pantallas táctiles (CSS: hover: none) esos controles
+  // se ocultan y se ve un «⋯» que abre un menú con ellos; mantener pulsado el anfitrión (medio segundo) abre el mismo menú.
+  // Elegir una opción pulsa el control de verdad, así que cada pantalla no cambia nada de su lógica.
+  var HOSTS = '.has-edit, [data-menu-host]';
+  function menuItems(host) {
+    return Array.prototype.filter.call(host.querySelectorAll('[data-menu-label]'), function (el) {
+      return el.closest(HOSTS) === host && !el.disabled;
+    });
+  }
+  ui.enhanceMenus = function (root) {
+    (root || document).querySelectorAll(HOSTS).forEach(function (host) {
+      var has = host.querySelector(':scope > .more-btn'), items = menuItems(host);
+      if (!items.length) { if (has) has.parentNode.removeChild(has); return; }
+      if (has) return;
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'more-btn'; b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-label', 'Más opciones');
+      b.textContent = '⋯';
+      host.appendChild(b);
+    });
+  };
+  var openMenu = null;
+  function closeMenu(focusBack) {
+    if (!openMenu) return;
+    var m = openMenu; openMenu = null;
+    if (m.el.parentNode) m.el.parentNode.removeChild(m.el);
+    if (focusBack && m.anchor && m.anchor.focus) m.anchor.focus();
+  }
+  ui.openMenu = function (host) {
+    closeMenu();
+    var items = menuItems(host); if (!items.length) return;
+    var anchor = host.querySelector(':scope > .more-btn') || host;
+    var el = document.createElement('div');
+    el.className = 'more-menu'; el.setAttribute('role', 'menu');
+    el.innerHTML = items.map(function (it, i) { return '<button type="button" role="menuitem" data-i="' + i + '">' + esc(it.getAttribute('data-menu-label')) + '</button>'; }).join('') +
+      '<button type="button" role="menuitem" data-i="-1" class="more-cancel">Cancelar</button>';
+    document.body.appendChild(el);
+    // Debajo del «⋯» (o de la tarjeta), sin salirse de la pantalla.
+    var r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+    var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)), top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+    openMenu = { el: el, anchor: anchor };
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-i]'); if (!b) return;
+      var i = Number(b.getAttribute('data-i'));
+      closeMenu(i < 0);
+      if (i >= 0 && items[i]) items[i].click();
+    });
+    var first = el.querySelector('[role="menuitem"]'); if (first) first.focus();
   };
 
   // ---- Desplegable ----
@@ -102,9 +187,40 @@
 
   // ---- Escuchas globales (una sola vez) ----
   if (typeof document !== 'undefined' && document.addEventListener) {
+    // Pulsación larga (medio segundo, sin mover el dedo) sobre un anfitrión: abre su menú y anula el toque que venía detrás.
+    var press = null, swallowClick = false;
+    document.addEventListener('touchstart', function (e) {
+      swallowClick = false;   // un toque nuevo: lo de la pulsación anterior ya no cuenta
+      var t = e.target && e.target.closest ? e.target : null;
+      var host = t && t.closest(HOSTS);
+      if (!host || t.closest('input, textarea, select, .more-menu') || !menuItems(host).length) { press = null; return; }
+      var p = e.touches[0];
+      press = { host: host, x: p.clientX, y: p.clientY, timer: setTimeout(function () {
+        if (!press) return;
+        swallowClick = true; setTimeout(function () { swallowClick = false; }, 800);
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* sin vibración */ } }
+        ui.openMenu(press.host); press = null;
+      }, 500) };
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!press) return;
+      var p = e.touches[0];
+      if (Math.abs(p.clientX - press.x) > 10 || Math.abs(p.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; }
+    }, { passive: true });
+    document.addEventListener('touchend', function () { if (press) { clearTimeout(press.timer); press = null; } });
+    document.addEventListener('contextmenu', function (e) { if (swallowClick || (e.target && e.target.closest && e.target.closest(HOSTS) && window.matchMedia && window.matchMedia('(hover: none)').matches)) e.preventDefault(); });
+    document.addEventListener('click', function (e) {
+      if (swallowClick) { swallowClick = false; if (!(e.target && e.target.closest && e.target.closest('.more-menu'))) { e.preventDefault(); e.stopPropagation(); return; } }
+    }, true);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openMenu) { e.preventDefault(); closeMenu(true); } });
+    window.addEventListener('scroll', function () { closeMenu(); }, { passive: true });
+
     document.addEventListener('click', function (e) {
       var t = e.target && e.target.closest ? e.target : null;
       if (!t) return;
+      var more = t.closest('.more-btn');
+      if (more) { var h = more.closest(HOSTS); if (openMenu && openMenu.anchor === more) closeMenu(); else if (h) ui.openMenu(h); return; }
+      if (openMenu && !t.closest('.more-menu')) closeMenu();
       var st = t.closest('.st-btn');
       if (st) { ui.stepperClick(st); return; }
       var box = t.closest('.dd');

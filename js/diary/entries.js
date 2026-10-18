@@ -13,7 +13,7 @@
 (function (App) {
   var D = (App.diary = App.diary || {});
 
-  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10, people: 20, activities: 10 };
+  var LIMITS = { title: 200, text: 20000, blocks: 200, tags: 20, tag: 40, emotions: 10, people: 20, activities: 10, tasks: 20, shadows: 10 };
   var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   var BLOCK_ID_RE = /^b_[0-9a-f]{8}$/;
   var MOOD_RE = /^[a-z][a-z0-9-]{0,29}$/;
@@ -146,9 +146,35 @@
     return out.slice(0, LIMITS.activities);
   };
 
+  // Tareas de una lista marcadas desde una entrada: [{ list: 'tl_…', task: 'tk_…', text }]. Se guarda el texto para poder
+  // enseñarlas aunque la lista ya no exista (las listas son del día). Al guardar la página se marcan en su lista.
+  D.cleanTaskRefs = function (list) {
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function (r) {
+      if (!r || typeof r !== 'object' || !/^tl_[0-9a-f]{8}$/.test(r.list) || !/^tk_[0-9a-f]{8}$/.test(r.task)) return;
+      var k = r.list + ':' + r.task, text = String(r.text == null ? '' : r.text).replace(/\s+/g, ' ').trim().slice(0, 100);
+      if (seen[k]) return; seen[k] = true;
+      out.push({ list: r.list, task: r.task, text: text || 'Tarea' });
+    });
+    return out.slice(0, LIMITS.tasks);
+  };
+
+  // Sombras apuntadas desde una entrada: [{ id: 'sh_…', name }]. Se guarda el nombre para enseñarlas aunque la sombra
+  // cambie o se archive. Al guardar la página quedan apuntadas para ese día (ver rpg/shadows.js).
+  D.cleanShadowRefs = function (list) {
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function (r) {
+      if (!r || typeof r !== 'object' || !/^sh_[0-9a-f]{8}$/.test(r.id) || seen[r.id]) return;
+      seen[r.id] = true;
+      var name = String(r.name == null ? '' : r.name).replace(/\s+/g, ' ').trim().slice(0, 40);
+      out.push({ id: r.id, name: name || 'Sombra' });
+    });
+    return out.slice(0, LIMITS.shadows);
+  };
+
   // ---- Bloques ----
   D.blockHasContent = function (b) {
-    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length) || (b.people && b.people.length) || (b.activities && b.activities.length)));
+    return !!(b && ((b.text && b.text.trim()) || (b.tags && b.tags.length) || b.mood || (b.emotions && b.emotions.length) || (b.people && b.people.length) || (b.activities && b.activities.length) || (b.tasks && b.tasks.length) || (b.shadows && b.shadows.length)));
   };
 
   // Devuelve el bloque limpio (puede estar vacío). Conserva campos desconocidos.
@@ -167,6 +193,8 @@
     out.emotions = D.uniqueEmotionIds(out.emotions);
     out.people = D.uniquePersonIds(out.people);
     out.activities = D.uniqueActivityIds(out.activities);
+    out.tasks = D.cleanTaskRefs(out.tasks);
+    out.shadows = D.cleanShadowRefs(out.shadows);
     var mood = typeof out.mood === 'string' && MOOD_RE.test(out.mood) ? out.mood : null;
     if (mood !== null && !D.isKnownMood(mood)) {
       // Un estado que no es de los cinco (por ejemplo, de la versión anterior): se pasa a su nivel y se conserva el original.

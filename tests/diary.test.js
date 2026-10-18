@@ -262,6 +262,48 @@ test('mes a mes: 12 meses terminando en el indicado, con ceros y con el ánimo m
   assert.ok(!t.some((m) => m.key === '2025-10'), 'fuera de los 12 meses');
 });
 
+test('periodos: semana (de lunes a domingo), mes y año, hacia atrás con offset', () => {
+  const D = load().diary;
+  const w = D.period('semana', 0, '2026-10-18');   // domingo
+  assert.equal(w.from, '2026-10-12'); assert.equal(w.to, '2026-10-18'); assert.equal(w.points.length, 7); assert.equal(w.points[0].label, 'L 12');
+  assert.equal(D.period('semana', -1, '2026-10-18').from, '2026-10-05');
+  const cross = D.period('semana', 0, '2026-01-01');
+  assert.equal(cross.from, '2025-12-29'); assert.equal(cross.to, '2026-01-04');
+  const m = D.period('mes', 0, '2026-02-10');
+  assert.equal(m.from, '2026-02-01'); assert.equal(m.to, '2026-02-28'); assert.equal(m.points.length, 28);
+  assert.equal(D.period('mes', -2, '2026-01-15').from, '2025-11-01');
+  const y = D.period('ano', -1, '2026-10-18');
+  assert.equal(y.from, '2025-01-01'); assert.equal(y.to, '2025-12-31'); assert.equal(y.points.length, 12); assert.equal(y.points[0].key, '2025-01');
+});
+
+test('línea del ánimo: el valor de la página de cada día (o la media del mes en el año), null sin estados', () => {
+  const D = load().diary;
+  const e = moodEntries(D, [['2026-10-12', ['muy-bien'], ['mal']], ['2026-10-14', ['bien']], ['2026-09-30', ['muy-mal']], ['2026-09-02', ['bien']]]);
+  const wk = D.periodSeries(e, D.period('semana', 0, '2026-10-18'));
+  assert.deepEqual(plain(wk.map((p) => p.value)), [63, null, 75, null, null, null, null], 'Muy bien + Mal = 63; los días sin estado, null (no se inventa)');
+  const yr = D.periodSeries(e, D.period('ano', 0, '2026-10-18'));
+  assert.equal(yr[9].value, 69, 'octubre: media de 63 y 75'); assert.equal(yr[8].value, 38, 'septiembre: media de 0 y 75'); assert.equal(yr[0].value, null);
+  const st = D.periodStats(e, '2026-10-12', '2026-10-18');
+  assert.equal(st.total, 3); assert.equal(st.daysWithMood, 2); assert.equal(st.average, 69);
+});
+
+test('emociones del periodo: porcentaje de las veces que se marcó cada una, las 6 primeras y «otras»', () => {
+  const D = load().diary;
+  const lib = 'abcdefgh'.split('').map((c, i) => ({ id: 'em_0000000' + i, name: 'Emo ' + c, symbol: 'moon' }));
+  const blocks = [];
+  // Emo a ×4, b ×3, c..h ×1 (en entradas distintas) y una emoción borrada de la biblioteca, que no cuenta.
+  for (let i = 0; i < 4; i++) blocks.push({ text: 'x', emotions: ['em_00000000'] });
+  for (let i = 0; i < 3; i++) blocks.push({ text: 'x', emotions: ['em_00000001'] });
+  for (let i = 2; i < 8; i++) blocks.push({ text: 'x', emotions: ['em_0000000' + i] });
+  blocks.push({ text: 'x', emotions: ['em_ffffffff'] });
+  const e = [D.sanitizeEntry({ day: '2026-10-12', blocks }), D.sanitizeEntry({ day: '2026-09-01', blocks: [{ text: 'fuera', emotions: ['em_00000000'] }] })];
+  const sh = D.emotionShares(e, '2026-10-01', '2026-10-31', lib, 6);
+  assert.equal(sh.total, 13, 'solo las del periodo y de la biblioteca');
+  assert.deepEqual(plain(sh.items.map((s) => [s.name, s.count, s.pct])), [['Emo a', 4, 31], ['Emo b', 3, 23], ['Emo c', 1, 8], ['Emo d', 1, 8], ['Emo e', 1, 8], ['Emo f', 1, 8]]);
+  assert.deepEqual(plain(sh.other), { kinds: 2, count: 2, pct: 15 });
+  assert.equal(D.emotionShares(e, '2025-01-01', '2025-12-31', lib).total, 0);
+});
+
 test('asociaciones etiqueta-ánimo: ánimo medio con esa etiqueta, solo con datos suficientes', () => {
   const D = load().diary;
   const few = moodEntries(D, [['2026-10-01', ['bien', 'paseo'], ['bien', 'paseo']]]);
@@ -682,4 +724,15 @@ test('los borradores conservan las emociones de cada entrada', () => {
   const d = drafts.get('2026-10-13');
   assert.deepEqual(plain(d.blocks[0].emotions), ['em_0123abcd']); assert.deepEqual(plain(d.blocks[1].emotions), ['em_ffffffff']);
   assert.equal(drafts.list().length, 1);
+});
+
+test('sombras en las entradas: [{ id, name }] limpias, cuentan como contenido y viajan en el borrador', () => {
+  const { diary: D, drafts } = load({ localStorage: memoryStorage() });
+  assert.deepEqual(plain(D.cleanShadowRefs([{ id: 'sh_0123abcd', name: '  Insomnio  ' }, { id: 'sh_0123abcd', name: 'otra vez' }, { id: 'nope', name: 'x' }, null, { id: 'sh_ffffffff' }])),
+    [{ id: 'sh_0123abcd', name: 'Insomnio' }, { id: 'sh_ffffffff', name: 'Sombra' }]);
+  assert.equal(D.blockHasContent({ text: '', shadows: [{ id: 'sh_0123abcd', name: 'Insomnio' }] }), true, 'una entrada solo con una sombra no se pierde');
+  const e = D.sanitizeEntry({ day: '2026-10-13', blocks: [{ text: '', shadows: [{ id: 'sh_0123abcd', name: 'Insomnio' }] }] });
+  assert.deepEqual(plain(e.blocks[0].shadows), [{ id: 'sh_0123abcd', name: 'Insomnio' }]);
+  drafts.save('2026-10-13', { blocks: [{ text: '', shadows: [{ id: 'sh_0123abcd', name: 'Insomnio' }] }] });
+  assert.deepEqual(plain(drafts.get('2026-10-13').blocks[0].shadows), [{ id: 'sh_0123abcd', name: 'Insomnio' }]);
 });

@@ -1,9 +1,9 @@
-// Panel «Actividades» de la ficha: un botón «Añadir actividad» abre la ventana con todas (ver activity-picker.js)
-// y debajo se ven las últimas registradas, también las apuntadas desde el diario. Todas dan 5 XP.
-// Cada registro se puede borrar del todo con su cruz (se pide confirmar en la misma fila); «Ver historial» las enseña todas.
+// Panel «Actividades» de la ficha: registro rápido (el día y «Registrar actividad», que abre la ventana con todas,
+// ver activity-picker.js) y debajo las 2 últimas, también las apuntadas desde el diario, cada una con el icono y el nombre
+// de su atributo. Sin scroll: el resto, en «Ver historial». Todas dan 5 XP. Quitar una pide confirmar (y quita su XP).
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
-  var RECENT = 10;   // la columna tiene su propio scroll: caben más
+  var RECENT = 2;
 
   function monthLabel(key) {
     var d = new Date(key + '-15T12:00:00');
@@ -14,15 +14,22 @@
     var acts = ctx.acts, rpg = ctx.rpg;
     host.innerHTML = '<div class="col-head"><h2>Actividades</h2></div>' +
       '<p class="soft col-lead">Todas dan ' + R.ACTIVITY_XP + ' XP. También puedes apuntarlas en una entrada del diario.</p>' +
-      '<label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '"></label>' +
-      '<button type="button" class="act-add" data-act="add" aria-haspopup="dialog">' + icon('pencil') + '<span>Añadir actividad</span></button>' +
+      '<div class="act-top"><label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '"></label>' +
+      '<button type="button" class="act-add" data-act="add" aria-haspopup="dialog">' + icon('pencil') + '<span>Registrar actividad</span></button></div>' +
       '<p class="msg" id="act-msg" role="status" data-kind="ok"></p>' +
-      '<h3 class="act-recent-h">Últimas registradas</h3><div id="act-body" class="col-scroll"></div>' +
+      '<h3 class="act-recent-h">Últimas registradas</h3><div id="act-body"></div>' +
       '<button type="button" class="act-hist-link" data-act="hist" aria-haspopup="dialog">Ver historial</button>' +
       '<dialog class="confirm rpg-dialog act-dialog" id="act-dialog"></dialog>' +
       '<dialog class="confirm rpg-dialog act-hist" id="act-hist" aria-labelledby="act-hist-title"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#act-body');
-    var all = [], icons = {}, asking = null, busy = false;
+    var all = [], asking = null, busy = false, structure = [];
+    // El atributo de un registro: el de la subcategoría que más XP se llevó (sale del propio apunte, así vale también
+    // para las puntuales y para actividades que ya no existen).
+    function mainOf(e) {
+      var best = null; (e.splits || []).forEach(function (s) { if (!best || s.xp > best.xp) best = s; });
+      var f = best ? R.findSub(structure, best.sub) : null;
+      return f ? f.main : null;
+    }
 
     function day() { return $('#act-day').value || R.today(); }
     function note(text, kind) { var el = $('#act-msg'); el.textContent = text || ''; el.setAttribute('data-kind', kind || 'ok'); }
@@ -33,13 +40,15 @@
       return all.filter(function (e) { return e.kind === 'activity' && !voided[e.key]; })
         .sort(function (a, b) { return a.day !== b.day ? (a.day < b.day ? 1 : -1) : ((a.at || '') < (b.at || '') ? 1 : -1); });
     }
+    // Quitar una actividad quita su XP: antes se pregunta en la misma fila, diciendo cuánta.
     function row(e) {
-      var end = asking === e.key
-        ? '<span class="act-ask">¿Borrar? <button type="button" class="mini" data-act="del-yes" data-key="' + esc(e.key) + '">Sí</button><button type="button" class="mini" data-act="del-no">No</button></span>'
-        : '<span class="act-xp">+' + e.xp + ' XP</span><button type="button" class="act-del" data-act="del" data-key="' + esc(e.key) + '" aria-label="Borrar: ' + esc(e.label) + ', ' + esc(U.fmtDay(e.day)) + '">×</button>';
-      return '<li' + (asking === e.key ? ' data-asking="true"' : '') + '>' + icon(icons[e.activity] || 'star') + '<span>' + esc(e.label) +
+      var ask = asking === e.key, m = mainOf(e);
+      return '<li data-menu-host' + (ask ? ' data-asking="true"' : '') + '><span class="act-ai" aria-hidden="true">' + icon(m ? m.icon : 'star') + '</span><span>' + esc(e.label) +
         (R.isDiaryKey(e.key) ? ' <span class="act-from" title="Apuntada en el diario">Diario</span>' : '') +
-        '<small>' + esc(U.fmtDay(e.day)) + '</small></span><span class="act-end">' + end + '</span></li>';
+        '<small>' + (m ? '<b class="act-main">' + esc(m.name) + '</b>' : '') + esc(U.fmtDay(e.day)) + '</small></span><span class="act-end"><span class="act-xp">+' + e.xp + ' XP</span>' +
+        (ask ? '' : '<button type="button" class="act-del" data-act="del" data-key="' + esc(e.key) + '" data-menu-label="Quitar (−' + e.xp + ' XP)" aria-label="Quitar:' + esc(e.label) + ', ' + esc(U.fmtDay(e.day)) + '">×</button>') + '</span>' +
+        (ask ? App.ui.askRow('¿Quitar <b>' + esc(e.label) + '</b>? Se quitan sus ' + App.ui.xpText(e.xp) + (R.isDiaryKey(e.key) ? ' y sale de su entrada del diario.' : '.'),
+          'data-act="del-yes" data-key="' + esc(e.key) + '"', 'data-act="del-no"') : '') + '</li>';
     }
     function paintRecent() {
       var last = done().slice(0, RECENT);
@@ -62,10 +71,7 @@
     }
     function paint() { paintRecent(); if ($('#act-hist').open) paintHistory(); }
     function reload() {
-      return Promise.all([rpg.entries(true), acts.list()]).then(function (r) {
-        all = r[0]; icons = {}; r[1].forEach(function (a) { icons[a.id] = a.icon; });
-        paint();
-      });
+      return rpg.state().then(function (s) { all = s.entries; structure = s.structure; paint(); });
     }
 
     // Registra las elegidas de una en una con el día del selector; luego avisos y refresco de la ficha.

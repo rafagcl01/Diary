@@ -34,6 +34,12 @@
   --m-mal: #B9C3E6;
   --m-muy-mal: #8F9AD0;
 
+  /* Gráficas: la línea del ánimo y las emociones (orden fijo; «otras» siempre gris). Validadas para daltonismo
+     y contraste con dataviz/validate_palette.js, en claro y en oscuro (cada tema con sus propios tonos). */
+  --ch-line: #A52E69;
+  --ch-1: #C2407E; --ch-2: #7B5CC9; --ch-3: #14998F; --ch-4: #B87A14; --ch-5: #4F6FD0; --ch-6: #8E3B6E; --ch-other: #9C8F98;
+  --ch-grid: rgba(56, 32, 47, 0.10);
+
   /* Tipografías */
   --font-display: "IM Fell English", "Iowan Old Style", Georgia, serif;
   --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -56,6 +62,7 @@
     --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
     --accent: #E57AA9; --on-accent: #19131B;
     --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    --ch-line: #E57AA9; --ch-1: #D2588F; --ch-2: #9076D8; --ch-3: #279C91; --ch-4: #C08626; --ch-5: #6683DB; --ch-6: #B4568F; --ch-other: #8A7D88; --ch-grid: rgba(255, 255, 255, 0.09);
   }
 }
 :root[data-theme="dark"] {
@@ -63,4 +70,5 @@
   --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
   --accent: #E57AA9; --on-accent: #19131B;
   --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  --ch-line: #E57AA9; --ch-1: #D2588F; --ch-2: #9076D8; --ch-3: #279C91; --ch-4: #C08626; --ch-5: #6683DB; --ch-6: #B4568F; --ch-other: #8A7D88; --ch-grid: rgba(255, 255, 255, 0.09);
 }

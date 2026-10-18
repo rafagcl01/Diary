@@ -228,7 +228,7 @@ test('estadísticas: estado vacío cuando aún no hay ánimos', async () => {
   assert.match(root.els['#m-body'].innerHTML, /href="#\/diario\/hoy"/);
 });
 
-test('estadísticas: reparto, calendario y mes a mes, con números y sin juicios de valor', async () => {
+test('estadísticas: reparto, calendario, línea y emociones, con números y sin juicios de valor', async () => {
   const { App, repo } = await connected();
   const today = App.diary.today(), key = today.slice(0, 7);
   await repo.save({ day: key + '-01', blocks: [{ text: 'a', mood: 'mal', tags: ['casa'] }, { text: 'b', mood: 'muy-bien' }, { text: 'c', mood: 'mal' }] }, { base: null });
@@ -237,7 +237,10 @@ test('estadísticas: reparto, calendario y mes a mes, con números y sin juicios
   assert.match(html, /3 entradas con estado en 1 día\. Ánimo medio del mes: <b>50%<\/b>/);
   assert.match(html, /Mal<\/span><\/span><span class="hbar"/); assert.match(html, /2 <small>\(67%\)<\/small>/);
   assert.match(html, /class="day moodday m-mal"/);
-  assert.match(html, /Mes a mes/); assert.equal((html.match(/class="trend-col/g) || []).length, 12);
+  assert.match(html, /data-kind="semana" aria-pressed="false">Semana<\/button><button type="button" data-kind="mes" aria-pressed="true">Mes/, 'se abre en la vista de mes');
+  assert.match(html, /class="mood-line-svg"/); assert.equal((html.match(/class="ml-dot"/g) || []).length, 1, 'un punto: el único día con estado');
+  assert.match(html, /aria-label="Ánimo por día: [^"]*50%/);
+  assert.match(html, /Tus emociones/); assert.match(html, /no marcaste emociones/);
   assert.match(html, /no significan que una cause la otra|no significa que una cause la otra/);
   assert.match(html, /Muy bien 100 %, Bien 75 %, Neutro 50 %, Mal 25 %, Muy mal 0 %/); assert.match(html, /las emociones tampoco/);
   assert.match(html, /Todavía hay pocos registros para buscar pistas/);

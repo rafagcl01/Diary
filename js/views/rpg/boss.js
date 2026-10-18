@@ -23,8 +23,7 @@
       '<div class="bs-head"><h3>' + esc(b.name) + '</h3><span class="tag card-tag">' + esc(tier.label) + '</span></div>' +
       (b.description ? '<p class="soft">' + esc(b.description) + '</p>' : '') +
       (b.defeated ? '<p class="bs-win">¡Derrotado! +' + b.rewardXp + ' XP</p>' :
-        '<div class="hpbar" role="img" aria-label="Vida: quedan ' + left + ' de ' + b.steps.length + ' pasos"><span style="width:' + Math.round(hp * 100) + '%"></span></div>' +
-        '<p class="soft bs-hp">Vida: ' + left + ' de ' + b.steps.length + ' pasos · +' + R.BOSS_STEP_XP + ' XP por paso · +' + b.xp + ' XP al derrotarlo</p>') +
+        '<div class="hpbar" role="img" aria-label="Vida: quedan ' + left + ' de ' + b.steps.length + ' pasos"><span style="width:' + Math.round(hp * 100) + '%"></span></div>') +
       steps + (b.defeated ? defeatedTools(b, asking === b.id) : App.ui.editButton('data-act="edit" data-id="' + esc(b.id) + '"', 'Editar ' + b.name)) + '</li>';
   }
 
@@ -77,20 +76,20 @@
 
     function imageBlock() {
       var m = form.imgMode;
-      var modes = [['art', 'Dibujo'], ['url', 'GIF de internet'], ['none', 'Sin imagen']].map(function (x) {
+      var modes = [['art', 'Dibujo'], ['url', 'Imagen o GIF de internet'], ['none', 'Sin imagen']].map(function (x) {
         return '<li><button type="button" class="emo-cap" data-imode="' + x[0] + '" aria-pressed="' + (m === x[0]) + '"><span>' + x[1] + '</span></button></li>';
       }).join('');
       var extra = '';
       if (m === 'art') extra = '<ul class="emo-caps pk-caps art-pick" aria-label="Dibujos">' + R.BOSS_ART.map(function (a) {
         return '<li><button type="button" class="emo-cap art-cap" data-art="' + a.id + '" aria-pressed="' + (form.art === a.id) + '" aria-label="' + esc(a.label) + '"><span class="art-mini">' + V.bossArt(a.id) + '</span><span>' + esc(a.label) + '</span></button></li>';
       }).join('') + '</ul>';
-      if (m === 'url') extra = '<label class="field"><span>Enlace directo al GIF</span><input id="bf-url" type="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace directo" value="' + esc(form.url) + '"><small class="soft">Copia el «enlace directo» (acaba en .gif) de Giphy, Tenor o Imgur. No se descarga ni se guarda: solo se guarda el enlace, y la imagen se carga desde ese sitio al verla.</small></label><div id="bf-preview" class="bf-preview"></div>';
+      if (m === 'url') extra = '<label class="field"><span>Enlace a la imagen o GIF</span><input id="bf-url" type="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace de la imagen" value="' + esc(form.url) + '"><small class="soft">' + U.imageLinkHelp() + '</small></label><div id="bf-preview" class="bf-preview"></div>';
       return '<ul class="emo-caps" aria-label="Tipo de imagen">' + modes + '</ul>' + extra;
     }
     function preview() {
       var el = $('#bf-preview'); if (!el) return;
-      var u = R.gifUrl(form.url);
-      el.innerHTML = !form.url ? '' : u ? V.bossImage({ id: 'bo_00000000', name: 'Vista previa', image: { kind: 'url', url: u } }) : '<p class="soft">Ese enlace no vale todavía (debe ser https y directo, de Giphy, Tenor o Imgur).</p>';
+      var u = R.imageUrl(form.url);
+      el.innerHTML = !form.url ? '' : u ? V.bossImage({ id: 'bo_00000000', name: 'Vista previa', image: { kind: 'url', url: u } }) : '<p class="soft">' + U.imageLinkInvalid() + '</p>';
     }
     function stepRows() {
       return form.steps.map(function (s, i) {
@@ -101,12 +100,17 @@
           (s.done ? '<span class="tag ok">Hecho</span>' : '<button type="button" class="mini" data-act="step-del" data-i="' + i + '" aria-label="Quitar el paso ' + (i + 1) + '">×</button>') + '</li>';
       }).join('');
     }
-    function openForm(b) {
+    // b = jefe a editar, o null para uno nuevo. pre (solo nuevo) = { name, description, steps } para rellenarlo de antemano
+    // (por ejemplo, al convertir una sombra en jefe).
+    function openForm(b, pre) {
+      if (!b && pre) b = { id: null, tier: 'jefe', startDay: R.today(), image: { kind: 'art', id: 'fantasma' }, shares: [], name: pre.name, description: pre.description || '',
+        steps: pre.steps.map(function (s) { return { text: s.text, activity: s.activity || null, target: s.count || 1, done: false }; }) };
       form = { id: b ? b.id : null, tier: b ? b.tier : 'jefe', shares: {}, startDay: b ? b.startDay : R.today(),
         imgMode: b && b.image ? (b.image.kind === 'url' ? 'url' : 'art') : 'art', art: b && b.image && b.image.kind === 'art' ? b.image.id : 'fantasma', url: b && b.image && b.image.kind === 'url' ? b.image.url : '',
         steps: b ? b.steps.map(function (s) { return { id: s.id, text: s.text, activity: s.activity, count: s.activity ? s.target : 1, done: s.done }; }) : [{ text: '', activity: null, count: 1 }] };
       if (b) b.shares.forEach(function (s) { form.shares[s.sub] = s.pct; });
-      dlg().innerHTML = '<h3 id="bs-dtitle">' + (b ? 'Editar jefe' : 'Nuevo jefe') + '</h3>' +
+      dlg().innerHTML = '<h3 id="bs-dtitle">' + (form.id ? 'Editar jefe' : 'Nuevo jefe') + '</h3>' +
+        (pre ? '<p class="soft">Viene de tu sombra «' + esc(pre.name) + '». Cambia lo que quieras antes de guardarlo.</p>' : '') +
         '<label class="field"><span>Nombre</span><input id="bf-name" type="text" maxlength="' + R.BOSS_LIMITS.name + '" autocomplete="off" value="' + esc(b ? b.name : '') + '"></label>' +
         '<label class="field"><span>Descripción (opcional)</span><input id="bf-desc" type="text" maxlength="' + R.BOSS_LIMITS.description + '" autocomplete="off" value="' + esc(b ? b.description : '') + '"></label>' +
         '<fieldset class="symbols"><legend>Nivel (XP al derrotarlo)</legend><ul class="emo-caps" aria-label="Nivel">' + R.BOSS_TIERS.map(function (t) {
@@ -156,16 +160,38 @@
       if (k === 'text') form.steps[Number(i)].text = t.value;
       if (k === 'count') form.steps[Number(i)].count = Math.floor(Number(t.value)) || 1;
     });
-    // Marcar o desmarcar un paso de check. Mientras se guarda, las casillas no se pulsan (nada se cuenta dos veces).
+    // Marcar o desmarcar un paso de check. La tarjeta cambia al momento (tachado y barra de vida) y el guardado va detrás,
+    // en cola: varios toques seguidos se guardan en orden, uno a uno, y la ficha se refresca una sola vez al final.
+    // La XP la decide el registro (completeStep / uncompleteStep), así que nunca se cuenta dos veces. Si algo falla, se repinta lo guardado.
+    var stepQueue = Promise.resolve(), stepPending = 0, stepEvents = [], stepError = null;
+    function paintCardNow(cardEl) {
+      var boxes = cardEl.querySelectorAll('.bs-steps input[type="checkbox"]'), left = 0;
+      Array.prototype.forEach.call(boxes, function (c) { if (!c.checked) left++; c.closest('li').setAttribute('data-done', String(c.checked)); });
+      var bar = cardEl.querySelector('.hpbar');
+      if (bar && boxes.length) {
+        bar.querySelector('span').style.width = Math.round(left / boxes.length * 100) + '%';
+        bar.setAttribute('aria-label', 'Vida: quedan ' + left + ' de ' + boxes.length + ' pasos');
+      }
+    }
     host.addEventListener('change', function (ev) {
       var t = ev.target, stepId = t && t.getAttribute ? t.getAttribute('data-bstep') : null;
       if (!stepId) return;
-      if (busy) { t.checked = !t.checked; return; }
-      busy = true;
-      Array.prototype.forEach.call(body.querySelectorAll('[data-bstep]'), function (c) { c.disabled = true; });
-      var job = t.checked ? bosses.completeStep(t.getAttribute('data-id'), stepId) : bosses.uncompleteStep(t.getAttribute('data-id'), stepId);
-      job.then(function (events) { return ctx.afterChange(null, events); })
-        .catch(function (e) { say(e.message); return reload(); }).then(function () { busy = false; });
+      var cardEl = t.closest('.bs-card'), id = t.getAttribute('data-id'), on = t.checked;
+      function go() {
+        if (cardEl) paintCardNow(cardEl);
+        stepPending++;
+        stepQueue = stepQueue.then(function () { return on ? bosses.completeStep(id, stepId) : bosses.uncompleteStep(id, stepId); })
+          .then(function (events) { stepEvents = stepEvents.concat(events || []); }, function (e) { stepError = e; })
+          .then(function () {
+            if (--stepPending) return null;
+            var events = stepEvents, err = stepError; stepEvents = []; stepError = null;
+            return ctx.afterChange(null, events).then(function () { if (err) say(err.message); }, function (e) { say((err || e).message); return reload(); });
+          });
+      }
+      if (on) return go();
+      // Desmarcar quita sus 5 XP: primero se pregunta en la misma fila.
+      var text = t.parentNode && t.parentNode.querySelector('.bs-text');
+      App.ui.askUncheck(t, 'li', '¿Desmarcar <b>' + esc(text ? text.textContent : 'el paso') + '</b>? Se quitan sus ' + App.ui.xpText(R.BOSS_STEP_XP) + '.', go);
     });
     host.addEventListener('change', function (ev) {
       var t = ev.target; if (!t || !t.getAttribute || t.getAttribute('data-s') !== 'activity') return;
@@ -174,6 +200,10 @@
     });
     host.addEventListener('error', V.bossFallback, true);
 
-    return { reload: function () { return reload().catch(function (err) { body.innerHTML = '<div class="msg" data-kind="error">No se pudieron cargar los jefes. ' + esc(err.message || '') + '</div>'; }); } };
+    return {
+      reload: function () { return reload().catch(function (err) { body.innerHTML = '<div class="msg" data-kind="error">No se pudieron cargar los jefes. ' + esc(err.message || '') + '</div>'; }); },
+      // Abre «Nuevo jefe» ya relleno: { name, description, steps: [{ text, activity, count }] }.
+      openNew: function (pre) { return (st ? Promise.resolve() : reload()).then(function () { openForm(null, pre); }); }
+    };
   };
 })(window.App = window.App || {});

@@ -1,6 +1,8 @@
-// Ficha del personaje: todo cabe en una pantalla. A la izquierda, nivel y últimas recompensas; a la derecha, el radar.
+// Ficha del personaje. Arriba, un bloque: a la izquierda la ficha (avatar, nombre, título, nivel y «Estado actual») y,
+// debajo, el registro rápido de actividades; a la derecha, el radar, que compara con hace 30 días o con cada mes pasado.
 // Al pulsar un atributo, el radar se convierte en el de sus subcategorías (flecha arriba a la izquierda para volver).
-// Debajo van tres columnas: Actividades, Misiones semanales y Jefes finales. La XP solo entra por acciones explícitas; el diario no da XP.
+// Debajo: misiones diarias, tareas y misiones semanales, sombras y los jefes. La XP solo entra por acciones explícitas.
+// Con una sombra sin purificar (de hoy o de anoche), el avatar lleva un glitch; ver rpg/shadows.js.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
   App.views = App.views || {};
@@ -8,20 +10,55 @@
   function bar(f, label) { return U.bar(f, label); }
 
   // ---- Piezas de HTML ----
-  function heroHtml(st) {
-    var g = st.computed.general, p = st.profile, fr = R.frameFor(g.level);
-    return '<section class="card paper sheet char-hero" aria-labelledby="char-name">' +
-      V.avatar(p, g.level, { size: 'large' }) +
+  // «Estado actual · hoy»: misiones diarias, tareas, actividades de hoy y el siguiente título. Lo que aún no ha cargado no sale.
+  function stateHtml(st, today) {
+    var g = st.computed.general, chips = [], d0 = R.today();
+    var acts = st.entries.filter(function (e) { return e.kind === 'activity' && e.day === d0; }).length;
+    if (today && today.daily && today.daily.missions.length) {
+      var dd = today.daily.missions.filter(function (m) { return m.done; }).length;
+      chips.push('Misiones diarias <b>' + dd + ' de ' + today.daily.missions.length + '</b>' + (today.daily.complete ? ' ✓' : ''));
+    }
+    if (today && today.todos) {
+      var tasks = [].concat.apply([], today.todos.lists.map(function (l) { return l.tasks; }));
+      if (tasks.length) chips.push('Tareas <b>' + tasks.filter(function (t) { return t.done; }).length + ' de ' + tasks.length + '</b>');
+    }
+    chips.push('Actividades hoy <b>' + acts + '</b>');
+    // Sombras de hoy (y de anoche, si sigue sin purificar): una cápsula con el cuadrito desdoblado.
+    var sh = shadowsToday(today), shChip = '';
+    if (sh.length) {
+      var open = sh.filter(function (x) { return !x.purified; });
+      shChip = '<li class="chip-shadow' + (open.length ? '' : ' ok') + '"><i class="sh-dot" aria-hidden="true"></i>Sombras: <b>' + sh.map(function (x) { return esc(x.name); }).join(', ') + '</b>&nbsp;· ' +
+        (open.length ? 'sin purificar' : (sh.length === 1 ? 'purificada' : 'purificadas')) + '</li>';
+    }
+    var nt = R.nextTitle(g.level);
+    if (nt) chips.push('Siguiente título: <b>' + esc(nt.name) + '</b> · nivel ' + nt.level);
+    return '<div class="char-state" aria-label="Estado actual"><p class="char-state-h">Estado actual · hoy</p><ul class="char-chips">' +
+      chips.map(function (c) { return '<li>' + c + '</li>'; }).join('') + shChip + '</ul></div>';
+  }
+  // Apariciones de hoy, más las de ayer que siguen sin purificar (las que mantienen el glitch).
+  function shadowsToday(today) {
+    var s = today && today.shadows; if (!s) return [];
+    var yesterday = R.shiftDay(s.today, -1), out = [];
+    s.shadows.forEach(function (v) {
+      if (v.today) out.push({ name: v.name, purified: v.today.purified });
+      else if (s.appearances.some(function (a) { return a.shadow === v.id && a.day === yesterday; }) && !R.shadowPurified(v, yesterday, s.entries)) out.push({ name: v.name, purified: false });
+    });
+    return out;
+  }
+
+  function heroHtml(st, today) {
+    var g = st.computed.general, p = st.profile, fr = R.frameFor(g.level), title = R.currentTitle(p.title, g.level);
+    return '<section class="card paper sheet char-hero has-edit" aria-labelledby="char-name">' +
+      V.avatar(p, g.level, { size: 'large', aura: today && today.shadows ? today.shadows.aura : null }) +
       '<div class="char-id"><h2 id="char-name">' + esc(p.name || 'Tu personaje') + '</h2>' +
-        '<p class="char-title soft">Título: ninguno todavía</p>' +
+        '<p class="char-title"><span class="sr">Título: </span>' + esc(title.name) + '</p>' +
         '<p class="char-level"><strong>Nivel ' + g.level + '</strong> <span class="soft">· ' + g.into + ' / ' + g.need + ' XP · ' + g.total + ' en total</span></p>' +
         bar(g.fraction, 'Nivel ' + g.level + ': ' + g.into + ' de ' + g.need + ' XP') +
         '<p class="char-frame-name"><span class="frame-tag">' + esc(fr.frame.name) + '</span>' +
           (fr.next ? '<span class="soft">Siguiente marco: ' + esc(fr.next.name) + ', en el nivel ' + fr.next.level + '</span>' : '<span class="soft">Tienes el último marco.</span>') + '</p>' +
-        '</div>' +
-      '<div class="btn-row char-actions">' +
-        '<a class="btn secondary" href="#/ajustes/personaje">Editar personaje</a>' +
-        '<button type="button" class="btn secondary" data-act="adjust">Corregir XP</button></div>' +
+        '</div>' + stateHtml(st, today) +
+      App.ui.editLink('#/ajustes/personaje', 'Editar personaje') +   // aparece al pasar el ratón; lleva a Configuración
+      '<a class="menu-only" href="#/ajustes/personaje" data-menu-label="Cambiar título">Cambiar título</a>' +   // solo en el menú «⋯» (táctil)
     '</section>';
   }
 
@@ -38,10 +75,37 @@
       '<div class="sub-tools"><button type="button" class="mini" data-act="sub-hist" data-id="' + esc(s.id) + '">Historial</button><button type="button" class="mini" data-act="sub-edit" data-id="' + esc(s.id) + '" data-back="">Editar</button></div></div>';
   }
 
-  function radarCard(c, nav) {
+  // Radar con evolución: «Último mes» (contorno de hace 30 días) o «Desde el principio» (un anillo por mes).
+  // Las formas de antes salen del registro hasta esa fecha (R.radarHistory); aquí solo se ordenan por eje.
+  function compareFor(hist, nav, ids, pick) {
+    if (!hist) return null;
+    var states = nav.compare === 'rings' ? hist.months.map(function (m) { return m.computed; }) : [hist.month];
+    if (!states.length) return null;
+    return { mode: nav.compare === 'rings' ? 'rings' : 'month', shapes: states.map(function (c) { return ids.map(function (id) { return pick(c, id); }); }) };
+  }
+  function compareBar(nav) {
+    return '<div class="rd-compare" role="group" aria-label="Comparar con">' +
+      '<button type="button" data-act="cmp" data-mode="month" aria-pressed="' + (nav.compare !== 'rings') + '">Último mes</button>' +
+      '<button type="button" data-act="cmp" data-mode="rings" aria-pressed="' + (nav.compare === 'rings') + '">Desde el principio</button></div>';
+  }
+  function compareLegend(nav, hist) {
+    if (nav.compare === 'rings') {
+      return '<p class="rd-legend"><span><i class="rl-now"></i>Ahora</span><span><i class="rl-past"></i>' +
+        (hist && hist.months.length ? 'Un anillo por mes desde tu primer registro (más claro, más antiguo)' : 'Aún no hay meses anteriores con registro') + '</span></p>';
+    }
+    return '<p class="rd-legend"><span><i class="rl-now"></i>Ahora</span><span><i class="rl-past"></i>Hace 30 días: el hueco es lo que has crecido</span></p>';
+  }
+  function mainValue(c, id) { var m = c.mains.filter(function (x) { return x.id === id; })[0]; return m ? m.value : 0; }
+  function subValue(c, id) {
+    for (var i = 0; i < c.mains.length; i++) { var s = c.mains[i].subs.filter(function (x) { return x.id === id; })[0]; if (s) return s.progress; }
+    return 0;
+  }
+
+  function radarCard(c, nav, hist) {
     if (nav.level === 'main') {
-      return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus atributos</h2></div>' +
-        V.radar(c.mains, { selected: '', kind: 'main', animate: nav.anim }) +
+      var cmp = compareFor(hist, nav, c.mains.map(function (m) { return m.id; }), mainValue);
+      return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus atributos</h2>' + compareBar(nav) + '</div>' +
+        V.radar(c.mains, { selected: '', kind: 'main', animate: nav.anim, compare: cmp }) + compareLegend(nav, hist) +
         '<div class="info" id="rd-info" aria-live="polite"><p class="soft">Pulsa un atributo para ver sus subcategorías.</p></div></section>';
     }
     var m = c.mains.filter(function (x) { return x.id === nav.main; })[0];
@@ -49,13 +113,14 @@
     var items = active.map(function (s) { return { id: s.id, name: s.name, level: s.level, fraction: s.fraction, value: s.progress, magic: s.id === 'brujeria' }; });
     var sel = active.filter(function (s) { return s.id === nav.sel; })[0];
     var magic = sel && sel.id === 'brujeria';
-    var chart = items.length >= 3 ? V.radar(items, { selected: sel ? sel.id : '', kind: 'sub', animate: nav.anim }) :
+    var subCmp = compareFor(hist, nav, items.map(function (s) { return s.id; }), subValue);
+    var chart = items.length >= 3 ? V.radar(items, { selected: sel ? sel.id : '', kind: 'sub', animate: nav.anim, compare: subCmp }) + compareLegend(nav, hist) :
       '<div class="rd-fallback"><p class="soft">Con menos de 3 subcategorías activas no hay gráfico. Elige una o recupera alguna en «Gestionar».</p>' +
       active.map(function (s) { return '<button type="button" class="emo-cap" data-sub="' + esc(s.id) + '" aria-pressed="' + (!!sel && sel.id === s.id) + '">' + icon(s.icon) + '<span>' + esc(s.name) + '</span></button>'; }).join(' ') + '</div>';
     return '<section class="card radar-card" data-level="sub" data-theme-main="' + esc(m.id) + '"' + (magic ? ' data-magic-sel="1"' : '') + ' aria-labelledby="radar-title">' +
       '<div class="rc-head"><button type="button" class="rd-back" data-act="back" aria-label="Volver a los atributos">' + icon('chev-l') + '</button>' +
       '<h2 id="radar-title">' + esc(m.name) + ' <span class="sub-lv">Nv ' + m.level + '</span></h2>' +
-      '<button type="button" class="mini rc-manage" data-act="sub-manage">Gestionar</button></div>' + chart +
+      '<button type="button" class="mini rc-manage" data-act="sub-manage">Gestionar</button></div>' + (items.length >= 3 ? compareBar(nav) : '') + chart +
       '<div class="info' + (magic ? ' sub-info' : '') + '"' + (magic ? ' data-magic="1"' : '') + ' id="rd-info" aria-live="polite">' +
         (sel ? subInfo(sel) : mainInfo(m)) + '</div></section>';
   }
@@ -73,33 +138,61 @@
           '<p>Tu experiencia se guarda en tu repositorio de datos, junto al diario. Nunca solo en el navegador.</p><a class="btn secondary" href="#/ajustes">Conectar mis datos</a></section>';
         return;
       }
-      body.innerHTML = '<div id="rpg-top"><div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div></div>' +
-        '<div class="char-cols"><section class="card col" id="col-act" aria-label="Actividades"></section><section class="card col" id="col-wk" aria-label="Misiones semanales"></section></div><section class="card col col-wide" id="col-boss" aria-label="Jefes finales"></section>';
-      var top = $('#rpg-top'), panels = [];
-      var st = null, nav = { level: 'main', main: null, sel: null }, note = '', form = null;
+      // La cuadrícula es fija: el personaje, el radar y el lateral se repintan en su hueco; Actividades (debajo del
+      // personaje) es un panel aparte que no se toca al repintar. Abajo, Tareas y Misiones; y los jefes a lo ancho.
+      body.innerHTML = '<div class="char-grid">' +
+          '<div class="char-hero-slot" id="rpg-hero"><div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div></div>' +
+          '<section class="card col col-act" id="col-act" aria-label="Actividades"></section>' +
+          '<div class="char-radar" id="rpg-radar"></div>' +
+          '<div class="char-side" id="rpg-side"></div>' +
+        '</div>' +
+        '<section class="card col col-wide col-daily" id="col-daily" aria-label="Misiones diarias"></section>' +
+        '<div class="char-cols"><section class="card col" id="col-todo" aria-label="Tareas"></section><section class="card col" id="col-wk" aria-label="Misiones semanales"></section></div>' +
+        '<section class="card col col-wide col-shadow" id="col-shadow" aria-label="Sombras"></section>' +
+        '<section class="card col col-wide" id="col-boss" aria-label="Jefes finales"></section>';
+      var slots = [$('#rpg-hero'), $('#rpg-radar'), $('#rpg-side')], panels = [];
+      var st = null, nav = { level: 'main', main: null, sel: null, compare: 'month' }, note = '', form = null;
+      var hist = null, histOf = null, today = null;
 
+      // «Estado actual»: lo de hoy, calculado de las mismas fuentes que el resto de la ficha (sin guardar nada aparte).
+      function refreshToday() {
+        var daily = R.daily ? R.daily() : null, todos = R.todos ? R.todos() : null, shadows = R.shadows ? R.shadows() : null;
+        return Promise.all([
+          daily ? daily.state().catch(function () { return null; }) : null,
+          todos ? todos.state().catch(function () { return null; }) : null,
+          shadows ? shadows.state().catch(function () { return null; }) : null
+        ]).then(function (r) {
+          today = { daily: r[0], todos: r[1], shadows: r[2] };
+          if (st) slots[0].innerHTML = heroHtml(st, today);
+        });
+      }
       function paint() {
         var c = st.computed;
-        if (nav.level === 'sub' && !c.mains.some(function (m) { return m.id === nav.main; })) nav = { level: 'main', main: null, sel: null };
-        top.innerHTML = '<div class="char-grid">' + heroHtml(st) + '<div class="char-radar">' + radarCard(c, nav) + '</div>' +
-          '<div class="char-side"><p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>' +
-          '<nav class="btn-row" aria-label="Más sobre tu personaje"><a class="btn secondary" href="#/coleccion">Colección</a></nav></div></div>';
+        if (nav.level === 'sub' && !c.mains.some(function (m) { return m.id === nav.main; })) nav = { level: 'main', main: null, sel: null, compare: nav.compare };
+        if (histOf !== st) { hist = R.radarHistory(st.structure, st.entries); histOf = st; }   // solo cuando cambia el registro
+        slots[0].innerHTML = heroHtml(st, today);
+        slots[1].innerHTML = radarCard(c, nav, hist);
+        slots[2].innerHTML = '<p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>';   // avisos (vacío, no ocupa)
         nav.anim = false;
       }
-      function on(type, fn) { top.addEventListener(type, fn); $('#rpg-dialog').addEventListener(type, fn); }
-      top.addEventListener('error', V.avatarFallback, true);   // GIF del avatar que no carga: se ve el símbolo
+      function on(type, fn) { slots.forEach(function (s) { s.addEventListener(type, fn); }); $('#rpg-dialog').addEventListener(type, fn); }
+      slots[0].addEventListener('error', V.avatarFallback, true);   // GIF del avatar que no carga: se ve el símbolo
       function focusSel(sel) { var el = root.querySelector(sel); if (el && el.focus) el.focus(); }
-      function reload() { return repo.state(true).then(function (s) { st = s; paint(); }); }
+      function reload() { return repo.state().then(function (s) { st = s; paint(); }); }
       // Tras cualquier cambio de XP: da las recompensas pendientes, refresca la ficha y avisa de lo conseguido.
       function afterChange(day, pre) {
         var before = st.computed.general.level;
         return R.syncRewards(day).catch(function (e) { say((e && e.message) || 'No se pudieron comprobar las recompensas.'); return []; }).then(function (ev) {
           var events = (pre || []).concat(ev);
-          return repo.state(true).then(function (s) {
+          return repo.state().then(function (s) {
             st = s; paint();
-            if (s.computed.general.level > before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + s.computed.general.level });
+            var after = s.computed.general.level;
+            if (after > before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + after });
+            R.TITLES.filter(function (t) { return t.level > before && t.level <= after; }).forEach(function (t) {
+              V.toast.show({ kind: 'title', title: '¡Título nuevo!', text: s.profile.title ? '«' + t.name + '» ya es tuyo. Puedes elegir cuál se ve en Configuración.' : 'Ahora eres «' + t.name + '».' });
+            });
             V.toast.events(events);
-            return Promise.all(panels.map(function (p) { return p.reload(); }));
+            return Promise.all(panels.map(function (p) { return p.reload(); }).concat([refreshToday()]));
           });
         });
       }
@@ -113,24 +206,6 @@
       function dmsg(text, kind) { var el = $('#rpg-dmsg'); if (el) { el.textContent = text || ''; el.setAttribute('data-kind', kind || 'error'); } }
       var DMSG = '<p class="msg" id="rpg-dmsg" role="status" data-kind="error"></p>';
 
-      function sharesBlock() {
-        var K = V.pickers;
-        return K.html(K.groups(st.structure, form.mode === 'adjust'), U.subNames(st.structure), form.shares, 'pct');
-      }
-      function repaintShares() { var el = $('#rpg-shares'); if (el) el.innerHTML = sharesBlock(); }
-      function sharesList() { return V.pickers.toList(form.shares, 'pct'); }
-
-      function openAdjust() {
-        form = { mode: 'adjust', req: R.newRequestId(), shares: {} };
-        openDialog('<h3 id="rpg-dtitle">Corregir experiencia</h3>' +
-          '<p class="soft">Nada se borra: la corrección queda en el historial como un ajuste visible, con su motivo.</p>' +
-          '<label class="field"><span>¿Qué corriges?</span><input id="xp-label" type="text" maxlength="' + R.LIMITS.label + '" autocomplete="off" placeholder="Por ejemplo, Apunté dos veces el gimnasio"></label>' +
-          '<label class="field"><span>Motivo</span><input id="xp-reason" type="text" maxlength="' + R.LIMITS.reason + '" autocomplete="off"></label>' +
-          '<div class="adj-row"><label class="field"><span>Acción</span><select id="xp-dir"><option value="-1">Quitar</option><option value="1">Añadir</option></select></label>' +
-          '<div class="field"><span id="xp-amount-l">XP</span>' + App.ui.stepper({ id: 'xp-amount', value: 10, min: 1, max: R.LIMITS.maxXp, step: 5, attrs: 'aria-labelledby="xp-amount-l"' }) + '</div></div>' +
-          '<fieldset class="shares"><legend>¿A qué subcategorías afecta?</legend><div id="rpg-shares">' + sharesBlock() + '</div></fieldset>' + DMSG +
-          '<div class="btn-row"><button type="button" class="btn" data-act="adjust-save">Guardar ajuste</button><button type="button" class="btn secondary" data-act="close">Cancelar</button></div>');
-      }
       function openManage() {
         var m = mainById(nav.main); if (!m) return closeDialog();
         form = { mode: 'manage' };
@@ -177,23 +252,6 @@
       }
       function checkedValue(name) { var el = root.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : undefined; }
 
-      // Guarda un apunte y solo entonces anuncia la recompensa (cuando GitHub ha confirmado).
-      function saveEntry(input) {
-        var before = st.computed.general.level, btn = $('[data-act="adjust-save"]');
-        if (btn) btn.disabled = true;
-        dmsg('Guardando…', 'info');
-        return repo.addEntry(input).then(function (r) {
-          return repo.state(true).then(function (s) {
-            st = s; closeDialog(); paint();
-            var xp = r.entry ? r.entry.xp : input.xp;
-            say(r.duplicate ? 'Ese apunte ya estaba guardado: no se ha contado dos veces.' :
-              (xp > 0 ? '+' + xp + ' XP' : xp + ' XP') + ' · ' + r.entry.label + U.levelNote(before, s.computed.general.level));
-          });
-        }).catch(function (err) {
-          if (btn) btn.disabled = false;
-          dmsg((err && err.message) || 'No se pudo guardar. No se ha sumado nada; puedes volver a intentarlo.', 'error');
-        });
-      }
       // Tras guardar un cambio de estructura: recarga y vuelve a la gestión (si se venía de ahí) o cierra.
       function guard(promise, back) {
         return promise.then(function () { return reload(); }).then(function () { if (back) openManage(); else closeDialog(); }).catch(function (err) { dmsg((err && err.message) || 'No se pudo guardar.', 'error'); });
@@ -201,19 +259,18 @@
       function manageOp(promise) { return promise.then(reload).then(openManage).catch(function (e) { dmsg(e.message); }); }
 
       on('click', function (ev) {
-        var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-main],[data-sub],[data-pk]') : null;
+        var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-main],[data-sub]') : null;
         if (!t) return;
         var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
         if (!act) {
-          var main = t.getAttribute('data-main'), sub = t.getAttribute('data-sub'), pk = t.getAttribute('data-pk');
-          if (main) { nav = { level: 'sub', main: main, sel: null, anim: true }; paint(); return focusSel('.rd-back'); }
+          var main = t.getAttribute('data-main'), sub = t.getAttribute('data-sub');
+          if (main) { nav = { level: 'sub', main: main, sel: null, anim: true, compare: nav.compare }; paint(); return focusSel('.rd-back'); }
           if (sub) { nav.sel = nav.sel === sub ? null : sub; paint(); return focusSel('.rd-label.on') || focusSel('.rd-fallback button[aria-pressed="true"]'); }
-          if (pk && form) { V.pickers.toggle(form.shares, pk, 'pct'); return repaintShares(); }
           return;
         }
-        if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
+        if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true, compare: nav.compare }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
+        if (act === 'cmp') { nav.compare = t.getAttribute('data-mode') === 'rings' ? 'rings' : 'month'; paint(); return focusSel('[data-act="cmp"][data-mode="' + nav.compare + '"]'); }
         if (act === 'close') return closeDialog();
-        if (act === 'adjust') return openAdjust();
         if (act === 'sub-manage') return openManage();
         if (act === 'sub-new') return openSub(null, true);
         if (act === 'main-edit') return openMain();
@@ -226,16 +283,6 @@
           return guard(form.id ? repo.updateSub(form.id, data) : repo.createSub(nav.main, data), form.back);
         }
         if (act === 'main-save') return guard(repo.updateMain(form.id, { name: $('#sb-name').value, description: $('#sb-desc').value, icon: checkedValue('sb-icon') }), true);
-        if (act === 'adjust-save') {
-          var amount = Number($('#xp-amount').value), dir = Number($('#xp-dir').value) < 0 ? -1 : 1;
-          return saveEntry({ kind: 'adjustment', key: 'adjust:' + form.req, label: $('#xp-label').value, reason: $('#xp-reason').value, xp: dir * amount, shares: sharesList(), day: R.today() });
-        }
-      });
-      on('input', function (ev) {
-        var t = ev.target, id = t && t.getAttribute ? t.getAttribute('data-pkval') : null;
-        if (!id || !form) return;
-        form.shares[id] = Math.floor(Number(t.value)) || 0;
-        var el = $('[data-pk-total]'); if (el) el.textContent = V.pickers.summaryText(form.shares, 'pct');
       });
       // En el radar de atributos, pasar el ratón o enfocar una punta enseña su resumen sin cambiar de pantalla.
       function peek(ev) {
@@ -253,15 +300,19 @@
 
       repo.state().then(function (s) {
         st = s; paint();
-        var ctx = { rpg: repo, acts: R.activities(), weekly: R.weekly(), bosses: R.bosses(), afterChange: afterChange };
-        panels = [V.activitiesPanel($('#col-act'), ctx), V.weeklyPanel($('#col-wk'), ctx), V.bossPanel($('#col-boss'), ctx)];
+        var bossPanel = null;
+        var ctx = { rpg: repo, acts: R.activities(), weekly: R.weekly(), bosses: R.bosses(), todos: R.todos(), daily: R.daily(), shadows: R.shadows(), afterChange: afterChange,
+          onShadows: refreshToday,   // apuntar o deshacer una sombra cambia el glitch del avatar y «Estado actual»
+          openBoss: function (pre) { return bossPanel.openNew(pre); } };
+        bossPanel = V.bossPanel($('#col-boss'), ctx);
+        panels = [V.activitiesPanel($('#col-act'), ctx), V.dailyPanel($('#col-daily'), ctx), V.todoPanel($('#col-todo'), ctx), V.weeklyPanel($('#col-wk'), ctx), V.shadowPanel($('#col-shadow'), ctx), bossPanel];
         // Primero se dan las recompensas que estuvieran pendientes (por ejemplo, de otra pestaña) y luego se pintan las columnas.
         return R.syncRewards().catch(function () { return []; }).then(function (ev) {
           if (ev.length) { return afterChange(null, ev); }
-          return Promise.all(panels.map(function (p) { return p.reload(); }));
+          return Promise.all(panels.map(function (p) { return p.reload(); }).concat([refreshToday()]));
         });
       }).catch(function (err) {
-        top.innerHTML = '<div class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>';
+        slots[0].innerHTML = '<div class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc(err.message || 'Inténtalo de nuevo.') + '</div>';
       });
     }
   };

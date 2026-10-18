@@ -24,8 +24,17 @@
     var xp = a && App.rpg && App.rpg.activityXp ? App.rpg.activityXp(a) : 0;
     return '<li class="chip act-chip">' + icon(a ? a.icon : 'star') + '<span>' + esc(a ? a.name : id) + '</span>' + (xp ? '<i>+' + xp + ' XP</i>' : '') + (extra || '') + '</li>';
   }
-  function activityList(ids, actsById, label) {
-    var items = (ids || []).map(function (id) { return actsById && actsById[id] ? activityChip(actsById[id], id) : ''; }).join('');
+  // Tarea de una lista hecha desde la entrada (cápsula clara con visto). Lleva su texto guardado: las listas son del día.
+  function taskChip(r, extra) {
+    return '<li class="chip task-chip">' + icon('check') + '<span>' + esc(r.text) + '</span>' + (extra || '') + '</li>';
+  }
+  // Sombra apuntada desde la entrada (cápsula oscura con un cuadrito desdoblado, como el glitch). Lleva su nombre guardado.
+  function shadowChip(r, extra) {
+    return '<li class="chip shadow-chip"><i class="sh-dot" aria-hidden="true"></i><span><span class="sr">Sombra: </span>' + esc(r.name) + '</span>' + (extra || '') + '</li>';
+  }
+  function activityList(ids, actsById, label, tasks, shadows) {
+    var items = (shadows || []).map(function (r) { return shadowChip(r); }).join('') + (tasks || []).map(function (r) { return taskChip(r); }).join('') +
+      (ids || []).map(function (id) { return actsById && actsById[id] ? activityChip(actsById[id], id) : ''; }).join('');
     return items ? '<ul class="chips entry-activities" aria-label="' + (label || 'Actividades') + '">' + items + '</ul>' : '';
   }
   function paragraphs(text) {
@@ -56,7 +65,7 @@
   }
 
   App.diaryHtml = {
-    face: face, moodTag: moodTag, emotionChip: emotionChip, emotionList: emotionList, activityChip: activityChip, paragraphs: paragraphs, tagList: tagList, sheetHead: sheetHead,
+    face: face, moodTag: moodTag, emotionChip: emotionChip, emotionList: emotionList, activityChip: activityChip, taskChip: taskChip, shadowChip: shadowChip, paragraphs: paragraphs, tagList: tagList, sheetHead: sheetHead,
 
     // Una página en la cronología (con su porcentaje de ánimo)
     item: function (entry) {
@@ -138,7 +147,7 @@
       var blocks = entry.blocks.map(function (b) {
         var meta = (b.mood ? moodTag(b.mood) : '') + emotionList(b.emotions, byId, 'Emociones de la entrada') +
           (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') +
-          activityList(b.activities, actsById, 'Actividades de la entrada') + tagList(b.tags, 'Etiquetas de la entrada');
+          activityList(b.activities, actsById, 'Sombras, tareas y actividades de la entrada', b.tasks, b.shadows) + tagList(b.tags, 'Etiquetas de la entrada');
         return '<section class="block-read">' + (b.text ? paragraphs(b.text) : '') + (meta ? '<div class="block-meta-read">' + meta + '</div>' : '') + '</section>';
       }).join('<hr class="stitch-line">');
       var pct = D.dayMood(entry).percent;

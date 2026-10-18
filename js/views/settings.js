@@ -29,6 +29,11 @@
           '<div id="cs-body"><div class="skeleton" style="margin: 8px 0"></div></div>' +
         '</section>' +
 
+        '<section class="settings-block wide" id="sec-diarias" aria-labelledby="h-diarias">' +
+          '<h2 id="h-diarias" tabindex="-1">Misiones diarias</h2>' +
+          '<div id="dq-body"><div class="skeleton" style="margin: 8px 0"></div></div>' +
+        '</section>' +
+
         '<section class="settings-block" aria-labelledby="h-aspecto">' +
           '<h2 id="h-aspecto">Aspecto</h2>' +
           '<label class="field"><span>Tema</span>' +
@@ -97,7 +102,7 @@
 
       $('#pref-name').addEventListener('input', function (e) { saved(App.prefs.set({ name: e.target.value.trim() })); });
 
-      // ---- Tu personaje: nombre y avatar (símbolo, foto o GIF), con vista previa en el marco de tu nivel ----
+      // ---- Tu personaje: nombre y avatar (símbolo, foto o imagen/GIF por enlace), con vista previa en el marco de tu nivel ----
       (function character() {
         var R = App.rpg, V = App.rpgViews, U = V && V.util, body = $('#cs-body');
         var repo = R && R.repo ? R.repo() : null;
@@ -108,7 +113,7 @@
         var form = null, level = 1, busy = false;
         function image() {
           if (form.mode === 'photo' && form.photo) return { kind: 'photo', data: form.photo };
-          if (form.mode === 'url' && R.gifUrl(form.url)) return { kind: 'url', url: R.gifUrl(form.url) };
+          if (form.mode === 'url' && R.imageUrl(form.url)) return { kind: 'url', url: R.imageUrl(form.url) };
           return null;
         }
         function preview() {
@@ -124,20 +129,32 @@
           }
           var grid = U.symbolGrid('cs-symbol', R.AVATARS, form.avatar);
           if (form.mode === 'url') {
-            return '<label class="field"><span>Enlace directo al GIF</span><input id="cs-url" type="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace directo" value="' + esc(form.url) + '">' +
-              '<small>De Giphy, Tenor o Imgur, el «enlace directo» (acaba en .gif). No se descarga ni se guarda: solo el enlace. Si un día no carga, se ve el símbolo de abajo.</small></label>' + grid;
+            return '<label class="field"><span>Enlace a la imagen o GIF</span><input id="cs-url" type="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace de la imagen" value="' + esc(form.url) + '">' +
+              '<small>' + U.imageLinkHelp() + ' Si un día no carga, se ve el símbolo de abajo.</small></label>' + grid;
           }
           return grid;
         }
         function paintPreview() { $('#cs-preview').innerHTML = preview(); }
+        // Títulos: «El más alto» (sin elegir) y los conseguidos; los que faltan se ven, apagados, con su nivel.
+        function titlesHtml() {
+          var top = R.currentTitle(null, level);
+          return '<li><button type="button" class="emo-cap" data-cs-title="" aria-pressed="' + !form.title + '"><span>El más alto (' + esc(top.name) + ')</span></button></li>' +
+            R.TITLES.map(function (t) {
+              var got = level >= t.level;
+              return '<li><button type="button" class="emo-cap"' + (got ? ' data-cs-title="' + esc(t.id) + '" aria-pressed="' + (form.title === t.id) + '"' : ' disabled aria-disabled="true"') + '>' +
+                '<span>' + esc(t.name) + (got ? '' : ' · nivel ' + t.level) + '</span></button></li>';
+            }).join('');
+        }
         function paintMode() { $('#cs-mode').innerHTML = modeHtml(); }
         function say(t, kind) { var m = $('#cs-msg'); m.textContent = t || ''; m.setAttribute('data-kind', kind || 'info'); }
         function paint() {
-          var modes = [['symbol', 'Símbolo'], ['photo', 'Foto'], ['url', 'GIF de internet']].map(function (x) {
+          var modes = [['symbol', 'Símbolo'], ['photo', 'Foto'], ['url', 'Imagen o GIF de internet']].map(function (x) {
             return '<li><button type="button" class="emo-cap" data-cs-mode="' + x[0] + '" aria-pressed="' + (form.mode === x[0]) + '"><span>' + x[1] + '</span></button></li>';
           }).join('');
           body.innerHTML = '<div class="char-set"><div class="cs-preview" id="cs-preview" aria-live="polite">' + preview() + '</div><div class="cs-form">' +
             '<label class="field"><span>Nombre del personaje</span><input id="cs-name" type="text" maxlength="' + R.LIMITS.name + '" autocomplete="off" value="' + esc(form.name) + '"></label>' +
+            '<div class="field"><span>Título</span><ul class="emo-caps cs-modes" aria-label="Título" id="cs-titles">' + titlesHtml() + '</ul>' +
+              '<small>Los títulos se consiguen subiendo de nivel. «El más alto» cambia solo al conseguir uno nuevo.</small></div>' +
             '<div class="field"><span>Avatar</span><ul class="emo-caps cs-modes" aria-label="Tipo de avatar">' + modes + '</ul></div>' +
             '<div id="cs-mode">' + modeHtml() + '</div>' +
             '<p class="msg" id="cs-msg" role="status" data-kind="info"></p>' +
@@ -147,7 +164,8 @@
         repo.state().then(function (st) {
           var p = st.profile, img = p.image;
           level = st.computed.general.level;
-          form = { name: p.name, avatar: p.avatar, mode: img ? (img.kind === 'photo' ? 'photo' : 'url') : 'symbol', photo: img && img.kind === 'photo' ? img.data : '', url: img && img.kind === 'url' ? img.url : '' };
+          form = { name: p.name, avatar: p.avatar, mode: img ? (img.kind === 'photo' ? 'photo' : 'url') : 'symbol', photo: img && img.kind === 'photo' ? img.data : '', url: img && img.kind === 'url' ? img.url : '',
+            title: p.title && R.titlesFor(level).some(function (t) { return t.id === p.title; }) ? p.title : null };
           paint();
         }).catch(function (err) {
           body.innerHTML = '<p class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc((err && err.message) || '') + '</p>';
@@ -155,8 +173,9 @@
 
         body.addEventListener('error', V.avatarFallback, true);   // GIF que no carga: la vista previa enseña el símbolo
         body.addEventListener('click', function (e) {
-          var t = e.target && e.target.closest ? e.target.closest('[data-cs-mode],#cs-save') : null;
+          var t = e.target && e.target.closest ? e.target.closest('[data-cs-mode],[data-cs-title],#cs-save') : null;
           if (!t || !form) return;
+          if (t.hasAttribute('data-cs-title')) { form.title = t.getAttribute('data-cs-title') || null; $('#cs-titles').innerHTML = titlesHtml(); return; }
           if (t.id !== 'cs-save') {
             form.mode = t.getAttribute('data-cs-mode');
             Array.prototype.forEach.call(body.querySelectorAll('[data-cs-mode]'), function (b) { b.setAttribute('aria-pressed', String(b === t)); });
@@ -165,9 +184,9 @@
           if (busy) return;
           var img = null;
           if (form.mode === 'photo') { if (!form.photo) { say('Elige una foto primero.', 'error'); return; } img = { kind: 'photo', data: form.photo }; }
-          if (form.mode === 'url') { if (!form.url.trim()) { say('Pega el enlace directo del GIF.', 'error'); return; } img = { kind: 'url', url: form.url.trim() }; }
+          if (form.mode === 'url') { if (!form.url.trim()) { say('Pega el enlace de la imagen o del GIF.', 'error'); return; } img = { kind: 'url', url: form.url.trim() }; }
           busy = true; t.disabled = true; say('Guardando…');
-          repo.saveProfile({ name: $('#cs-name').value, avatar: form.avatar, image: img })
+          repo.saveProfile({ name: $('#cs-name').value, avatar: form.avatar, image: img, title: form.title })
             .then(function () { say('Guardado. Ya se ve en tu ficha de Personaje.', 'ok'); })
             .catch(function (err) { say((err && err.message) || 'No se pudo guardar.', 'error'); })
             .then(function () { busy = false; t.disabled = false; });
@@ -188,13 +207,80 @@
           if (t.id === 'cs-url') { form.url = t.value.trim(); paintPreview(); }
         });
 
-        // Desde «Editar personaje» (#/ajustes/personaje): ir directamente a esta sección.
-        if (opts && opts.params && opts.params[0] === 'personaje') setTimeout(function () {
-          var h = $('#h-personaje'); if (!h) return;
-          if (h.scrollIntoView) h.scrollIntoView({ block: 'start' });
-          if (h.focus) h.focus({ preventScroll: true });
-        }, 0);
       })();
+
+      // ---- Misiones diarias: la batería de la que salen las tres de cada día. Filtrar, eliminar y añadir. ----
+      (function dailies() {
+        var R = App.rpg, body = $('#dq-body');
+        var daily = R && R.daily ? R.daily() : null, repo = R && R.repo ? R.repo() : null;
+        if (!daily || !repo) { body.innerHTML = '<p>Conecta tus datos (más abajo, en «Tus datos») para ver y cambiar tus misiones diarias.</p>'; return; }
+        var cat = null, st = null, filter = '', busy = false;
+        function say(t, kind) { var m = $('#dq-msg'); if (m) { m.textContent = t || ''; m.setAttribute('data-kind', kind || 'info'); } }
+        function mainOf(sub) { var f = R.findSub(st.structure, sub); return f ? f.main : null; }
+        function subLabel(sub) { var f = R.findSub(st.structure, sub); return f ? f.main.name + ' · ' + f.sub.name : sub; }
+        function paintList() {
+          var shown = cat.missions.filter(function (m) { var mn = mainOf(m.sub); return !filter || (mn && mn.id === filter); });
+          $('#dq-list').innerHTML = shown.length ? shown.map(function (m) {
+            var f = R.findSub(st.structure, m.sub);
+            return '<li><span class="dq-ic" aria-hidden="true">' + App.icon(f ? f.sub.icon : 'star') + '</span>' +
+              '<span class="dq-name">' + esc(m.name) + (m.custom ? ' <span class="dq-mine">Tuya</span>' : '') + '<small>' + esc(subLabel(m.sub)) + '</small></span>' +
+              '<span class="dq-xp">+' + R.sizeXp(m.size) + '</span>' +
+              '<button type="button" class="dq-x" data-dq-del="' + esc(m.id) + '" aria-label="Eliminar «' + esc(m.name) + '»" title="Eliminar">×</button></li>';
+          }).join('') : '<li class="soft">Ninguna misión en este atributo.</li>';
+          $('#dq-count').textContent = cat.missions.length + (cat.missions.length === 1 ? ' misión' : ' misiones') + ' · ' + cat.missions.filter(function (m) { return m.custom; }).length + ' tuyas';
+          $('#dq-restore').hidden = !cat.removedDefaults;
+          $('#dq-restore-n').textContent = String(cat.removedDefaults);
+        }
+        function paint() {
+          var subs = [];
+          st.structure.forEach(function (a) { a.subs.forEach(function (s) { if (!s.archived) subs.push('<option value="' + esc(s.id) + '">' + esc(a.name + ' · ' + s.name) + '</option>'); }); });
+          body.innerHTML = '<p>Cada día salen tres al azar de esta lista (de atributos distintos si se puede). <span id="dq-count"></span>.</p>' +
+            '<ul class="emo-caps dq-filter" aria-label="Filtrar por atributo"><li><button type="button" class="emo-cap" data-dq-filter="" aria-pressed="true"><span>Todas</span></button></li>' +
+              st.structure.map(function (a) { return '<li><button type="button" class="emo-cap" data-dq-filter="' + esc(a.id) + '" aria-pressed="false"><span>' + esc(a.name) + '</span></button></li>'; }).join('') + '</ul>' +
+            '<ul class="dq-items col-scroll" id="dq-list"></ul>' +
+            '<div class="dq-add"><label class="field"><span>Nueva misión diaria</span><input id="dq-name" type="text" maxlength="' + R.DAILY_LIMITS.name + '" autocomplete="off" placeholder="Por ejemplo, Ve un capítulo en versión original"></label>' +
+              '<label class="field"><span>Subcategoría</span><select id="dq-sub">' + subs.join('') + '</select></label>' +
+              '<label class="field"><span>Tamaño</span><select id="dq-size">' + R.DAILY_SIZES.map(function (z) { return '<option value="' + z.id + '">' + z.label + ' · ' + z.xp + ' XP</option>'; }).join('') + '</select></label>' +
+              '<button type="button" class="btn" id="dq-addbtn">Añadir</button></div>' +
+            '<p class="msg" id="dq-msg" role="status" data-kind="info"></p>' +
+            '<p class="soft" id="dq-restore" hidden>Eliminadas de fábrica: <span id="dq-restore-n"></span> · <button type="button" class="link-btn" id="dq-restore-btn">Recuperarlas</button></p>';
+          paintList();
+        }
+        function reload() { return Promise.all([daily.catalog(), repo.state()]).then(function (r) { cat = r[0]; st = r[1]; }); }
+        reload().then(paint).catch(function (err) { body.innerHTML = '<p class="msg" data-kind="error">No se pudieron cargar las misiones diarias. ' + esc((err && err.message) || '') + '</p>'; });
+
+        function run(job, okText) {
+          if (busy) return Promise.resolve(); busy = true; say('Guardando…');
+          return job().then(reload).then(function () { paintList(); say(okText, 'ok'); })
+            .catch(function (e) { say((e && e.message) || 'No se pudo guardar.', 'error'); }).then(function () { busy = false; });
+        }
+        body.addEventListener('click', function (e) {
+          var t = e.target && e.target.closest ? e.target : null; if (!t || !cat) return;
+          var f = t.closest('[data-dq-filter]');
+          if (f) {
+            filter = f.getAttribute('data-dq-filter');
+            Array.prototype.forEach.call(body.querySelectorAll('[data-dq-filter]'), function (b) { b.setAttribute('aria-pressed', String(b === f)); });
+            return paintList();
+          }
+          var del = t.closest('[data-dq-del]');
+          if (del) { var m = cat.missions.filter(function (x) { return x.id === del.getAttribute('data-dq-del'); })[0]; return run(function () { return daily.removeMission(del.getAttribute('data-dq-del')); }, 'Eliminada: ' + (m ? m.name : '') + '. Si hoy ya ha salido, se queda hasta mañana.'); }
+          if (t.closest('#dq-restore-btn')) return run(function () { return daily.restoreDefaults(); }, 'Misiones de fábrica recuperadas.');
+          if (t.closest('#dq-addbtn')) {
+            var name = $('#dq-name').value;
+            return run(function () { return daily.addCustom({ name: name, sub: $('#dq-sub').value, size: $('#dq-size').value }); }, 'Añadida: ' + name.trim() + '.')
+              .then(function () { if ($('#dq-msg').getAttribute('data-kind') === 'ok') $('#dq-name').value = ''; });
+          }
+        });
+        body.addEventListener('keydown', function (e) { if (e.target && e.target.id === 'dq-name' && e.key === 'Enter') { e.preventDefault(); $('#dq-addbtn').click(); } });
+      })();
+
+      // Desde «Editar personaje» (#/ajustes/personaje) o el aviso de las diarias (#/ajustes/diarias): ir a esa sección.
+      var jump = opts && opts.params ? { personaje: '#h-personaje', diarias: '#h-diarias' }[opts.params[0]] : null;
+      if (jump) setTimeout(function () {
+        var h = $(jump); if (!h) return;
+        if (h.scrollIntoView) h.scrollIntoView({ block: 'start' });
+        if (h.focus) h.focus({ preventScroll: true });
+      }, 0);
       $('#pref-theme').addEventListener('change', function (e) { var ok = App.prefs.set({ theme: e.target.value }); App.prefs.apply(); saved(ok); });
       $('#pref-motion').addEventListener('change', function (e) { var ok = App.prefs.set({ motion: e.target.value }); App.prefs.apply(); saved(ok); });
 

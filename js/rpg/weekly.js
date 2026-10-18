@@ -55,12 +55,20 @@
       activity = String(input.activity || '');
       if (!R.ACT_ID_RE.test(activity) || activity === 'puntual') throw invalid('Elige la actividad que cuenta para esta misión.');
     } else if (input.mode !== 'checks') throw invalid('Elige cómo se completa la misión.');
+    // «Solo esta semana» (repeat: false) se borra el lunes a las 3:00; «repetir» vuelve a empezar cada semana.
+    // Sin elegir: una nueva es de una semana; una que ya existía conserva lo que tenía (las antiguas, sin el campo, repiten).
+    var repeat = input.repeat === undefined ? (base ? base.repeat !== false : false) : !!input.repeat;
+    var week = repeat ? null : (base && base.repeat === false && base.week ? base.week : R.currentWeek());
     return {
       id: base && base.id ? base.id : R.newWeeklyId(), name: name, description: R.cleanText(input.description, R.WEEKLY_LIMITS.description),
-      size: input.size, shares: shares, mode: input.mode, activity: activity, target: target,
+      size: input.size, shares: shares, mode: input.mode, activity: activity, target: target, repeat: repeat, week: week,
       createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
     };
   };
+  // Semana en curso para las misiones de una sola semana: cambia el lunes a las 3:00 (ver R.logicalDay).
+  R.currentWeek = function (now) { return R.weekKey(R.logicalDay(now)); };
+  // Una misión de una sola semana caduca cuando ya ha empezado otra semana. Las que repiten nunca caducan.
+  R.weeklyExpired = function (m, now) { return !!m && m.repeat === false && typeof m.week === 'string' && m.week < R.currentWeek(now); };
 
   // Estado de una misión en una semana: progreso, si está hecha (por el registro) y sus casillas.
   R.weeklyView = function (m, weekKey, entries, progress) {
@@ -85,17 +93,21 @@
       return doc ? { missions: doc.missions, progress: doc.progress && typeof doc.progress === 'object' ? doc.progress : {} } : { missions: [], progress: {} };
     }
     var pending = null;
+    // Lo que ve la aplicación: sin las archivadas (sistema anterior) ni las de una semana ya pasada. Se calcula cada vez,
+    // así que a las 3:00 del lunes desaparecen aunque la página lleve horas abierta. cleanup() las borra del archivo.
+    function live(raw) {
+      var gone = function (m) { return !m || !R.WEEKLY_ID_RE.test(m.id) || m.archived || R.weeklyExpired(m); };
+      return { missions: raw.missions.filter(function (m) { return !gone(m); }), progress: raw.progress, stale: raw.missions.some(function (m) { return m && (m.archived || R.weeklyExpired(m)); }) };
+    }
     function loadRaw(force) {
-      if (cache && !force) return Promise.resolve(cache);
-      if (pending && !force) return pending;
+      if (cache && !force) return Promise.resolve(live(cache));
+      if (pending && !force) return pending.then(live);
       var p = store.readJson(PATH, null).then(function (doc) {
-        var d = ensure(doc);
-        // Las archivadas (sistema anterior) ya no existen para la aplicación: purgeArchived las borra del archivo.
-        cache = { missions: d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id) && !m.archived; }), progress: d.progress, hasArchived: d.missions.some(function (m) { return m && m.archived; }) }; pending = null;
+        cache = ensure(doc); pending = null;
         return cache;
       }, function (e) { pending = null; throw e; });
       pending = p;
-      return p;
+      return p.then(live);
     }
     function mutate(message, change) {
       var result;
@@ -105,7 +117,7 @@
           result = change({ missions: missions, progress: progress }, st);
           return { version: 1, missions: missions, progress: progress };
         }, { fallback: null, message: message });
-      }).then(function () { return loadRaw(true); }).then(function () { return result; });
+      }).then(function (written) { cache = ensure(written); return result; });   // lo recién guardado es lo último: sin releer
     }
     function find(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return i; throw invalid('Esa misión ya no existe.'); }
 
@@ -145,15 +157,16 @@
           });
         });
       },
-      // Borra del archivo las misiones archivadas con el sistema anterior (y sus casillas). Solo escribe si hay alguna.
-      purgeArchived: function () {
+      // Borra del archivo las misiones de una semana ya pasada y las archivadas del sistema anterior (con sus casillas).
+      // Solo escribe si hay alguna. La XP que dieron se queda en el registro.
+      cleanup: function () {
         return loadRaw().then(function (c) {
-          if (!c.hasArchived) return 0;
+          if (!c.stale) return 0;
           var n = 0;
-          return mutate('Elimina las misiones archivadas', function (d) {
+          return mutate('Limpia las misiones de semanas pasadas', function (d) {
             for (var i = d.missions.length - 1; i >= 0; i--) {
               var m = d.missions[i];
-              if (!m || !m.archived) continue;
+              if (!m || !(m.archived || R.weeklyExpired(m))) continue;
               d.missions.splice(i, 1); n++;
               Object.keys(d.progress).forEach(function (k) { if (k.indexOf(m.id + '|') === 0) delete d.progress[k]; });
             }
@@ -163,7 +176,7 @@
       // Marca o desmarca una casilla de esta semana. Si la misión ya está completada, no se toca. Devuelve los eventos de recompensa.
       toggleCheck: function (id, index, checked, week) {
         week = week || R.weekKey(R.today());
-        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
           var m = r[0].missions.filter(function (x) { return x.id === id; })[0];
           if (!m) throw invalid('Esa misión ya no existe.');
           if (m.mode !== 'checks') throw invalid('Esta misión se completa sola al registrar la actividad.');
@@ -179,7 +192,7 @@
       // Da las recompensas que falten (misiones completadas en las semanas indicadas). Idempotente. Devuelve [{ type, label, xp }].
       sync: function (weeks) {
         weeks = (weeks && weeks.length ? weeks : [R.weekKey(R.today())]).filter(function (w, i, a) { return a.indexOf(w) === i; });
-        return Promise.all([loadRaw(), rpg.state(true)]).then(function (r) {
+        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
           var todo = [];
           r[0].missions.forEach(function (m) {
             weeks.forEach(function (w) { var v = R.weeklyView(m, w, r[1].entries, r[0].progress); if (v.ready) todo.push(v); });

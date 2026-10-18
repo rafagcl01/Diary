@@ -80,7 +80,9 @@ Pruebas automáticas (opcionales, requieren Node 18 o superior): `node --test`
 
 ## Reglas del sistema RPG (fijas desde el principio)
 
-No se pierde XP ni nivel, no se penalizan las rachas, el ánimo negativo no da menos XP que el positivo, y la longitud de una entrada no da más XP.
+No se pierde XP ni nivel como castigo: nada penaliza rachas ni ausencias, el ánimo negativo no da menos XP que el positivo, y la longitud de una entrada no da más XP. El texto, el ánimo y las emociones del diario no dan XP. Nada se cuenta dos veces y el nivel se calcula siempre a partir del registro.
+
+**Única excepción, decidida a propósito: deshacer.** Quitar algo que registraste tú (la × de una actividad, desmarcar una tarea, un paso de jefe o una misión diaria, o quitar una actividad o tarea de una entrada del diario y guardar, o borrar la página) quita la XP que eso dio, y por tanto el nivel puede bajar. Por eso **siempre se pregunta antes**, en la misma fila y diciendo cuánta XP se quita (`App.ui.askRow` / `App.ui.askUncheck` en `js/components.js`). Lo que ya está fijo (un jefe derrotado, una lista completada, el día con las tres diarias hechas) no se puede deshacer.
 
 
 ## Fase 2: tus datos en GitHub
@@ -219,7 +221,11 @@ Todos los dibujos y garabatos tienen el mismo grosor de trazo. Una página sin e
 Si el diario detecta entradas con el formato anterior (varias por día), muestra *Actualizar el formato del diario* y **bloquea guardar** hasta que lo aceptes. La actualización une cada día en una página (cada texto antiguo pasa a ser una entrada, ordenadas por la hora, con las etiquetas de la entrada antigua) y no pierde texto; GitHub conserva el historial. **Descarga una copia antes** en Configuración.
 
 ### Estadísticas de ánimo
-Solo muestran números calculados con tus entradas: reparto del mes, calendario (cada día con el estado que más aparece), **ánimo medio** (media de los porcentajes de las páginas), los últimos 12 meses, y pistas por etiqueta (solo con al menos 15 entradas con estado en 12 meses y 5 por etiqueta). Son asociaciones, no causas, y las emociones no intervienen.
+Solo muestran números calculados con tus entradas, para el periodo elegido arriba (**Semana / Mes / Año**, con flechas para ir hacia atrás):
+- **Línea del ánimo:** un punto por día (semana, mes) o por mes (año), con el porcentaje de la página o la media del mes. Donde no hay estados no hay punto y el hueco es discontinuo: no se inventa ningún valor. Al pasar el ratón, el valor del punto.
+- **Tus emociones:** gráfica circular con el porcentaje de veces que marcaste cada emoción (las 6 más frecuentes y «otras»). Va aparte: las emociones nunca cambian el porcentaje de ánimo.
+- **Reparto de estados**, **ánimo medio** (media de los porcentajes de las páginas), el **calendario** (en la vista de mes) y pistas por etiqueta (solo con al menos 15 entradas con estado en 12 meses y 5 por etiqueta). Son asociaciones, no causas.
+- Los colores de las gráficas (`--ch-*` en `css/tokens.css`) están comprobados para daltonismo y contraste, en claro y en oscuro.
 
 ### Privacidad de los borradores
 Los borradores viven en `localStorage` de este navegador, **sin cifrar**, hasta que guardas o los descartas (máximo 20). En un ordenador compartido, descártalos al terminar.
@@ -309,7 +315,7 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 **Qué hay:** la ficha del personaje (nombre, avatar, nivel general con barra de XP), un radar con **cinco atributos** y sus subcategorías. Las misiones, logros, títulos y colección llegan en las siguientes fases (5B–5D).
 
 ### Reglas de la experiencia
-- La XP **solo** entra por acciones explícitas: en esta fase, **«Apuntar actividad»** (tamaño Pequeña 15 / Normal 30 / Difícil 60 / Épica 100 XP) y **«Corregir experiencia»**. El diario, los estados de ánimo y las emociones **no dan ni quitan XP**; editar una entrada tampoco.
+- La XP **solo** entra por acciones explícitas: actividades, tareas, misiones semanales y jefes. («Corregir experiencia» existió y se quitó; las correcciones que ya se hicieron siguen contando en el registro.) El diario, los estados de ánimo y las emociones **no dan ni quitan XP**; editar una entrada tampoco.
 - Nivel general: para pasar del nivel *n* al *n+1* hacen falta `100 + 25·(n−1)` XP (el sobrante se conserva). Subcategorías: `80 + 20·(n−1)`.
 - Al apuntar, la XP se reparte entre subcategorías por porcentajes (suman 100). Sin subcategorías, solo sube el nivel general. Los atributos principales no tienen XP propia: su valor es la media del progreso de sus subcategorías.
 - **Nada se cuenta dos veces:** cada apunte lleva una clave única; reintentar, hacer doble clic o abrir la app en otro dispositivo no lo duplica. La recompensa solo se anuncia cuando GitHub ha confirmado el guardado.
@@ -317,6 +323,36 @@ Pide confirmación y te dice a cuántas entradas afecta. Se borra la ficha y **s
 
 ### Atributos y subcategorías (personalizables)
 Vitalidad (Fuerza, Salud, Resistencia, Descanso, Autocuidado) · Espíritu (Conocimiento, Disciplina, Brujería) · Vínculos (Amistad, Amor, Familia, Conexión) · Aventura (Experiencias, Valentía, Exploración) · Creatividad (Arte, Lectura, Películas). Puedes crear, renombrar, describir, cambiar el icono, reordenar y archivar subcategorías, y renombrar los cinco atributos. Archivar o renombrar conserva su XP e historial (se identifican por un id fijo). Brujería tiene una tarjeta propia, más mágica y misteriosa.
+
+### La ficha
+Arriba a la izquierda, el personaje (el lápiz que aparece al pasar el ratón lleva a *Configuración → Tu personaje*) y debajo **Actividades**; a la derecha, el radar. Abajo, **Tareas** y **Misiones semanales**, y los jefes a lo ancho.
+- **Estado actual** (en la ficha, bajo el nivel): misiones diarias hechas de hoy, tareas hechas, actividades registradas hoy y el siguiente título. Se actualiza al momento al marcar o registrar algo.
+- **Actividades:** el día y «Registrar actividad»; debajo, las **2 últimas** sin scroll interno (el resto en «Ver historial»), cada una con el icono y el nombre de su atributo (el de la subcategoría que más XP se llevó).
+- **Evolución en el radar:** «Último mes» (por defecto) dibuja en punteado cómo estaba hace 30 días; el hueco entre las dos formas es lo que has crecido. «Desde el principio» dibuja anillos de crecimiento, uno por mes (los 12 últimos), más claros cuanto más antiguos. Se calcula del registro de XP (`R.radarHistory` en `js/rpg/model.js`), no se guarda nada aparte.
+
+### Sombras (`rpg/shadows.json`)
+Una sombra es algo que vuelve y no quieres que mande (insomnio, rumiar, el móvil a deshoras). Su bloque va entre *Tareas · Misiones semanales* y *Jefes*.
+- **Nunca quita XP, ni da.** Las sombras no tocan el registro de XP. Purificarlas tampoco da XP extra: el contrahechizo da sus 5 XP de siempre.
+- **Contrahechizos:** cada sombra tiene una o varias actividades. Una aparición queda **purificada** si ese día o el siguiente registras uno de ellos. No se guarda: se calcula del registro de XP, así que si borras el contrahechizo vuelve a «sin purificar».
+- **Apuntarla:** «Apareció hoy» en su tarjeta (una vez por día; el día acaba a las 3:00), con «Deshacer». Desde el diario, en la ventana de Actividades de una entrada, la fila **«Sombras de hoy»**: al guardar la página quedan apuntadas para ese día, y quitarlas de la entrada (o borrar la página) las borra. Como no hay XP en juego, no se pregunta.
+- **Glitch en el avatar:** mientras haya una aparición de hoy o de ayer sin purificar, el avatar de la ficha tiene un glitch oscuro (franjas desplazadas, bordes desdoblados en magenta y lavanda, líneas de barrido y píxeles muertos), con tirones cortos. Al purificarla con un contrahechizo de hoy se calma: rayas quietas y suaves, hasta el final del día. Con *Efectos* apagado se ve quieto. También sale en *Estado actual*.
+- **Tarjeta:** contrahechizos, tira de los últimos 14 días (vacío / apareció / purificada) y recuento del mes. Con **4 apariciones en 14 días** ofrece *Convertir en jefe* (abre *Nuevo jefe* ya relleno: su nombre y un paso «contrahechizo × 5» por cada uno) o *Ahora no* (se esconde hasta que vuelva a pasar).
+- **Frecuencia:** barras de los últimos 6 meses (purificadas y sin purificar), de todas o de una. Sin rachas ni castigos.
+- Editar (lápiz, o «⋯» en táctil): nombre, icono, contrahechizos y *Archivar* (se esconde; su historial se queda). Las archivadas se recuperan desde su lista.
+- En el registro de apariciones: una por sombra y día (`sh:<sombra>:<día>`), con `from: 'ficha' | 'diario'`. En las entradas del diario se guardan como `shadows: [{ id, name }]`.
+
+### Tareas (`rpg/todos.json`)
+Varias listas de tareas. Cada tarea es Pequeña (+2), Normal (+5) o Grande (+10) y da su XP al marcarla; completar la lista entera da la recompensa elegida al crearla (15 / 30 / 60 / 100). La XP va al reparto de atributos de la lista. Desmarcar quita la XP de esa tarea (y volver a marcarla la da una sola vez); al completarse, la lista queda fija como «Completada» hasta que la elimines (su XP se queda). Las tareas se añaden escribiendo en la tarjeta (Intro); el lápiz abre la edición completa. Claves en el registro: `todo:<lista>:<tarea>` y `todo:<lista>`.
+- **Son listas del día:** a las **3:00** (lo de después de medianoche cuenta como el mismo día) lo hecho se borra y lo pendiente pasa a una lista nueva del día siguiente, con el mismo nombre, recompensa y reparto. La XP ganada se queda.
+- **Desde el diario:** en la ventana de Actividades de una entrada, arriba, «De tus tareas de hoy». Las que marques quedan en la entrada (cápsula clara con visto; se guarda su texto en `"tasks"`) y, al guardar la página, se marcan en su lista con su XP, una sola vez. Quitarlas de la entrada no las desmarca.
+
+### Misiones diarias (`rpg/daily.json`)
+Encima de Tareas y Misiones semanales, **tres misiones al azar cada día** (de atributos distintos si se puede), en fila. Se renuevan a las **3:00**. Cada una es Pequeña (15) o Normal (30) y su XP va a su subcategoría; hacer **las tres da +15** («¡Día completo!»), y entonces quedan fijas. Desmarcar quita su XP. El **dado** cambia una sin hacer por otra: **3 cambios al día**. Las tres del día se guardan, así que recargar no las cambia.
+- **La batería:** 51 de fábrica repartidas entre las 24 subcategorías (`R.DAILY_DEFAULTS` en `js/rpg/daily.js`) más las tuyas. En *Configuración → Misiones diarias* se filtran por atributo, se eliminan (las de fábrica se pueden recuperar) y se añaden nuevas (nombre, subcategoría y tamaño).
+- En el registro: `daily:<día>:<misión>` y `daily:<día>` (el premio del día).
+
+### Misiones semanales: una semana o todas
+Al crear o editar una misión se elige **«Solo esta semana»** (se borra el lunes a las 3:00, con sus casillas) o **«Repetir cada semana»** (vuelve a empezar cada lunes). Las misiones de antes de este cambio repiten. La XP ganada siempre se queda.
 
 ### Atributos: siete
 Vitalidad, Espíritu, Vínculos, Aventura, Creatividad, **Inteligencia** (Lógica, Idioma, Comunicación) y **Yo futuro** (Finanzas, Carrera profesional, Objetivos personales). Los dos últimos se añadieron después: si ya tenías datos, aparecen solos a nivel 1 y no cambia nada de lo que tenías (nombres, archivados, XP). Usan el mismo sistema de XP y niveles, y salen en el radar, en misiones, jefes, actividades y «Corregir XP». El radar es una estrella de siete puntas {7/3} (cada punta unida con la que está tres más allá).
@@ -329,11 +365,13 @@ La ficha, el inicio y Configuración leen del mismo repositorio (`App.rpg.repo()
 - **Número con − y +:** `App.ui.stepper(...)` (porcentajes de 5 en 5, puntos de 1 en 1; también se escribe). Sin flechas del navegador en ningún número.
 - **Casilla:** todas las checkbox comparten estilo y animación.
 - **Barras de desplazamiento:** el mismo estilo en vertical y horizontal.
-- **Lápiz para editar:** `App.ui.editButton(...)` en tarjetas `.has-edit` (misiones y jefes): aparece al pasar el ratón; en táctil se ve siempre.
+- **Lápiz para editar:** `App.ui.editButton(...)` en tarjetas `.has-edit` (ficha, misiones, jefes, listas): aparece al pasar el ratón.
+- **Menú «⋯» en pantallas táctiles** (`App.ui.enhanceMenus`): donde no hay ratón (`hover: none`), los controles que solo aparecen al pasar el ratón (lápiz, × de actividades y tareas) se sustituyen por un «⋯» que abre un menú con ellos; mantener pulsada la tarjeta o la fila medio segundo abre el mismo menú. Basta con marcar el anfitrión (`.has-edit` o `data-menu-host`) y sus controles (`data-menu-label`).
+- **Títulos** (`R.TITLES` en `js/rpg/model.js`): Muñeca inquieta (nivel 1), Muñeca susurrante (15), Gran posesión (30). Se ve el más alto conseguido o el que elijas en *Configuración → Tu personaje* (se guarda en `rpg/profile.json`). Solo decoración.
 - Pasos de jefe con casilla: marcar da 5 XP; desmarcar los quita (se borra el apunte); nunca se cuentan dos veces. Con el jefe derrotado quedan fijos.
 
 ### Avatar y marcos
-- El avatar se cambia en *Configuración → Tu personaje* (el botón *Editar personaje* de la ficha lleva ahí): **símbolo** de la galería, **foto** (se recorta cuadrada y se reduce a 320 px en el navegador; se guarda en `rpg/profile.json`, sin cifrar) o **enlace directo a un GIF** de Giphy, Tenor o Imgur (solo se guarda el enlace; si no carga, se ve el símbolo).
+- El avatar se cambia en *Configuración → Tu personaje* (el botón *Editar personaje* de la ficha lleva ahí): **símbolo** de la galería, **foto** (se recorta cuadrada y se reduce a 320 px en el navegador; se guarda en `rpg/profile.json`, sin cifrar) o **enlace a una imagen o GIF de internet** (clic derecho sobre la imagen → «Copiar dirección de la imagen»; solo se guarda el enlace, no se descarga; si no carga, se ve el símbolo). Sitios admitidos: ver *Seguridad* más abajo.
 - Alrededor del avatar hay un **marco que mejora con el nivel**: Puntada (1), Encaje (5), Rosas y espinas (10), Alas de murciélago (20) y Corona vampírica (35). Solo es decoración. La lista está en `R.AVATAR_FRAMES` (`js/rpg/model.js`) y cada dibujo en `js/views/rpg/avatar.js`.
 
 ### La ficha y el radar
@@ -356,11 +394,11 @@ Todo vive en **Personaje**, en tres columnas bajo el radar (la sección «Mision
 - **Actividades:** todas dan exactamente **5 XP**, repartidos en puntos enteros entre subcategorías. Hay 19 predefinidas; puedes crear las tuyas, editarlas y archivarlas. La columna muestra un botón **«Añadir actividad»** y las 3 últimas registradas; el botón abre una ventana con todas (buscador, se marcan una o varias y *Registrar*), **«+ Nueva actividad»** y *Editar*. Al crear una, eliges si **solo se registra esta vez** (puntual, no se guarda) o si **se guarda para repetirla**. Cada registro guarda su copia de puntos. Al pasar el ratón por un registro aparece una **×** para **borrarlo del todo** (se confirma en la misma fila): desaparece de `rpg/ledger-AAAA.json` y sus XP dejan de contar; si venía del diario, también se quita de su entrada. **Ver historial** (abajo a la derecha) enseña todas las actividades registradas por meses, con la misma cruz. Los «anulados» del sistema anterior se quedan en el registro y no se muestran.
 - **Actividades desde el diario:** cada entrada tiene un botón **Actividades** (la misma ventana; desde ahí solo actividades guardadas o nuevas guardadas). La entrada guarda sus identificadores (`"activities": ["gimnasio"]`). Al **guardar la página**, cada par entrada + actividad se registra **una sola vez** (clave `act:blk:<entrada>:<actividad>`) con el día de la página, y aparece el aviso *«Tu personaje se ha actualizado»*. Quitar la actividad de la entrada, o borrar la entrada, **no resta XP**. Si algo falla al registrar, la página queda guardada y basta con volver a guardarla. No cuentan para el porcentaje de ánimo.
 - **Misiones semanales** (de lunes a domingo, se renuevan solas): XP 15/30/60/100 según tamaño. Dos modos: *ligada a una actividad* («X veces a la semana»: se completa sola al registrarla, sin botón de reclamar) o *casillas* (una o varias, que marcas tú).
-- **Jefes finales:** varios pasos (check o actividad × veces). Cada paso da 5 XP; derrotarlo da 250 / 400 / 600 XP. Imagen: dibujo incluido (SVG), o **enlace directo a un GIF** de Giphy, Tenor o Imgur (no se descarga ni se guarda en tu repositorio; si no carga, se muestra el dibujo).
+- **Jefes finales:** varios pasos (check o actividad × veces). Cada paso da 5 XP; derrotarlo da 250 / 400 / 600 XP. Imagen: dibujo incluido (SVG), o **enlace a una imagen o GIF de internet** de los sitios admitidos (no se descarga ni se guarda en tu repositorio; si no carga, se muestra el dibujo).
 - **Eliminar misiones y jefes:** no se archivan; *Editar → Eliminar* (los jefes derrotados, desde su tarjeta) los borra de `rpg/weekly.json` / `rpg/bosses.json`, con las casillas marcadas de la misión. Se confirma en el mismo sitio y no se puede deshacer. **La XP que ya dieron se queda** en el registro. Lo que estuviera archivado con la versión anterior se borra solo al abrir Personaje.
 - **Avisos:** al completar una misión, un paso, un jefe o subir de nivel aparece una notificación.
 - **Datos:** `rpg/activities.json`, `rpg/weekly.json`, `rpg/bosses.json`; las recompensas van al registro `rpg/ledger-AAAA.json` con claves únicas (`weekly:<id>:<semana>`, `boss:<id>[:<paso>]`), así que nunca se dan dos veces. `rpg/quests.json` (versión anterior) no se toca ni se usa (su código ya no existe en la aplicación).
-- **Seguridad:** la política de contenido solo permite imágenes de `giphy.com`, `tenor.com` e `imgur.com` (además de las propias).
-- **Límites conocidos:** borrar una actividad después de que una misión o paso ya diera su recompensa no la retira (se corrige con «Corregir XP»). Al crear subcategorías, la media del atributo en el radar baja.
+- **Seguridad:** la política de contenido (`img-src` en `index.html`) solo permite imágenes propias y de una lista de sitios: Giphy, Tenor, Imgur, Pinterest (`i.pinimg.com`), Wikipedia (`upload.wikimedia.org`), Unsplash, Google Fotos (`*.googleusercontent.com`), Reddit (`i.redd.it`, `preview.redd.it`), Tumblr, Flickr y X (`pbs.twimg.com`). Así, aunque se colara código malicioso, no podría sacar datos a otra web a través de una imagen. Para añadir un sitio hay que ponerlo en los dos lados: en `HOSTS` y `R.IMAGE_SITES` (`js/rpg/bosses.js`) y en la política de `index.html` (una prueba comprueba que coinciden). Ojo: la web de la imagen ve tu IP cada vez que se carga.
+- **Límites conocidos:** borrar una actividad después de que una misión o paso ya diera su recompensa no la retira. Al crear subcategorías, la media del atributo en el radar baja.
 
 Siguiente: logros, títulos y colección (5C).

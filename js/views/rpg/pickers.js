@@ -55,6 +55,14 @@
   U.subNames = function (structure) {
     var out = {}; structure.forEach(function (a) { a.subs.forEach(function (s) { out[s.id] = s.name; }); }); return out;
   };
+  // Textos del campo «enlace a una imagen o GIF» (avatar y jefes).
+  U.imageLinkHelp = function () {
+    return 'Clic derecho (o mantener pulsada) sobre la imagen → «Copiar dirección de la imagen». Sitios: ' + esc(App.rpg.IMAGE_SITES) +
+      '. No se descarga ni se guarda: solo el enlace, y la imagen se carga desde ese sitio al verla.';
+  };
+  U.imageLinkInvalid = function () {
+    return 'Ese enlace no vale todavía: tiene que ser https y llevar directo a la imagen, de ' + esc(App.rpg.IMAGE_SITES) + '.';
+  };
   U.levelNote = function (before, after) { return after > before ? ' · ¡Subes al nivel ' + after + '!' : ''; };
   U.symbolGrid = function (name, list, current) {
     var icon = App.icon;

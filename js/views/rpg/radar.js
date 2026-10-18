@@ -15,12 +15,28 @@
 
   // Qué tan lejos del centro está un valor (0–1 del radio).
   App.rpgViews.radarRadius = function (value, cap) { return Math.min(1, Math.max(0, value / cap)); };
+  function compareShapes(cmp, cap) {
+    var total = cmp.shapes.length;
+    return cmp.shapes.map(function (vals, k) {
+      var rs = vals.map(function (v) { return RAD * Math.max(0.035, App.rpgViews.radarRadius(v, cap)); });
+      if (cmp.mode === 'rings') {
+        var op = total === 1 ? 0.8 : (0.25 + 0.55 * k / (total - 1));
+        return '<polygon class="rd-ring-past" style="opacity:' + op.toFixed(2) + ';--k:' + k + '" points="' + poly(rs) + '"/>';
+      }
+      return '<polygon class="rd-past" points="' + poly(rs) + '"/>';
+    }).join('');
+  }
 
-  // items: [{ id, name, level, fraction, value, magic? }]. o: { selected, kind: 'main' | 'sub' }
+  // items: [{ id, name, level, fraction, value, magic? }].
+  // o: { selected, kind: 'main' | 'sub', animate, compare: { mode: 'month' | 'rings', shapes: [[valor por eje], …] } }
+  // `compare` dibuja formas de antes con la misma escala: «month» = un contorno punteado (hace 30 días);
+  // «rings» = anillos de crecimiento, uno por mes, más claros cuanto más antiguos.
   App.rpgViews.radar = function (items, o) {
     o = o || {};
     var sel = o.selected || '', n = items.length, kind = o.kind === 'sub' ? 'sub' : 'main';
-    var cap = R.radarCap(items);
+    var cmp = o.compare && o.compare.shapes && o.compare.shapes.length ? o.compare : null;
+    // La escala abarca también las formas de antes (por si alguna era mayor, p. ej. tras quitar XP).
+    var cap = R.radarCap(items.concat(cmp ? [].concat.apply([], cmp.shapes).map(function (v) { return { value: v }; }) : []));
     var rings = [0.25, 0.5, 0.75].map(function (f) { return '<polygon class="rd-ring" points="' + poly(items.map(function () { return RAD * f; })) + '"/>'; }).join('');
     var star = [], skip = n === 4 ? 2 : Math.floor((n - 1) / 2);
     if (n >= 4) for (var i = 0; i < n; i++) {
@@ -48,7 +64,7 @@
       '<svg class="radar-svg" viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="Radar de ' + (kind === 'sub' ? 'subcategorías' : 'atributos') + ': ' + esc(summary) + '">' +
         '<defs><linearGradient id="rd-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--rd-a, #F08BB5)"/><stop offset="1" stop-color="var(--rd-b, #B9A7E0)"/></linearGradient></defs>' +
         '<g aria-hidden="true"><circle class="rd-halo" cx="' + CX + '" cy="' + CY + '" r="' + (RAD + 12) + '"/>' + rings + '<polygon class="rd-outer" points="' + poly(items.map(function () { return RAD; })) + '"/>' + star.join('') + spokes +
-        '<polygon class="rd-area" points="' + poly(radii) + '"/>' + dots + '</g>' + labels +
+        '<polygon class="rd-area" points="' + poly(radii) + '"/>' + (cmp ? compareShapes(cmp, cap) : '') + dots + '</g>' + labels +
       '</svg>' +
       '<figcaption class="soft">Borde exterior: nivel ' + (cap + 1) + '. La escala crece sola.</figcaption>' +
     '</figure>';

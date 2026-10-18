@@ -73,7 +73,9 @@
   }
   App.connection.onChange(paintStatus);
   paintStatus();
-  if (App.connection.isConfigured()) App.connection.check();
+  // Si hay una conexión guardada, se comprueba al abrir. Las pantallas necesitan esa comprobación para leer tus datos:
+  // por eso el primer pintado la espera (ver «Arranque» abajo).
+  var firstCheck = App.connection.isConfigured() ? App.connection.check() : null;
 
   // Barra inferior (móvil)
   bottomNav.innerHTML =
@@ -93,7 +95,9 @@
     if (e.target === sheet || e.target.closest('a') || e.target.closest('.sheet-close')) sheet.close();
   });
 
+  var current = null;   // última pantalla pintada, para poder repintarla
   function show(section, opts) {
+    current = { section: section, params: opts.params || [] };
     mount.replaceChildren();
     mount.dataset.view = section.id;
     section.view.render(mount, { params: opts.params || [] });
@@ -114,12 +118,32 @@
 
   // Desplegables de la aplicación: cada <select> que aparezca (en cualquier pantalla o diálogo) se convierte solo.
   var ddQueued = false;
-  function enhance() { ddQueued = false; App.ui.enhanceSelects(document.body); }
+  function enhance() { ddQueued = false; App.ui.enhanceSelects(document.body); App.ui.enhanceMenus(document.body); }
   if (typeof MutationObserver === 'function') {
     new MutationObserver(function () { if (!ddQueued) { ddQueued = true; Promise.resolve().then(enhance); } })
       .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
   }
 
-  App.startRouter(sections, show);
-  enhance();
+  // ---- Arranque ----
+  // Sin esperar, una pantalla abierta directamente (por ejemplo, recargando en Personaje) se pintaría antes de que la
+  // conexión estuviera lista y diría «Conecta tus datos» aunque lo estés. Así que el primer pintado espera a la
+  // comprobación, como mucho 2,5 s (con la red lenta no te deja con la pantalla vacía). Si termina más tarde y ya hay
+  // conexión, la pantalla se repinta sola, salvo que estés escribiendo en ella (para no perder lo que escribes).
+  function typing() {
+    var a = document.activeElement;
+    return !!(a && mount.contains(a) && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable));
+  }
+  function start() { App.startRouter(sections, show); enhance(); }
+  if (!firstCheck) start();
+  else {
+    mount.innerHTML = '<div class="view"><div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div></div>';
+    var started = false;
+    var go = function () { if (!started) { started = true; start(); } };
+    var wait = setTimeout(go, 2500);
+    firstCheck.then(function (d) {
+      clearTimeout(wait);
+      if (!started) { go(); return; }
+      if (d.state === 'connected' && current && !typing()) show(current.section, { initial: true, params: current.params });
+    });
+  }
 })(window.App = window.App || {});

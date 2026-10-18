@@ -1,4 +1,5 @@
-// Panel «Misiones semanales» de la ficha. Se renuevan cada lunes. Las ligadas a una actividad se completan solas.
+// Panel «Misiones semanales» de la ficha. Cada una es «solo esta semana» (se borra el lunes a las 3:00) o «se repite
+// cada semana» (vuelve a empezar cada lunes). Las ligadas a una actividad se completan solas.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util, K = V.pickers;
 
@@ -18,7 +19,8 @@
       (m.done ? '<span class="tag ok card-tag">Completada ✓</span>' : '<span class="tag card-tag">+' + m.xp + ' XP</span>') + '</div>' +
       (m.description && m.target !== 1 ? '<p class="soft">' + esc(m.description) + '</p>' : '') + body +
       '<div class="act-chips">' + split + '</div>' +
-      (m.weeksDone ? '<p class="soft wk-weeks">' + m.weeksDone + (m.weeksDone === 1 ? ' semana completada' : ' semanas completadas') + '</p>' : '') +
+      (m.weeksDone && m.repeat !== false ? '<p class="soft wk-weeks">' + m.weeksDone + (m.weeksDone === 1 ? ' semana completada' : ' semanas completadas') + '</p>' : '') +
+      '<span class="expire-tag">' + icon('clock') + (m.repeat === false ? 'Solo esta semana · se borra el lunes a las 3:00' : 'Se repite cada semana') + '</span>' +
       App.ui.editButton('data-act="edit" data-id="' + esc(m.id) + '"', 'Editar ' + m.name) + '</li>';
   }
 
@@ -34,13 +36,13 @@
     function actNames() { var o = {}; actList.forEach(function (a) { o[a.id] = a.name; }); return o; }
     function paint() {
       var live = state.missions;
-      $('#wk-range').textContent = 'Del ' + U.fmtDay(state.range.from) + ' al ' + U.fmtDay(state.range.to) + ' · se renuevan cada lunes';
+      $('#wk-range').textContent = 'Del ' + U.fmtDay(state.range.from) + ' al ' + U.fmtDay(state.range.to);
       body.innerHTML = live.length ? '<ul class="wk-list">' + live.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul>' :
         '<p class="soft">Aún no tienes misiones semanales. Crea una, por ejemplo «Ir al gimnasio 3 veces».</p>';
     }
     // Antes de pintar, se borran las archivadas del sistema anterior (si las hay).
     function reload() {
-      return weekly.purgeArchived().catch(function () {}).then(function () {
+      return weekly.cleanup().catch(function () {}).then(function () {
         return Promise.all([weekly.state(), acts.list(), rpg.state()]);
       }).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
     }
@@ -66,11 +68,15 @@
     function targetLabel() { return form.mode === 'activity' ? '¿Cuántas veces a la semana?' : '¿Cuántas casillas? (1 = un solo check)'; }
 
     function openForm(m) {
-      form = { id: m ? m.id : null, size: m ? m.size : 'normal', mode: m ? m.mode : 'activity', activity: m ? m.activity : null, shares: {} };
+      form = { id: m ? m.id : null, size: m ? m.size : 'normal', mode: m ? m.mode : 'activity', activity: m ? m.activity : null, shares: {}, repeat: m ? m.repeat !== false : false };
       if (m) m.shares.forEach(function (s) { form.shares[s.sub] = s.pct; });
       dlg().innerHTML = '<h3 id="wk-dtitle">' + (m ? 'Editar misión semanal' : 'Nueva misión semanal') + '</h3>' +
         '<label class="field"><span>Nombre</span><input id="wf-name" type="text" maxlength="' + R.WEEKLY_LIMITS.name + '" autocomplete="off" value="' + esc(m ? m.name : '') + '"></label>' +
         '<label class="field"><span>Descripción (opcional)</span><input id="wf-desc" type="text" maxlength="' + R.WEEKLY_LIMITS.description + '" autocomplete="off" value="' + esc(m ? m.description : '') + '"></label>' +
+        '<fieldset class="symbols"><legend>¿Cuánto dura?</legend><ul class="emo-caps" aria-label="Duración">' +
+          '<li><button type="button" class="emo-cap" data-repeat="0" aria-pressed="' + !form.repeat + '"><span>Solo esta semana</span></button></li>' +
+          '<li><button type="button" class="emo-cap" data-repeat="1" aria-pressed="' + form.repeat + '"><span>Repetir cada semana</span></button></li></ul>' +
+          '<p class="soft">«Solo esta semana» se borra el lunes a las 3:00. La XP que haya dado se queda.</p></fieldset>' +
         '<fieldset class="symbols"><legend>¿Cómo se completa?</legend><ul class="emo-caps" aria-label="Modo">' +
           '<li><button type="button" class="emo-cap" data-mode="activity" aria-pressed="' + (form.mode === 'activity') + '"><span>Haciendo una actividad varias veces (se completa sola)</span></button></li>' +
           '<li><button type="button" class="emo-cap" data-mode="checks" aria-pressed="' + (form.mode === 'checks') + '"><span>Casillas que marco yo</span></button></li></ul>' +
@@ -87,8 +93,9 @@
     function setPressed(sel, attr, val) { Array.prototype.forEach.call(dlg().querySelectorAll(sel), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === val)); }); }
 
     host.addEventListener('click', function (ev) {
-      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-pk],[data-size],[data-mode],[data-wact]') : null;
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act],[data-pk],[data-size],[data-mode],[data-wact],[data-repeat]') : null;
       if (!t) return;
+      if (t.getAttribute('data-repeat') && form) { form.repeat = t.getAttribute('data-repeat') === '1'; return setPressed('[data-repeat]', 'data-repeat', form.repeat ? '1' : '0'); }
       if (t.getAttribute('data-pk') && form) { K.toggle(form.shares, t.getAttribute('data-pk'), 'pct'); $('#wf-pick').innerHTML = pickHtml(); return; }
       if (t.getAttribute('data-size') && form) { form.size = t.getAttribute('data-size'); return setPressed('[data-size]', 'data-size', form.size); }
       if (t.getAttribute('data-mode') && form) { form.mode = t.getAttribute('data-mode'); setPressed('[data-mode]', 'data-mode', form.mode); $('#wf-act').innerHTML = actPicker(); $('#wf-tl').textContent = targetLabel(); return; }
@@ -106,7 +113,7 @@
           .catch(function (e) { dmsg(e.message); $('#wk-actions').innerHTML = actionsHtml(); }).then(function () { busy = false; });
       }
       if (act === 'save') {
-        var data = { name: $('#wf-name').value, description: $('#wf-desc').value, size: form.size, shares: K.toList(form.shares, 'pct'), mode: form.mode, activity: form.activity, target: Number($('#wf-target').value) };
+        var data = { name: $('#wf-name').value, description: $('#wf-desc').value, size: form.size, shares: K.toList(form.shares, 'pct'), mode: form.mode, activity: form.activity, target: Number($('#wf-target').value), repeat: form.repeat };
         var p = form.id ? weekly.update(form.id, data) : weekly.create(data);
         return p.then(function () { return ctx.afterChange(); }).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
       }

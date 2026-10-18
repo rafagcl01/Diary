@@ -1,6 +1,6 @@
 // Avatar del personaje: la imagen (foto, GIF o símbolo) dentro de un marco que mejora con el nivel (R.AVATAR_FRAMES).
 // Los marcos son solo decoración: se dibujan aquí en SVG, uno por id. Para cambiar un marco, cambia su dibujo en FRAMES.
-// Si el GIF no carga, se ve el símbolo (ver V.avatarFallback).
+// Si el GIF no carga, se ve el símbolo (ver V.avatarFallback). Con una sombra sin purificar, encima va un glitch.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon;
   var V = App.rpgViews = App.rpgViews || {};
@@ -47,7 +47,20 @@
     return '<svg class="fr-deco" viewBox="0 0 200 200" aria-hidden="true" focusable="false">' + (FRAMES[id] || FRAMES.puntada)() + '</svg>';
   };
 
+  // Glitch de sombra (ver rpg/shadows.js, R.shadowAura) encima del avatar: tres franjas del propio avatar desplazadas
+  // (con el hueco en negro), los bordes desdoblados en magenta y lavanda, líneas de barrido y píxeles muertos.
+  // 'calm' (purificada hoy): las franjas y las líneas se quedan quietas y muy suaves; colores y píxeles se van.
+  // El movimiento son tirones cortos; con «Efectos» apagado (o movimiento reducido) se queda quieto.
+  function glitch(inner, aura) {
+    return '<span class="av-gl" data-aura="' + aura + '" aria-hidden="true">' +
+      // La franja (.gl-slice) recorta una banda fija; dentro, la copia del avatar (.gl-move) es la que se desplaza.
+      ['s1', 's2', 's3'].map(function (c) { return '<span class="gl-slice ' + c + '"><span class="gl-move">' + inner + '</span></span>'; }).join('') +
+      '<span class="gl-ch gl-m"></span><span class="gl-ch gl-l"></span><span class="gl-scan"></span>' +
+      '<i class="gl-px p1"></i><i class="gl-px p2 lit"></i><i class="gl-px p3"></i><i class="gl-px p4 lit"></i><i class="gl-px p5"></i></span>';
+  }
+
   // profile: { name, avatar, image }. level: nivel general. o.size: 'large' (ficha) | 'medium' (configuración).
+  // o.aura: 'glitch' | 'calm' | null (sombras).
   V.avatar = function (profile, level, o) {
     o = o || {};
     var f = R.frameFor(level || 1).frame, img = profile && profile.image, sym = (profile && profile.avatar) || 'mended';
@@ -55,8 +68,12 @@
     if (img && img.kind === 'photo') pic = '<img src="' + esc(img.data) + '" alt="">';
     else if (img && img.kind === 'url') pic = '<img src="' + esc(img.url) + '" alt="" referrerpolicy="no-referrer" decoding="async" data-symbol="' + esc(sym) + '">';
     else pic = icon(sym);
-    return '<div class="av-frame ' + (o.size || 'large') + '" data-frame="' + esc(f.id) + '" role="img" aria-label="' + esc(o.label || ('Avatar con el marco ' + f.name)) + '">' +
-      '<span class="av-pic' + (img ? ' has-img' : '') + '">' + pic + '</span>' + V.frameSvg(f.id) + '</div>';
+    var inner = '<span class="av-pic' + (img ? ' has-img' : '') + '">' + pic + '</span>' + V.frameSvg(f.id);
+    var aura = o.aura === 'glitch' || o.aura === 'calm' ? o.aura : null;
+    var label = o.label || ('Avatar con el marco ' + f.name);
+    if (aura === 'glitch') label += '. Tiene una sombra sin purificar';
+    return '<div class="av-frame ' + (o.size || 'large') + (aura ? ' av-aura' : '') + '" data-frame="' + esc(f.id) + '" role="img" aria-label="' + esc(label) + '">' +
+      inner + (aura ? glitch(inner, aura) : '') + '</div>';
   };
   // Si el GIF no carga (enlace roto, sin internet), se pone el símbolo. Se usa como escucha de 'error' en fase de captura.
   V.avatarFallback = function (ev) {

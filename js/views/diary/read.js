@@ -35,6 +35,7 @@
           '<dialog class="confirm" id="r-dialog" aria-labelledby="r-dialog-title">' +
             '<h3 id="r-dialog-title">¿Eliminar esta página?</h3>' +
             '<p>Se borran todas las entradas de este día de tu repositorio de datos. GitHub conserva el historial de cambios, pero la aplicación no podrá recuperarlas.</p>' +
+            '<p id="r-xp" hidden></p>' +
             '<div class="btn-row"><button type="button" class="btn" id="r-confirm">Eliminar</button><button type="button" class="btn secondary" id="r-cancel">Cancelar</button></div>' +
           '</dialog></div>';
 
@@ -48,13 +49,32 @@
             .then(function (updated) { return repo.list().then(function (l) { paint(updated, l, byId, peopleById, actsById); }); })
             .catch(function (err) { say(err.message, 'error'); });
         });
-        $('#r-del').addEventListener('click', function () { $('#r-dialog').showModal(); });
+        // Borrar la página quita también la XP de sus actividades y tareas (se dice cuánta antes de confirmar).
+        var R = App.rpg, removals = [];
+        $('#r-del').addEventListener('click', function () {
+          var info = $('#r-xp'); info.hidden = true; removals = [];
+          $('#r-dialog').showModal();
+          if (R && R.diaryRemovals) R.diaryRemovals(entry.blocks, []).then(function (items) {
+            removals = items;
+            if (!items.length) return;
+            var xp = items.reduce(function (t, it) { return t + it.xp; }, 0);
+            info.innerHTML = '<b>También se quitarán ' + xp + ' XP de tu personaje</b> (' + items.map(function (it) { return esc(it.label); }).join(', ') + ').';
+            info.hidden = false;
+          }).catch(function () {});
+        });
         $('#r-cancel').addEventListener('click', function () { $('#r-dialog').close(); });
         $('#r-confirm').addEventListener('click', function () {
           $('#r-dialog').close();
           say('Eliminando…', 'info');
+          var items = removals;
           repo.remove(day).then(function () {
             App.drafts.remove(day);
+            var shRepo = R && R.shadows ? R.shadows() : null;   // sus sombras de ese día se borran (no tocan la XP)
+            if (shRepo) shRepo.syncDiary(day, entry.blocks, []).catch(function () {});
+            if (items.length && R.applyDiaryRemovals) R.applyDiaryRemovals(items).then(function (rm) {
+              var V = App.rpgViews;
+              if (V && V.toast && rm.removed.length) V.toast.show({ kind: 'char', title: 'Tu personaje se ha actualizado', text: '−' + rm.removed.reduce(function (t, it) { return t + it.xp; }, 0) + ' XP · ' + rm.removed.map(function (it) { return it.label; }).join(', ') });
+            });
             location.hash = '#/diario';
           }).catch(function (err) { say(err.message, 'error'); });
         });

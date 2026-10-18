@@ -9,8 +9,12 @@
     var d = new Date(iso);
     return isNaN(d) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
-  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null, emotions: [], people: [], activities: [] }; }
-  function copyBlock(b) { return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood, emotions: (b.emotions || []).slice(), people: (b.people || []).slice(), activities: (b.activities || []).slice() }; }
+  function newBlock() { return { id: D.newBlockId(), text: '', tags: [], mood: null, emotions: [], people: [], activities: [], tasks: [], shadows: [] }; }
+  function copyBlock(b) {
+    return { id: b.id, text: b.text, tags: b.tags.slice(), mood: b.mood, emotions: (b.emotions || []).slice(), people: (b.people || []).slice(), activities: (b.activities || []).slice(),
+      tasks: (b.tasks || []).map(function (r) { return { list: r.list, task: r.task, text: r.text }; }),
+      shadows: (b.shadows || []).map(function (r) { return { id: r.id, name: r.name }; }) };
+  }
   function shell(day, body) {
     return '<div class="view day-page"><article class="card paper sheet">' + H.sheetHead(day, '', '') + body + '</article></div>';
   }
@@ -28,8 +32,14 @@
     }).join('');
   }
   // Actividades de una entrada (se registran en el personaje al guardar la página). `acts` es el mapa id → actividad.
+  // Primero las sombras, luego las tareas de tus listas (cápsula clara con visto) y luego las actividades (cápsula oscura).
   function activityChips(block, n, acts) {
-    return (block.activities || []).map(function (id) {
+    return (block.shadows || []).map(function (r) {
+      return H.shadowChip(r, ' <button type="button" class="chip-x" data-remove-shadow="' + esc(r.id) + '" data-block="' + esc(block.id) + '" aria-label="Quitar la sombra ' + esc(r.name) + ' de la entrada ' + n + '">×</button>');
+    }).join('') + (block.tasks || []).map(function (r) {
+      var k = r.list + ':' + r.task;
+      return H.taskChip(r, ' <button type="button" class="chip-x" data-remove-task="' + esc(k) + '" data-block="' + esc(block.id) + '" aria-label="Quitar la tarea ' + esc(r.text) + ' de la entrada ' + n + '">×</button>');
+    }).join('') + (block.activities || []).map(function (id) {
       return H.activityChip(acts[id], id, ' <button type="button" class="chip-x" data-remove-act="' + esc(id) + '" data-block="' + esc(block.id) + '" aria-label="Quitar la actividad ' + esc(acts[id] ? acts[id].name : id) + ' de la entrada ' + n + '">×</button>');
     }).join('');
   }
@@ -81,7 +91,7 @@
             '<label class="checkline"><input id="e-fav" type="checkbox"' + (begin.favorite ? ' checked' : '') + '><span>Marcar la página como favorita</span></label>' +
           '</article>' +
           '<div class="btn-row"><button type="button" class="btn" id="e-save">Guardar</button><a class="btn secondary" href="' + backHref + '">Cancelar</a></div>' +
-          '<p class="msg" id="e-msg" role="status" data-kind="info"></p>' +
+          '<p class="msg" id="e-msg" role="status" data-kind="info"></p><div id="e-confirm" aria-live="polite"></div>' +
 
           '<dialog class="confirm emo-dialog" id="emo-dialog" aria-labelledby="emo-title">' +
             '<h3 id="emo-title">Emociones de la entrada <span id="emo-n"></span></h3>' +
@@ -176,11 +186,13 @@
         // ---- Actividades: la misma ventana que en Personaje. Se registran al guardar la página, no antes. ----
         var actBlock = null;
         var actPicker = actRepo ? V.activityPicker($('#act-dialog'), {
-          acts: actRepo, rpg: R.repo(),
+          acts: actRepo, rpg: R.repo(), todos: R.todos ? R.todos() : null, shadows: R.shadows ? R.shadows() : null,
           acceptLabel: function () { return 'Aceptar'; },
-          onAccept: function (ids) {
+          onAccept: function (ids, tasks, shadows) {
             var i = blockIndex(actBlock); if (i < 0) return;
             blocks[i].activities = D.uniqueActivityIds(ids);
+            blocks[i].tasks = D.cleanTaskRefs(tasks);   // se marcan en su lista al guardar la página
+            blocks[i].shadows = D.cleanShadowRefs(shadows);   // se apuntan para este día al guardar la página
             // La lista puede tener actividades nuevas creadas en la ventana.
             return actRepo.list().then(setActs, function () {}).then(function () { paintActivityChips(actBlock); scheduleDraft(); });
           }
@@ -188,7 +200,7 @@
         function openActs(id) {
           var i = blockIndex(id); if (i < 0 || !actPicker) return;
           actBlock = id;
-          actPicker.open({ title: 'Actividades de la entrada ' + (i + 1), selected: blocks[i].activities });
+          actPicker.open({ title: 'Actividades de la entrada ' + (i + 1), selected: blocks[i].activities, tasks: blocks[i].tasks, shadows: blocks[i].shadows });
         }
 
         function addTags(id, raw) {
@@ -333,8 +345,18 @@
             return;
           }
           if (open) { openEmo(open.dataset.emoOpen); return; }
-          var actOpen = t.closest('[data-act-open]'), rmAct = t.closest('[data-remove-act]');
+          var actOpen = t.closest('[data-act-open]'), rmAct = t.closest('[data-remove-act]'), rmTask = t.closest('[data-remove-task]'), rmShadow = t.closest('[data-remove-shadow]');
           if (actOpen) { openActs(actOpen.dataset.actOpen); return; }
+          if (rmShadow) {   // al guardar, la aparición de ese día se borra (no hay XP en juego)
+            var k5 = blockIndex(rmShadow.dataset.block);
+            if (k5 >= 0) { blocks[k5].shadows = blocks[k5].shadows.filter(function (r) { return r.id !== rmShadow.dataset.removeShadow; }); paintActivityChips(rmShadow.dataset.block); scheduleDraft(); }
+            return;
+          }
+          if (rmTask) {   // quitarla de la entrada no la desmarca en su lista
+            var k4 = blockIndex(rmTask.dataset.block);
+            if (k4 >= 0) { blocks[k4].tasks = blocks[k4].tasks.filter(function (r) { return r.list + ':' + r.task !== rmTask.dataset.removeTask; }); paintActivityChips(rmTask.dataset.block); scheduleDraft(); }
+            return;
+          }
           if (rmAct) {
             var k3 = blockIndex(rmAct.dataset.block);
             if (k3 >= 0) { blocks[k3].activities = blocks[k3].activities.filter(function (x) { return x !== rmAct.dataset.removeAct; }); paintActivityChips(rmAct.dataset.block); scheduleDraft(); }
@@ -357,7 +379,7 @@
           if (del) {
             var d = blockIndex(del.dataset.del);
             if (d < 0) return;
-            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar esta entrada? Su texto, su estado, sus emociones, sus personas, sus actividades y sus etiquetas se perderán (la XP ya ganada se queda).')) return;
+            if (D.blockHasContent(blocks[d]) && !window.confirm('¿Quitar esta entrada? Su texto, su estado, sus emociones, sus personas, sus actividades y sus etiquetas se perderán. Si sus actividades o tareas ya te dieron XP, al guardar te diré cuánta se quita antes de hacerlo.')) return;
             blocks.splice(d, 1);
             if (!blocks.length) blocks.push(newBlock());
             paintBlocks(); refreshPercent(); scheduleDraft(); return;
@@ -375,6 +397,18 @@
           App.diaryViews.editor.render(root, day, opts);
         });
 
+        // Si al guardar falta algo que ya dio XP (una actividad o una tarea quitada de su entrada), antes se avisa
+        // de qué se quitará del personaje; «Guardar y quitar» sigue, «Volver a editar» no guarda nada.
+        function confirmRemovals(items, go) {
+          var xp = items.reduce(function (t, it) { return t + it.xp; }, 0);
+          $('#e-confirm').innerHTML = '<div class="msg e-remove" data-kind="info"><b>Al guardar se quitará de tu personaje:</b><ul>' + items.map(function (it) {
+            return '<li>' + esc(it.label) + ' (entrada ' + it.n + ') · ' + it.xp + ' XP' + (it.kind === 'task' ? ', y vuelve a estar pendiente en su lista' : '') + '</li>';
+          }).join('') + '</ul><div class="btn-row"><button type="button" class="btn" id="e-rm-yes">Guardar y quitar ' + xp + ' XP</button>' +
+            '<button type="button" class="btn secondary" id="e-rm-no">Volver a editar</button></div></div>';
+          $('#e-rm-yes').addEventListener('click', function () { $('#e-confirm').innerHTML = ''; go(); });
+          $('#e-rm-no').addEventListener('click', function () { $('#e-confirm').innerHTML = ''; say('', 'info'); });
+          var y = $('#e-rm-yes'); if (y && y.focus) y.focus();
+        }
         function save() {
           if (busy) return;
           commitPendingTags();
@@ -384,13 +418,35 @@
           flushDraft();
           var r = D.repo();
           if (!r) { say('Conecta tus datos para guardar. Mientras tanto, tu texto sigue guardado como borrador en este navegador.', 'error'); return; }
+          $('#e-confirm').innerHTML = '';
+          var check = actRepo && R.diaryRemovals && prev ? R.diaryRemovals(prev.blocks, s.blocks).catch(function () { return []; }) : Promise.resolve([]);
+          busy = true; $('#e-save').disabled = true;
+          check.then(function (items) {
+            busy = false; $('#e-save').disabled = false;
+            if (items.length) confirmRemovals(items, function () { doSave(r, s, items); });
+            else doSave(r, s, []);
+          });
+        }
+        function doSave(r, s, removals) {
+          if (busy) return;
           busy = true; $('#e-save').disabled = true; say('Guardando…', 'info');
           r.save({ day: day, title: s.title.trim(), favorite: s.favorite, blocks: s.blocks }, { base: prev ? prev.updatedAt : null }).then(function (saved) {
             App.drafts.remove(day);
             location.hash = '#/diario/' + day;
-            // Con la página ya guardada, sus actividades pasan al personaje (sin duplicar) y se avisa.
+            // Sombras: las de las entradas quedan apuntadas para este día; las quitadas, borradas. No tocan la XP.
+            var shRepo = R && R.shadows ? R.shadows() : null;
+            if (shRepo) shRepo.syncDiary(day, prev ? prev.blocks : [], (saved && saved.blocks) || s.blocks).then(function (sh) {
+              if (V && V.toast && sh.added.length) V.toast.show({ kind: 'shadow', title: 'Sombras de hoy', text: 'Apuntada: ' + sh.added.join(', ') + '. Nunca quita XP.' });
+            }).catch(function (e) {
+              if (V && V.toast) V.toast.show({ kind: 'shadow', title: 'No se pudieron apuntar las sombras', text: ((e && e.message) || '') + ' Vuelve a guardar la página para intentarlo otra vez.' });
+            });
+            // Con la página ya guardada: primero se quita lo que ya no está (confirmado), luego lo nuevo pasa al personaje.
             if (actRepo && R.recordDiaryActivities) {
-              R.recordDiaryActivities(day, (saved && saved.blocks) || s.blocks).then(function (res) {
+              (removals.length ? R.applyDiaryRemovals(removals) : Promise.resolve({ removed: [], failed: [] })).then(function (rm) {
+                if (V.toast && rm.removed.length) V.toast.show({ kind: 'char', title: 'Tu personaje se ha actualizado', text: '−' + rm.removed.reduce(function (t, it) { return t + it.xp; }, 0) + ' XP · ' + rm.removed.map(function (it) { return it.label; }).join(', ') });
+                if (V.toast && rm.failed.length) V.toast.show({ kind: 'char', title: 'No se pudo quitar todo', text: rm.failed[0] });
+                return R.recordDiaryActivities(day, (saved && saved.blocks) || s.blocks);
+              }).then(function (res) {
                 if (!res || !V.toast) return;
                 V.toast.diary(res);
                 if (res.failed.length) V.toast.show({ kind: 'char', title: 'No se pudieron registrar algunas actividades', text: res.failed[0] + ' Vuelve a guardar la página para intentarlo otra vez.' });

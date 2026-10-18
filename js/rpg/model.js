@@ -42,6 +42,22 @@
     for (var i = 0; i < list.length; i++) { if (level >= list[i].level) cur = list[i]; else { next = list[i]; break; } }
     return { frame: cur, next: next };
   };
+  // Títulos del personaje, por nivel general (solo decoración: no dan XP). Para cambiarlos basta con tocar esta lista.
+  // El primero debe empezar en el nivel 1. Lo conseguido se calcula del nivel; solo se guarda cuál eliges (profile.title).
+  R.TITLES = [
+    { id: 'muneca_inquieta', name: 'Muñeca inquieta', level: 1 },
+    { id: 'muneca_susurrante', name: 'Muñeca susurrante', level: 15 },
+    { id: 'gran_posesion', name: 'Gran posesión', level: 30 }
+  ];
+  R.isTitle = function (id) { return R.TITLES.some(function (t) { return t.id === id; }); };
+  R.titlesFor = function (level) { return R.TITLES.filter(function (t) { return level >= t.level; }); };
+  // El que se ve: el elegido si ya está conseguido; si no, el más alto conseguido.
+  R.currentTitle = function (chosenId, level) {
+    var mine = R.titlesFor(level);
+    return mine.filter(function (t) { return t.id === chosenId; })[0] || mine[mine.length - 1] || R.TITLES[0];
+  };
+  R.nextTitle = function (level) { return R.TITLES.filter(function (t) { return t.level > level; })[0] || null; };
+
   // Foto del avatar: JPEG cuadrado de 320 px guardado en rpg/profile.json.
   R.AVATAR_PHOTO = { px: 320, max: 80000 };
   R.isAvatarPhoto = function (s) { return typeof s === 'string' && s.length <= R.AVATAR_PHOTO.max && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(s); };
@@ -216,6 +232,36 @@
     return { general: R.levelInfo(t.general, R.GENERAL_LEVEL), mains: mains, subTotals: t.subs };
   };
 
+  // Cómo estaba el personaje al terminar el día `day` (AAAA-MM-DD): el mismo cálculo con el registro hasta ese día.
+  // No se guarda nada: sale siempre del registro.
+  R.stateAt = function (structure, entries, day) {
+    return R.computeState(structure, (entries || []).filter(function (e) { return e && e.day <= day; }));
+  };
+  function shiftDay(day, n) {
+    var p = day.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2] + n);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  R.shiftDay = shiftDay;
+  // Para el radar con evolución: hace 30 días (`month`) o un estado por cada final de mes desde el primer registro
+  // hasta el mes pasado, como mucho los 12 últimos (`months`, del más antiguo al más reciente).
+  R.radarHistory = function (structure, entries, today) {
+    today = today || R.today();
+    var days = (entries || []).map(function (e) { return e && e.day; }).filter(Boolean).sort();
+    var out = { month: R.stateAt(structure, entries, shiftDay(today, -30)), months: [] };
+    if (!days.length) return out;
+    var first = days[0].slice(0, 7), cur = today.slice(0, 7), keys = [];
+    for (var k = first; k < cur; ) {
+      keys.push(k);
+      var y = +k.slice(0, 4), m = +k.slice(5, 7) + 1; if (m > 12) { y++; m = 1; }
+      k = y + '-' + ('0' + m).slice(-2);
+    }
+    out.months = keys.slice(-12).map(function (key) {
+      var last = new Date(+key.slice(0, 4), +key.slice(5, 7), 0).getDate();
+      return { key: key, computed: R.stateAt(structure, entries, key + '-' + ('0' + last).slice(-2)) };
+    });
+    return out;
+  };
+
   // Escala del radar: el primer valor de la lista 2, 3, 5, 10, 15, 20… que supera al mayor atributo.
   // Así, al empezar, el polígono se ve; y la escala solo crece (nunca encoge) porque la XP no baja.
   R.radarCap = function (mains) {
@@ -229,6 +275,13 @@
 
   // Fecha de hoy en hora local (AAAA-MM-DD).
   R.today = function () { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+  // «Día de uso»: cambia a las 3:00 y no a medianoche (lo que haces de madrugada cuenta como el día anterior).
+  // Lo usan las listas de tareas (se limpian a las 3:00) y las misiones de una sola semana (el lunes a las 3:00).
+  R.DAY_CUTOFF_HOURS = 3;
+  R.logicalDay = function (now) {
+    var d = new Date((now ? new Date(now).getTime() : Date.now()) - R.DAY_CUTOFF_HOURS * 3600000);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  };
 
   // Toda actividad da exactamente 5 XP, en puntos enteros repartidos entre subcategorías (p. ej. 2 + 3).
   R.ACTIVITY_MAX = 5;

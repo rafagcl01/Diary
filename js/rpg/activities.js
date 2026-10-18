@@ -160,8 +160,9 @@
       },
 
       // Registra las actividades de las entradas de una página del diario (tras guardarla). Cada par entrada + actividad
-      // tiene una clave fija (act:blk:<entrada>:<actividad>), así que volver a guardar la página no suma otra vez,
-      // y quitar una actividad de la entrada no resta nada. Devuelve { logged: [apuntes nuevos], failed: [mensajes] }.
+      // tiene una clave fija (act:blk:<entrada>:<actividad>), así que volver a guardar la página no suma otra vez.
+      // (Quitar una actividad de la entrada sí quita su XP al guardar, con confirmación: ver R.diaryRemovals.)
+      // Devuelve { logged: [apuntes nuevos], failed: [mensajes] }.
       logBlocks: function (day, blocks) {
         var self = this, out = { logged: [], failed: [] };
         return rpg.entries().then(function (all) {
@@ -185,23 +186,68 @@
     };
   };
 
-  // Tras guardar una página del diario: registra sus actividades y da las recompensas de misiones y jefes que se cumplan.
+  // Tras guardar una página del diario: registra sus actividades, marca en su lista las tareas elegidas en sus entradas
+  // y da las recompensas de misiones, jefes y listas que se cumplan.
   // Devuelve { logged, failed, events, before, after } (niveles antes y después) o null si no hay datos conectados.
   R.recordDiaryActivities = function (day, blocks) {
-    var acts = R.activities(), rpg = R.repo();
+    var acts = R.activities(), rpg = R.repo(), todos = R.todos ? R.todos() : null;
     if (!acts || !rpg) return Promise.resolve(null);
-    var before = 1;
+    var before = 1, res = null;
     return rpg.state().then(function (st) {
       before = st.computed.general.level;
       return acts.logBlocks(day, blocks);
-    }).then(function (res) {
-      res.events = []; res.before = before; res.after = before;
+    }).then(function (r) {
+      res = r; res.events = []; res.before = before; res.after = before;
+      var hasTasks = (blocks || []).some(function (b) { return b.tasks && b.tasks.length; });
+      return todos && hasTasks ? todos.completeFromBlocks(blocks) : { logged: [], events: [] };
+    }).then(function (t) {
+      res.logged = res.logged.concat(t.logged);
       if (!res.logged.length) return res;
       return R.syncRewards(day).catch(function () { return []; }).then(function (ev) {
-        res.events = ev;
-        return rpg.state(true).then(function (s) { res.after = s.computed.general.level; return res; });
+        res.events = t.events.concat(ev);
+        return rpg.state().then(function (s) { res.after = s.computed.general.level; return res; });
       });
     });
+  };
+
+  // Al guardar (o borrar) una página del diario: qué XP se quitaría por lo que ya no está en sus entradas.
+  // Compara las entradas guardadas (`before`) con las nuevas (`after`): una actividad que ya dio XP y ya no está en su
+  // entrada se quita del registro; una tarea marcada que ya no está vuelve a estar pendiente (salvo con su lista completa,
+  // que queda fija). Devuelve [{ kind: 'act' | 'task', key, list, task, label, xp, n (número de entrada) }].
+  R.diaryRemovals = function (before, after) {
+    var rpg = R.repo();
+    if (!rpg || !before || !before.length) return Promise.resolve([]);
+    var now = {}; (after || []).forEach(function (b) {
+      (b.activities || []).forEach(function (a) { now['a:' + b.id + ':' + a] = true; });
+      (b.tasks || []).forEach(function (r) { now['t:' + r.list + ':' + r.task] = true; });
+    });
+    return rpg.entries().then(function (all) {
+      var byKey = {}; all.forEach(function (e) { byKey[e.key] = e; });
+      var out = [], seen = {};
+      before.forEach(function (b, i) {
+        (b.activities || []).forEach(function (a) {
+          var key = 'act:' + R.blockActivityReq(b.id, a), e = byKey[key];
+          if (e && !now['a:' + b.id + ':' + a]) out.push({ kind: 'act', key: key, label: e.label, xp: e.xp, n: i + 1 });
+        });
+        (b.tasks || []).forEach(function (r) {
+          var key = 'todo:' + r.list + ':' + r.task, e = byKey[key];
+          if (!e || now['t:' + r.list + ':' + r.task] || byKey['todo:' + r.list] || seen[key]) return;
+          seen[key] = true;
+          out.push({ kind: 'task', key: key, list: r.list, task: r.task, label: e.label, xp: e.xp, n: i + 1 });
+        });
+      });
+      return out;
+    });
+  };
+  // Quita lo calculado por R.diaryRemovals (una cosa detrás de otra). Devuelve { removed, failed }.
+  R.applyDiaryRemovals = function (items) {
+    var rpg = R.repo(), todos = R.todos ? R.todos() : null, res = { removed: [], failed: [] };
+    return (items || []).reduce(function (p, it) {
+      return p.then(function () {
+        var job = it.kind === 'act' ? rpg.removeEntry(it.key) : (todos ? todos.uncompleteTask(it.list, it.task) : Promise.resolve());
+        return job.then(function () { res.removed.push(it); }, function (e) { res.failed.push((e && e.message) || 'No se pudo quitar «' + it.label + '».'); });
+      });
+    }, Promise.resolve()).then(function () { return res; });
   };
 
   // Borra del todo una actividad registrada (la cruz de la ficha). Si se apuntó en una entrada del diario, primero se quita
@@ -211,7 +257,7 @@
     if (!rpg) return Promise.reject(invalid('Conecta tus datos.'));
     var m = /^act:blk:(b_[0-9a-f]{8}):([a-z0-9][a-z0-9_-]{1,30})$/.exec(String(key));
     var unlink = Promise.resolve();
-    if (m) unlink = rpg.entries(true).then(function (all) {
+    if (m) unlink = rpg.entries().then(function (all) {
       var e = all.filter(function (x) { return x.key === key; })[0];
       return e ? R.unlinkDiaryActivity(e.day, m[1], m[2]) : null;
     });

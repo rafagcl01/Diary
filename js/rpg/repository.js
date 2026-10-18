@@ -10,12 +10,13 @@
   function ledgerPath(year) { return LEDGER_PREFIX + year + '.json'; }
 
   R.AVATARS = ['mended', 'moon', 'star', 'rose', 'eye', 'key', 'locket', 'ghost', 'skull', 'cat', 'butterfly', 'cherry', 'crown', 'bow'];
-  // Imagen del avatar (opcional): { kind: 'photo', data: 'data:image/jpeg;base64,…' } o { kind: 'url', url } (GIF de Giphy, Tenor o Imgur).
-  // El símbolo se guarda siempre: es lo que se ve si no hay imagen o si el GIF no carga. Devuelve null si no vale.
+  // Imagen del avatar (opcional): { kind: 'photo', data: 'data:image/jpeg;base64,…' } o { kind: 'url', url } (imagen o GIF
+  // por enlace, de los sitios de R.IMAGE_SITES; no se descarga). El símbolo se guarda siempre: es lo que se ve si no hay
+  // imagen o si el enlace no carga. Devuelve null si no vale.
   R.cleanAvatarImage = function (img) {
     if (!img || typeof img !== 'object') return null;
     if (img.kind === 'photo' && R.isAvatarPhoto(img.data)) return { kind: 'photo', data: img.data };
-    if (img.kind === 'url' && R.gifUrl) { var u = R.gifUrl(img.url); if (u) return { kind: 'url', url: u }; }
+    if (img.kind === 'url' && R.imageUrl) { var u = R.imageUrl(img.url); if (u) return { kind: 'url', url: u }; }
     return null;
   };
 
@@ -53,6 +54,8 @@
     function loadEntries(force, hard) {
       return cached('entries', force, hard, function () { return readEntries(); });
     }
+    function validEntries(list) { return (list || []).filter(function (e) { return e && typeof e.key === 'string' && typeof e.xp === 'number'; }); }
+    function byTime(a, b) { return (a.at || '') < (b.at || '') ? -1 : (a.at || '') > (b.at || '') ? 1 : 0; }
     function readEntries() {
       return store.listFiles(LEDGER_PREFIX).then(function (paths) {
         return Promise.all(paths.map(function (p) {
@@ -62,16 +65,24 @@
           });
         }));
       }).then(function (lists) {
-        var all = [].concat.apply([], lists).filter(function (e) { return e && typeof e.key === 'string' && typeof e.xp === 'number'; });
-        all.sort(function (a, b) { return (a.at || '') < (b.at || '') ? -1 : (a.at || '') > (b.at || '') ? 1 : 0; });
-        return all;
+        return validEntries([].concat.apply([], lists)).sort(byTime);
       });
+    }
+    // Tras escribir el registro de un año, la caché se pone al día con lo que acabamos de guardar (que viene recién leído
+    // de GitHub, con lo de otros dispositivos incluido), sin volver a leer todos los años. Y se avisa a las pantallas.
+    function applyYear(year, written) {
+      var others = (cache.entries || []).filter(function (e) { return String(e.day).slice(0, 4) !== year; });
+      cache.entries = others.concat(validEntries(written && written.entries)).sort(byTime);
+      stamp.entries = Date.now();
+      notify('entries');
+      return cache.entries;
     }
     function loadProfile(force, hard) {
       return cached('profile', force, hard, function () {
         return store.readJson(PROFILE, null).then(function (doc) {
           var d = doc && typeof doc === 'object' ? doc : {};
-          return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended', image: R.cleanAvatarImage(d.image) };
+          return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended', image: R.cleanAvatarImage(d.image),
+            title: R.isTitle(d.title) ? d.title : null };
         });
       });
     }
@@ -115,22 +126,36 @@
         return function () { var i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); };
       },
 
-      // input: { name, avatar (símbolo), image: null | { kind: 'photo', data } | { kind: 'url', url } }
+      // input: { name, avatar (símbolo), image: null | { kind: 'photo', data } | { kind: 'url', url }, title? }
+      // Sin `title`, se conserva el título elegido que hubiera (null = el más alto conseguido).
       saveProfile: function (input) {
-        return Promise.resolve().then(function () {
+        return loadProfile().then(function (cur) {
           var name = R.cleanText(input && input.name, R.LIMITS.name);
           var avatar = input && R.AVATARS.indexOf(input.avatar) >= 0 ? input.avatar : 'mended';
           var image = null;
           if (input && input.image) {
             image = R.cleanAvatarImage(input.image);
             if (!image) throw invalid(input.image.kind === 'url'
-              ? 'El enlace no vale: debe ser https y directo (acabar en .gif) de Giphy, Tenor o Imgur.'
+              ? 'El enlace no vale: debe ser https y directo a la imagen, de ' + R.IMAGE_SITES + '.'
               : 'Esa foto no se puede guardar. Prueba a elegirla otra vez.');
           }
+          var title = input && input.title !== undefined ? input.title : cur.title;
+          if (title !== null && !R.isTitle(title)) throw invalid('Ese título no existe.');
           var doc = { version: 1, name: name, avatar: avatar };
           if (image) doc.image = image;
+          if (title) doc.title = title;
           return store.writeJson(PROFILE, doc, { force: true, message: 'Actualiza el personaje' });
         }).then(function () { return loadProfile(true, true); });
+      },
+      // Elige el título que se ve (uno ya conseguido) o null para el más alto conseguido. Lo demás del perfil no cambia.
+      setTitle: function (id) {
+        var self = this;
+        return Promise.all([loadProfile(), loadEntries(), loadStructure()]).then(function (r) {
+          var level = R.computeState(r[2], r[1]).general.level;
+          if (id !== null && !R.titlesFor(level).some(function (t) { return t.id === id; })) throw invalid('Ese título todavía no lo has conseguido.');
+          var p = r[0];
+          return self.saveProfile({ name: p.name, avatar: p.avatar, image: p.image, title: id });
+        });
       },
 
       // ---- Atributos y subcategorías ----
@@ -200,22 +225,25 @@
 
       // Borra del todo un registro (y el ajuste que lo anulara con el sistema anterior, para no restar dos veces).
       // Solo actividades y pasos de jefe (al desmarcarlos); el resto de recompensas no se tocan. Sus XP dejan de contar.
+      // Usa lo que ya hay en memoria para saber en qué año está; solo relee todo si no lo encuentra (p. ej. lo apuntó otro
+      // dispositivo). Lo que se borra se decide sobre el archivo recién leído al escribir, así que nada se queda a medias.
       removeEntry: function (key) {
-        return loadEntries(true, true).then(function (all) {
-          var e = all.filter(function (x) { return x.key === key; })[0];
+        function find(all) { return all.filter(function (x) { return x.key === key; })[0]; }
+        function gone(x) { return x && (x.key === key || (x.kind === 'adjustment' && x.reverses === key)); }
+        return loadEntries().then(function (all) { return find(all) ? all : loadEntries(true, true); }).then(function (all) {
+          var e = find(all);
           if (!e) throw invalid('Ese registro ya no existe.');
-          if (e.kind !== 'activity' && !R.isBossStepKey(key)) throw invalid('Solo se pueden borrar actividades y pasos de jefe.');
-          var gone = all.filter(function (x) { return x.key === key || (x.kind === 'adjustment' && x.reverses === key); });
-          var years = {}; gone.forEach(function (x) { years[String(x.day).slice(0, 4)] = true; });
-          var drop = {}; gone.forEach(function (x) { drop[x.key] = true; });
+          var undoable = e.kind === 'activity' || R.isBossStepKey(key) || (R.isTodoTaskKey && R.isTodoTaskKey(key)) || (R.isDailyKey && R.isDailyKey(key));
+          if (!undoable) throw invalid('Solo se pueden borrar actividades, pasos de jefe, tareas y misiones diarias.');
+          var years = {}; all.filter(gone).forEach(function (x) { years[String(x.day).slice(0, 4)] = true; });
           return Object.keys(years).reduce(function (p, year) {
             return p.then(function () {
               return store.updateJson(ledgerPath(year), function (doc) {
                 if (!doc || !Array.isArray(doc.entries)) throw invalid('El registro de experiencia de ' + year + ' está dañado. No lo toco; revísalo en GitHub.');
-                return Object.assign({}, doc, { entries: doc.entries.filter(function (x) { return !(x && drop[x.key]); }) });
-              }, { fallback: null, message: e.kind === 'activity' ? 'Borra una actividad' : 'Desmarca un paso de jefe' });
+                return Object.assign({}, doc, { entries: doc.entries.filter(function (x) { return !gone(x); }) });
+              }, { fallback: null, message: e.kind === 'activity' ? 'Borra una actividad' : R.isBossStepKey(key) ? 'Desmarca un paso de jefe' : R.isDailyKey && R.isDailyKey(key) ? 'Desmarca una misión diaria' : 'Desmarca una tarea' }).then(function (written) { applyYear(year, written); });
             });
-          }, Promise.resolve()).then(function () { return loadEntries(true, true); }).then(function () { return e; });
+          }, Promise.resolve()).then(function () { return e; });
         });
       },
 
@@ -233,9 +261,8 @@
             if (list.some(function (e) { return e && e.key === entry.key; })) { dup = true; return doc; }
             var id = 'xp_' + (list.length + 1);
             return { version: 1, year: Number(year), entries: list.concat([Object.assign({ id: id }, entry)]) };
-          }, { fallback: null, message: entry.kind === 'adjustment' ? 'Ajusta la experiencia' : 'Suma experiencia' }).then(function () {
-            return loadEntries(true, true);
-          }).then(function (all) {
+          }, { fallback: null, message: entry.kind === 'adjustment' ? 'Ajusta la experiencia' : 'Suma experiencia' }).then(function (written) {
+            var all = applyYear(year, written);
             return { duplicate: dup, entry: all.filter(function (e) { return e.key === entry.key; })[0] };
           });
         });
