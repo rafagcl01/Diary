@@ -1558,6 +1558,44 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .lu-sew .fr-deco:not(.fr-stars) > * { animation: lu-sew 1.6s ease backwards; }
 .lu-sew .fr-deco:not(.fr-stars) > :nth-child(n+3) { animation-delay: .25s; }
 @keyframes lu-sew { from { stroke-dasharray: 600; stroke-dashoffset: 600; fill-opacity: 0; } 70% { fill-opacity: 0; } }
+/* El número cosido (sin efectos se ve ya terminado; la animación va en levelup.js) */
+.lvlup-num { width: min(240px, 60vw); height: auto; overflow: visible; }
+.lvlup-num text { font-family: var(--font-display); text-anchor: middle; }
+.lu-t1 { fill: none; stroke: #F3C6DA; stroke-width: 2.4; }
+.lu-t2 { fill: #F08BB5; stroke: #FFF5F8; stroke-width: 2; stroke-dasharray: 9 7; }
+.lu-needle { fill: #FFE3F0; transform-box: view-box; transform-origin: 150px 125px; opacity: 0; filter: drop-shadow(0 0 5px #F08BB5); }
+.lu-rest { display: grid; justify-items: center; gap: 10px; }
+
+/* ---------- Efectos de recompensa (views/rpg/fx.js): chispas, sellos, golpe y caída del jefe ---------- */
+.fx-layer { position: fixed; inset: 0; z-index: 80; pointer-events: none; overflow: hidden; }
+.fx-sp { position: fixed; left: 0; top: 0; display: block; color: #FFE3F0; pointer-events: none; will-change: transform, opacity; }
+.fx-sp svg { display: block; width: 100%; height: 100%; }
+.fx-sp.glow { filter: drop-shadow(0 0 6px #F08BB5); }
+.fx-sp.pink { color: #F08BB5; }
+.fx-sp.lav { color: #C9B9E8; }
+.fx-dust { width: 6px; height: 6px; border-radius: 50%; }
+.fx-plus { position: fixed; left: 0; top: 0; font-family: var(--font-pixel); font-size: .9rem; color: #F3C6DA; text-shadow: 0 0 8px rgba(240, 139, 181, .8), 0 1px 2px rgba(25, 19, 27, .8); white-space: nowrap; pointer-events: none; }
+.fx-stamp { position: absolute; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; padding: 8px 16px; border-radius: 10px;
+  border: 2.5px dashed #F08BB5; background: rgba(25, 19, 27, .92); color: #F3C6DA; font-family: var(--font-pixel); font-size: .95rem; letter-spacing: .06em; white-space: nowrap; }
+.fx-seal { position: absolute; top: -14px; right: -10px; z-index: 4; width: 62px; height: 62px; display: grid; place-items: center; pointer-events: none;
+  border-radius: 47% 53% 51% 49% / 52% 46% 54% 48%; background: #A52E69; box-shadow: inset 0 0 0 5px #8A2457, inset 0 0 0 7px rgba(255, 255, 255, .15); }
+.fx-seal svg { width: 28px; height: 28px; }
+.fx-tear { position: absolute; display: block; width: 34%; aspect-ratio: 3 / 1; pointer-events: none; }
+.fx-tear svg { display: block; width: 100%; height: 100%; }
+.fx-ov { position: fixed; inset: 0; z-index: 75; display: grid; place-items: center; padding: 24px; background: rgba(15, 10, 16, .9); color: #F8EAF1; overflow: hidden; }
+.fx-ov-stage { display: grid; justify-items: center; gap: 16px; text-align: center; max-width: 420px; }
+.fx-boss { position: relative; width: 200px; height: 200px; }
+.fx-boss > div { position: absolute; inset: 0; }
+.fx-boss .boss-art { width: 100%; height: 100%; padding: 0; background: none; }
+.fx-boss .boss-art svg, .fx-boss .boss-art img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+.fx-boss .gm { filter: sepia(1) saturate(7) hue-rotate(285deg); mix-blend-mode: screen; opacity: .75; }
+.fx-boss .gl { filter: sepia(1) saturate(5) hue-rotate(205deg); mix-blend-mode: screen; opacity: .75; }
+.fx-ov-text { display: grid; justify-items: center; gap: 8px; }
+.fx-ov-text h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 6vw, 3rem); color: #F3C6DA; }
+.fx-line { width: 200px; border-top: 2px dashed #F08BB5; }
+.fx-ov-text p { color: #CDB8C4; }
+.fx-ov-text p b { color: #F8EAF1; }
+.fx-ov .btn { margin-top: 6px; min-width: 140px; --accent: #F08BB5; --on-accent: #19131B; }
 
 /* ---------- Configuración → Tu personaje: fondos de la ficha ---------- */
 .cs-bgs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -1571,6 +1609,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 @media (max-width: 520px) { .cs-bgs { grid-template-columns: 1fr; } }
 .road .kind.b { background: rgba(244, 213, 141, .18); color: #F4D58D; }
 .road .kind.c { background: rgba(244, 213, 141, .12); color: #F4D58D; }
+.road .rd-item.soon { font-style: italic; color: var(--ink-soft); }   /* premio reservado, todavía sin diseñar */
 @media (max-width: 560px) { .hero-bg[data-bg="cielo"]::before { width: auto; right: 0; bottom: auto; height: 150px; -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent); mask-image: linear-gradient(180deg, #000 60%, transparent); } }
 
 /* ---------- La caja de símbolos (App.ui.symbolPicker): la misma en toda la aplicación ---------- */

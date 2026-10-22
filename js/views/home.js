@@ -204,8 +204,9 @@
             if (s.profile.levelUpScreen && V.levelUp) V.levelUp.show(s, before, after);
             else if (V.toast) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + after });
           }
-          if (V && V.toast) V.toast.events((events || []).concat(ev));
-          return reload();
+          var all = (events || []).concat(ev);
+          if (V && V.toast) V.toast.events(all);
+          return reload().then(function () { if (V && V.fx) V.fx.events(all); });
         });
       });
     }
@@ -217,8 +218,13 @@
       var t = ev.target, taskId = t && t.getAttribute ? t.getAttribute('data-tk') : null;
       if (!taskId || !state) return;
       var id = t.getAttribute('data-list'), li = t.closest('li');
-      if (t.checked) { if (li) li.setAttribute('data-done', 'true'); enqueue(function () { return todos.completeTask(id, taskId); }); return; }
       var tk = state.list && state.list.tasks.filter(function (x) { return x.id === taskId; })[0];
+      if (t.checked) {
+        if (li) li.setAttribute('data-done', 'true');
+        if (V && V.fx) V.fx.sparks(t, tk ? tk.xp : 0);   // chispas de la casilla al hilo del personaje
+        enqueue(function () { return todos.completeTask(id, taskId); });
+        return;
+      }
       App.ui.askUncheck(t, 'li', '¿Desmarcar <b>' + esc(tk ? tk.text : 'la tarea') + '</b>?' + (tk && tk.xp ? ' Se quitan sus ' + App.ui.xpText(tk.xp) + '.' : ''), function () {
         if (li) li.setAttribute('data-done', 'false');
         enqueue(function () { return todos.uncompleteTask(id, taskId); });

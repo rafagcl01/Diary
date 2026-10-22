@@ -50,9 +50,9 @@
         (on ? daily.complete(id) : daily.uncomplete(id)).then(function (events) { return ctx.afterChange(state.day, events); })
           .catch(function (e) { say(e.message, 'error'); return reload(); }).then(function () { busy = false; });
       }
-      if (on) return go();
-      // Desmarcar quita su XP: primero se pregunta en la propia tarjeta.
       var m = state.missions.filter(function (x) { return x.id === id; })[0];
+      if (on) { if (V.fx) V.fx.sparks(t, m ? m.xp : 0); return go(); }   // chispas de la casilla a la barra de XP
+      // Desmarcar quita su XP: primero se pregunta en la propia tarjeta.
       App.ui.askUncheck(t, '.dl-card', '¿Desmarcar? Se quitan sus ' + App.ui.xpText(m ? m.xp : 0) + '.', go);
     });
     host.addEventListener('click', function (ev) {

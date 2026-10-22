@@ -80,7 +80,7 @@
       (bg ? '<span class="hero-bg" data-bg="' + esc(bg) + '" aria-hidden="true"></span>' : '') +
       V.avatar(p, g.level, { size: 'large', aura: today && today.shadows ? today.shadows.aura : null, stars: g.stars }) +
       '<div class="char-id"><h2 id="char-name">' + esc(p.name || 'Tu personaje') + '</h2>' +
-        '<p class="char-title"><span class="sr">Título: </span>' + esc(R.named(title, p.form)) + '</p>' + traitsHtml(st, today) +
+        (title ? '<p class="char-title"><span class="sr">Título: </span>' + esc(R.named(title, p.form)) + '</p>' : '') + traitsHtml(st, today) +
         levelHtml(g) +
         '</div>' + stateHtml(st, today) +
       '<button type="button" class="char-road" data-act="road" aria-haspopup="dialog">✦ Tu camino</button>' +
@@ -226,7 +226,9 @@
               });
             }
             V.toast.events(events);
-            return Promise.all(panels.map(function (p) { return p.reload(); }).concat([refreshToday()]));
+            // Repintadas las columnas, los premios grandes caen sobre su tarjeta (sellos; ver views/rpg/fx.js).
+            return Promise.all(panels.map(function (p) { return p.reload(); }).concat([refreshToday()]))
+              .then(function (r) { if (V.fx) V.fx.events(events); return r; });
           });
         });
       }
@@ -292,9 +294,11 @@
         R.AVATAR_FRAMES.forEach(function (f) { (byLevel[f.level] = byLevel[f.level] || []).push({ kind: 'Marco', cls: 'f', name: f.name }); });
         R.TITLES.forEach(function (t) { (byLevel[t.level] = byLevel[t.level] || []).push({ kind: 'Título', cls: 't', name: R.named(t, st.profile.form) }); });
         R.BACKGROUNDS.forEach(function (b) { if (b.level > 1) (byLevel[b.level] = byLevel[b.level] || []).push({ kind: 'Fondo', cls: 'b', name: b.name }); });
+        // Los reservados, todavía sin diseñar: se anuncian («próximamente») pero no se dan.
+        R.SOON_REWARDS.forEach(function (x) { (byLevel[x.level] = byLevel[x.level] || []).push({ kind: x.kind, cls: x.kind === 'Marco' ? 'f' : 'b', name: 'próximamente', soon: true }); });
         var levels = Object.keys(byLevel).map(Number).sort(function (a, b) { return a - b; });
         var next = levels.filter(function (l) { return l > g.level; })[0];
-        function items(l) { return byLevel[l].map(function (x) { return '<span class="rd-item"><span class="kind ' + x.cls + '">' + x.kind + '</span>' + esc(x.name) + '</span>'; }).join(''); }
+        function items(l) { return byLevel[l].map(function (x) { return '<span class="rd-item' + (x.soon ? ' soon' : '') + '"><span class="kind ' + x.cls + '">' + x.kind + '</span>' + esc(x.name) + '</span>'; }).join(''); }
         var rows = [], hereDone = false;
         levels.forEach(function (l) {
           if (!hereDone && l > g.level) { rows.push(here()); hereDone = true; }
@@ -320,7 +324,7 @@
           ['Jefes', B.stepXp + ' por paso; ' + sizes(B.tiers), '—']
         ];
         openDialog('<h3 id="rpg-dtitle">Tu camino</h3>' +
-          (next ? '<div class="road-next"><span class="road-star" aria-hidden="true">✦</span><p>Lo próximo: <b>' + byLevel[next].map(function (x) { return x.kind.toLowerCase() + ' ' + esc(x.name); }).join(' y ') + '</b> en el nivel ' + next + '.</p>' +
+          (next ? '<div class="road-next"><span class="road-star" aria-hidden="true">✦</span><p>Lo próximo: <b>' + byLevel[next].map(function (x) { return x.soon ? 'un ' + x.kind.toLowerCase() + ' nuevo (todavía en diseño)' : x.kind.toLowerCase() + ' ' + esc(x.name); }).join(' y ') + '</b> en el nivel ' + next + '.</p>' +
             '<p>Te faltan <b>' + num(R.xpForLevel(next) - g.total) + ' XP</b> (llevas ' + num(g.total) + ' de ' + num(R.xpForLevel(next)) + ').</p></div>'
             : '<div class="road-next"><span class="road-star" aria-hidden="true">✦</span><p>Ya tienes <b>todos los marcos y títulos</b>.</p></div>') +
           '<ol class="road">' + rows.join('') + '</ol>' +

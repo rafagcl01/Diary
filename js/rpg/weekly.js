@@ -208,7 +208,7 @@
           return todo.reduce(function (chain, v) {
             return chain.then(function () {
               return rpg.addEntry({ kind: 'quest', key: 'weekly:' + v.id + ':' + v.week, quest: v.id, label: v.name, xp: v.xp, shares: v.shares }).then(function (res) {
-                if (!res.duplicate) events.push({ type: 'weekly', label: v.name, xp: v.xp });
+                if (!res.duplicate) events.push({ type: 'weekly', id: v.id, label: v.name, xp: v.xp });
               });
             });
           }, Promise.resolve()).then(function () { return events; });

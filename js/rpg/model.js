@@ -47,7 +47,12 @@
   };
   // Marcos del avatar según el nivel general (solo decoración). Para cambiarlos basta con tocar esta lista
   // (y su dibujo en views/rpg/avatar.js, por id). Ordenados por nivel; el primero debe empezar en el nivel 1.
-  R.AVATAR_FRAMES = C.frames;
+  // Los reservados (`soon`) no cuentan como marcos ni fondos que se tienen: solo se anuncian (ver R.SOON_REWARDS).
+  function ready(x) { return !x.soon; }
+  R.AVATAR_FRAMES = C.frames.filter(ready);
+  // Premios reservados («próximamente»), para «Tu camino» y la pantalla de nivel: [{ kind: 'Marco' | 'Fondo', level }].
+  R.SOON_REWARDS = C.frames.filter(function (x) { return x.soon; }).map(function (x) { return { kind: 'Marco', level: x.level }; })
+    .concat(C.backgrounds.filter(function (x) { return x.soon; }).map(function (x) { return { kind: 'Fondo', level: x.level }; }));
   // El marco de un nivel y el siguiente (null si ya tienes el último).
   R.frameFor = function (level) {
     var list = R.AVATAR_FRAMES, cur = list[0], next = null;
@@ -55,7 +60,7 @@
     return { frame: cur, next: next };
   };
   // Títulos del personaje, por nivel general (solo decoración: no dan XP). Para cambiarlos basta con tocar esta lista.
-  // El primero debe empezar en el nivel 1. Lo conseguido se calcula del nivel; solo se guarda cuál eliges (profile.title).
+  // Lo conseguido se calcula del nivel; solo se guarda cuál eliges (profile.title). Antes del primero no hay título.
   R.TITLES = C.titles;
   // Textos con tres formas (títulos y rasgos): f = femenina, m = masculina, n = neutra (Configuración → Tu personaje).
   R.TEXT_FORMS = ['f', 'm', 'n'];
@@ -66,15 +71,15 @@
   };
   C.titles.concat(C.traits).forEach(function (x) { if (x.names && !x.name) x.name = x.names.f; });   // por defecto, la femenina
   // Fondos de la ficha, por nivel general (se eligen en Configuración → Tu personaje).
-  R.BACKGROUNDS = C.backgrounds;
+  R.BACKGROUNDS = C.backgrounds.filter(ready);
   R.isBackground = function (id) { return R.BACKGROUNDS.some(function (b) { return b.id === id; }); };
   R.backgroundsFor = function (level) { return R.BACKGROUNDS.filter(function (b) { return level >= b.level; }); };
   R.isTitle = function (id) { return R.TITLES.some(function (t) { return t.id === id; }); };
   R.titlesFor = function (level) { return R.TITLES.filter(function (t) { return level >= t.level; }); };
-  // El que se ve: el elegido si ya está conseguido; si no, el más alto conseguido.
+  // El que se ve: el elegido si ya está conseguido; si no, el más alto conseguido; null si aún no hay ninguno.
   R.currentTitle = function (chosenId, level) {
     var mine = R.titlesFor(level);
-    return mine.filter(function (t) { return t.id === chosenId; })[0] || mine[mine.length - 1] || R.TITLES[0];
+    return mine.filter(function (t) { return t.id === chosenId; })[0] || mine[mine.length - 1] || null;
   };
   R.nextTitle = function (level) { return R.TITLES.filter(function (t) { return t.level > level; })[0] || null; };
 

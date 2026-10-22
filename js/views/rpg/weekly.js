@@ -15,7 +15,7 @@
       }).join('') + '</ul>' + (m.target > 1 ? U.bar(pct, m.name + ': ' + m.count + ' de ' + m.target) : '');
     }
     var split = m.shares.length ? m.shares.map(function (s) { return '<span class="chip">' + esc(names[s.sub] || s.sub) + ' <small>' + s.pct + '%</small></span>'; }).join('') : '<span class="chip">Nivel general</span>';
-    return '<li class="wk-card has-edit" data-done="' + m.done + '"><div class="wk-head"><h3>' + esc(m.name) + '</h3>' +
+    return '<li class="wk-card has-edit" data-wk="' + esc(m.id) + '" data-done="' + m.done + '"><div class="wk-head"><h3>' + esc(m.name) + '</h3>' +
       (m.done ? '<span class="tag ok card-tag">Completada ✓</span>' : '<span class="tag card-tag">+' + m.xp + ' XP</span>') + '</div>' +
       (m.description && m.target !== 1 ? '<p class="soft">' + esc(m.description) + '</p>' : '') + body +
       '<div class="act-chips">' + split + '</div>' +

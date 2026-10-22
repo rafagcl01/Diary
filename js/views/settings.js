@@ -138,7 +138,7 @@
         // Títulos: «El más alto» (sin elegir) y los conseguidos; los que faltan se ven, apagados, con su nivel.
         function titlesHtml() {
           var top = R.currentTitle(null, level);
-          return '<li><button type="button" class="emo-cap" data-cs-title="" aria-pressed="' + !form.title + '"><span>El más alto (' + esc(R.named(top, form.textForm)) + ')</span></button></li>' +
+          return '<li><button type="button" class="emo-cap" data-cs-title="" aria-pressed="' + !form.title + '"><span>El más alto (' + (top ? esc(R.named(top, form.textForm)) : 'todavía ninguno') + ')</span></button></li>' +
             R.TITLES.map(function (t) {
               var got = level >= t.level;
               return '<li><button type="button" class="emo-cap"' + (got ? ' data-cs-title="' + esc(t.id) + '" aria-pressed="' + (form.title === t.id) + '"' : ' disabled aria-disabled="true"') + '>' +
@@ -168,7 +168,7 @@
             '<div class="field"><span>Título</span><ul class="emo-caps cs-modes" aria-label="Título" id="cs-titles">' + titlesHtml() + '</ul>' +
               '<small>Los títulos se consiguen subiendo de nivel. «El más alto» cambia solo al conseguir uno nuevo.</small></div>' +
             '<div class="field"><span>Forma de los textos</span><ul class="emo-caps cs-modes" aria-label="Forma de los textos" id="cs-forms">' + formsHtml() + '</ul>' +
-              '<small>Para títulos y rasgos: «' + esc(R.named(R.currentTitle(form.title, level), form.textForm)) + '».</small></div>' +
+              '<small>Para títulos y rasgos: «' + esc(R.named(R.currentTitle(form.title, level) || R.TITLES[0], form.textForm)) + '».</small></div>' +
             '<div class="field"><span>Fondo de la ficha</span><div class="cs-bgs" id="cs-bgs">' + bgsHtml() + '</div></div>' +
             '<label class="checkline"><input type="checkbox" id="cs-lvlup"' + (form.levelUpScreen ? ' checked' : '') + '><span>Pantalla al subir de nivel</span></label>' +
             '<div class="field"><span>Avatar</span><ul class="emo-caps cs-modes" aria-label="Tipo de avatar">' + modes + '</ul></div>' +

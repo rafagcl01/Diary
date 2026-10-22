@@ -106,6 +106,7 @@
       var cardEl = t.closest('.td-card'), id = t.getAttribute('data-list');
       if (t.checked) {
         if (cardEl) paintCardNow(cardEl);
+        var done = taskById(taskId); if (V.fx) V.fx.sparks(t, done ? done.xp : 0);   // chispas de la casilla a la barra de XP
         enqueue(function () { return todos.completeTask(id, taskId); });
         return;
       }

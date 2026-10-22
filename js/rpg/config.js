@@ -73,33 +73,30 @@
       { id: 'criatura_medianoche', secret: true, names: { f: 'Criatura de medianoche', m: 'Criatura de medianoche', n: 'Criatura de medianoche' }, icon: 'eye', kind: 'midnight', minutes: 5, n: 1, window: 0, desc: 'Apuntar algo entre las 0:00 y las 0:05.' }
     ],
 
-    // ---- Decoración por nivel general (no dan XP) ----
+    // ---- Decoración por nivel general (no dan XP). Calendario de premios (octubre de 2026): ----
+    //  1 marco Puntada · 2 título · 5 marco Hilo suelto · 8 fondo · 12 título · 15 marco Collar de botones · 19 título ·
+    //  23 fondo y marco Lacitos de encaje · 27 título · 30 marco Cabeza de muñeca rota · ✦ constelaciones (animación especial, pendiente).
+    // `soon: true` = premio reservado que aún no está diseñado: se ve en «Tu camino» y en la pantalla de nivel como
+    // «próximamente», pero no se gana nada todavía (ni se puede elegir). Al diseñarlo, se le pone nombre y se quita `soon`.
     frames: [
       { id: 'puntada', name: 'Puntada', level: 1 },
-      { id: 'hilo_suelto', name: 'Hilo suelto', level: 2 },
-      { id: 'encaje', name: 'Encaje', level: 5 },
-      { id: 'puntada_doble', name: 'Puntada doble', level: 9 },
-      { id: 'encaje_lunar', name: 'Encaje lunar', level: 14 },
-      { id: 'lazo_ciruela', name: 'Lazo ciruela', level: 18 },
-      { id: 'espinas_terciopelo', name: 'Espinas de terciopelo', level: 25 },
-      { id: 'corona_remendada', name: 'Corona remendada', level: 30 }
+      { id: 'hilo_suelto', name: 'Hilo suelto', level: 5 },
+      { id: 'collar_botones', name: 'Collar de botones', level: 15 },
+      { id: 'lacitos_encaje', name: 'Lacitos de encaje', level: 23 },
+      { id: 'cabeza_rota', name: 'Cabeza de muñeca rota', level: 30 }
     ],
-    // Títulos (los ids de los de antes no cambian: si tenías uno elegido, sigue elegido mientras lo tengas).
+    // Títulos (si tenías elegido uno que ya no existe, se ve el más alto que tengas). En el nivel 1 todavía no hay título.
     titles: [
-      { id: 'muneca_inquieta', names: { f: 'Muñeca inquieta', m: 'Muñeco inquieto', n: 'Muñeque inquiete' }, level: 1 },
-      { id: 'aprendiz_aguja', names: { f: 'Aprendiz de aguja', m: 'Aprendiz de aguja', n: 'Aprendiz de aguja' }, level: 3 },
-      { id: 'muneca_susurrante', names: { f: 'Muñeca susurrante', m: 'Muñeco susurrante', n: 'Muñeque susurrante' }, level: 7 },
-      { id: 'hilandera_lunas', names: { f: 'Hilandera de lunas', m: 'Hilandero de lunas', n: 'Hilandere de lunas' }, level: 12 },
-      { id: 'guardiana_costurero', names: { f: 'Guardiana del costurero', m: 'Guardián del costurero', n: 'Guardiane del costurero' }, level: 16 },
-      { id: 'remendadora_sombras', names: { f: 'Remendadora de sombras', m: 'Remendador de sombras', n: 'Remendadore de sombras' }, level: 22 },
-      { id: 'reina_alfileres', names: { f: 'Reina de los alfileres', m: 'Rey de los alfileres', n: 'Monarca de los alfileres' }, level: 27 },
-      { id: 'gran_posesion', names: { f: 'Gran posesión', m: 'Gran posesión', n: 'Gran posesión' }, level: 30 }
+      { id: 'muneca_olvidada', names: { f: 'Muñeca olvidada', m: 'Muñeco olvidado', n: 'Muñeque olvidade' }, level: 2 },
+      { id: 'juguete_susurrante', names: { f: 'Juguete susurrante', m: 'Juguete susurrante', n: 'Juguete susurrante' }, level: 12 },
+      { id: 'muneca_inquieta', names: { f: 'Muñeca inquieta', m: 'Muñeco inquieto', n: 'Muñeque inquiete' }, level: 19 },
+      { id: 'gran_posesion', names: { f: 'Gran posesión', m: 'Gran posesión', n: 'Gran posesión' }, level: 27 }
     ],
     // Fondos de la ficha (detrás del avatar y el nombre), se eligen en Configuración → Tu personaje.
     backgrounds: [
       { id: 'papel', name: 'Papel', level: 1 },
-      { id: 'acolchado', name: 'Acolchado ciruela', level: 10 },
-      { id: 'cielo', name: 'Cielo bordado', level: 20 }
+      { id: 'fondo_8', name: 'Fondo nuevo', level: 8, soon: true },
+      { id: 'fondo_23', name: 'Fondo nuevo', level: 23, soon: true }
     ]
   };
 })(window.App = window.App || {});

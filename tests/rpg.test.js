@@ -70,18 +70,19 @@ test('atributos: su XP es la suma de sus subcategorías (también archivadas) y 
   assert.equal(after.xp, 500); assert.equal(after.level, before.level); assert.equal(after.value, before.value);
 });
 
-test('títulos: ocho, del 1 al 30, cada uno con su forma femenina, masculina y neutra', () => {
+test('títulos: cuatro (niveles 2, 12, 19 y 27), cada uno con su forma femenina, masculina y neutra; en el nivel 1 aún no hay', () => {
   const { R } = make();
-  assert.deepEqual(plain(R.TITLES.map((t) => t.level)), [1, 3, 7, 12, 16, 22, 27, 30]);
+  assert.deepEqual(plain(R.TITLES.map((t) => t.level)), [2, 12, 19, 27]);
   assert.ok(R.TITLES.every((t) => t.names.f && t.names.m && t.names.n));
-  assert.equal(R.currentTitle(null, 1).name, 'Muñeca inquieta');
-  assert.equal(R.currentTitle(null, 6).name, 'Aprendiz de aguja');
-  assert.equal(R.currentTitle(null, 7).name, 'Muñeca susurrante', 'sin elegir: el más alto conseguido');
-  assert.equal(R.currentTitle('muneca_inquieta', 31).name, 'Muñeca inquieta', 'el elegido, si ya es tuyo');
-  assert.equal(R.currentTitle('gran_posesion', 20).name, 'Guardiana del costurero', 'uno sin conseguir no se ve');
-  assert.equal(R.nextTitle(9).name, 'Hilandera de lunas'); assert.equal(R.nextTitle(30), null);
-  const t = R.TITLES.find((x) => x.id === 'reina_alfileres');
-  assert.deepEqual([R.named(t, 'f'), R.named(t, 'm'), R.named(t, 'n'), R.named(t, 'raro')], ['Reina de los alfileres', 'Rey de los alfileres', 'Monarca de los alfileres', 'Reina de los alfileres']);
+  assert.equal(R.currentTitle(null, 1), null, 'nivel 1: todavía sin título');
+  assert.equal(R.currentTitle(null, 2).name, 'Muñeca olvidada');
+  assert.equal(R.currentTitle(null, 15).name, 'Juguete susurrante', 'sin elegir: el más alto conseguido');
+  assert.equal(R.currentTitle('muneca_olvidada', 31).name, 'Muñeca olvidada', 'el elegido, si ya es tuyo');
+  assert.equal(R.currentTitle('gran_posesion', 20).name, 'Muñeca inquieta', 'uno sin conseguir no se ve');
+  assert.equal(R.currentTitle('reina_alfileres', 30).name, 'Gran posesión', 'uno que ya no existe: el más alto');
+  assert.equal(R.nextTitle(9).name, 'Juguete susurrante'); assert.equal(R.nextTitle(27), null);
+  const t = R.TITLES.find((x) => x.id === 'muneca_olvidada');
+  assert.deepEqual([R.named(t, 'f'), R.named(t, 'm'), R.named(t, 'n'), R.named(t, 'raro')], ['Muñeca olvidada', 'Muñeco olvidado', 'Muñeque olvidade', 'Muñeca olvidada']);
   assert.equal(R.named(R.TRAITS.find((x) => x.id === 'noctambula'), 'm'), 'Noctámbulo');
 });
 
@@ -89,12 +90,17 @@ test('perfil: forma de los textos, fondo y pantalla de subida de nivel se guarda
   const { repo, fake } = make();
   let p = (await repo.state()).profile;
   assert.equal(p.form, 'f'); assert.equal(p.background, 'papel'); assert.equal(p.levelUpScreen, true);
-  await repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'n', background: 'cielo', levelUpScreen: false });
+  await repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'n', background: 'papel', levelUpScreen: false });
   await repo.saveProfile({ name: 'Otra', avatar: 'cat' });
   p = (await repo.state(true)).profile;
-  assert.equal(p.form, 'n'); assert.equal(p.background, 'cielo'); assert.equal(p.levelUpScreen, false);
+  assert.equal(p.form, 'n'); assert.equal(p.background, 'papel'); assert.equal(p.levelUpScreen, false);
   await rejectsWith(repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'x' }), 'invalid');
   await rejectsWith(repo.saveProfile({ name: 'Yo', avatar: 'moon', background: 'inventado' }), 'invalid');
+  await rejectsWith(repo.saveProfile({ name: 'Yo', avatar: 'moon', background: 'fondo_8' }), 'invalid', 'un fondo «próximamente» no se puede elegir');
+  // Un perfil guardado con un fondo que ya no existe (los de antes) vuelve al papel.
+  const old = JSON.parse(fake.state.files.get('rpg/profile.json')); old.background = 'cielo';
+  fake.state.files.set('rpg/profile.json', JSON.stringify(old));
+  assert.equal((await make(fake).repo.state()).profile.background, 'papel');
   assert.equal(JSON.parse(fake.state.files.get('rpg/profile.json')).form, 'n');
 });
 
@@ -134,12 +140,14 @@ test('radar con evolución: hace 30 días y un estado por mes (hasta 12), solo c
 
 test('marcos del avatar: uno por tramo de nivel, con el siguiente', () => {
   const { R } = make();
-  assert.deepEqual(plain(R.AVATAR_FRAMES.map((f) => f.level)), [1, 2, 5, 9, 14, 18, 25, 30]);
+  assert.deepEqual(plain(R.AVATAR_FRAMES.map((f) => [f.level, f.id])), [[1, 'puntada'], [5, 'hilo_suelto'], [15, 'collar_botones'], [23, 'lacitos_encaje'], [30, 'cabeza_rota']]);
   assert.equal(R.frameFor(1).frame.id, 'puntada'); assert.equal(R.frameFor(1).next.id, 'hilo_suelto');
-  assert.equal(R.frameFor(4).frame.id, 'hilo_suelto'); assert.equal(R.frameFor(5).frame.id, 'encaje');
-  assert.equal(R.frameFor(17).frame.id, 'encaje_lunar'); assert.equal(R.frameFor(18).frame.id, 'lazo_ciruela');
-  assert.equal(R.frameFor(30).frame.id, 'corona_remendada'); assert.equal(R.frameFor(30).next, null);
+  assert.equal(R.frameFor(4).frame.id, 'puntada'); assert.equal(R.frameFor(5).frame.id, 'hilo_suelto');
+  assert.equal(R.frameFor(22).frame.id, 'collar_botones'); assert.equal(R.frameFor(23).frame.id, 'lacitos_encaje');
+  assert.equal(R.frameFor(30).frame.id, 'cabeza_rota'); assert.equal(R.frameFor(30).next, null);
   assert.equal(R.AVATAR_FRAMES[0].level, 1, 'el primero empieza en el nivel 1');
+  assert.deepEqual(plain(R.SOON_REWARDS), [{ kind: 'Fondo', level: 8 }, { kind: 'Fondo', level: 23 }], 'quedan reservados los dos fondos');
+  assert.deepEqual(plain(R.BACKGROUNDS.map((b) => b.id)), ['papel']);
 });
 
 test('perfil: avatar con foto o con GIF; lo que no vale se rechaza y no se guarda', async () => {
@@ -164,9 +172,12 @@ test('avatar: marco según el nivel, imagen escapada y símbolo de respaldo para
   for (const f of [...FILES, 'views/rpg/pickers', 'views/rpg/avatar']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   const V = ctx.App.rpgViews;
   assert.match(V.avatar({ avatar: 'moon' }, 1), /data-frame="puntada"/);
-  assert.match(V.avatar({ avatar: 'moon' }, 30), /data-frame="corona_remendada"/);
+  assert.match(V.avatar({ avatar: 'moon' }, 30), /data-frame="cabeza_rota"/);
   const gif = V.avatar({ avatar: 'cat', image: { kind: 'url', url: 'https://i.imgur.com/a.gif?x="><script>' } }, 12);
-  assert.ok(!/"><script>/.test(gif)); assert.match(gif, /data-symbol="cat"/); assert.match(gif, /data-frame="puntada_doble"/);
+  assert.ok(!/"><script>/.test(gif)); assert.match(gif, /data-symbol="cat"/); assert.match(gif, /data-frame="hilo_suelto"/);
+  // La cabeza rota usa máscaras: cada dibujo lleva sus propios ids (el marco se pinta varias veces en la misma pantalla).
+  const ids = (s) => [...s.matchAll(/<mask id="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(ids(V.frameSvg('cabeza_rota')).length, 2); assert.notDeepEqual(ids(V.frameSvg('cabeza_rota')), ids(V.frameSvg('cabeza_rota')));
   for (const fr of ctx.App.rpg.AVATAR_FRAMES) assert.match(V.frameSvg(fr.id), /<svg class="fr-deco"/, 'cada marco tiene su dibujo');
 });
 
@@ -537,7 +548,7 @@ test('semanal con checks: al marcar la última se completa; completada queda blo
   assert.deepEqual(plain(await weekly.toggleCheck(m.id, 0, true, WEEK)), []);
   await weekly.toggleCheck(m.id, 0, false, WEEK); await weekly.toggleCheck(m.id, 0, true, WEEK); await weekly.toggleCheck(m.id, 1, true, WEEK);
   const ev = await weekly.toggleCheck(m.id, 2, true, WEEK);
-  assert.deepEqual(plain(ev), [{ type: 'weekly', label: 'Ordenar la casa', xp: 15 }]);
+  assert.deepEqual(plain(ev), [{ type: 'weekly', id: m.id, label: 'Ordenar la casa', xp: 15 }], 'con su id, para el sello sobre su tarjeta');
   await rejectsWith(weekly.toggleCheck(m.id, 2, false, WEEK), 'invalid');
   assert.equal((await repo.state(true)).computed.general.total, 15);
   const one = await weekly.create({ name: 'Llamar al médico', size: 'pequena', shares: [], mode: 'checks', target: 1 });
@@ -1331,9 +1342,12 @@ test('subida de nivel: premios entre dos niveles (marcos, títulos y fondos) y e
   ctx.window = ctx;
   for (const f of [...FILES, 'views/rpg/pickers', 'views/rpg/avatar', 'views/rpg/levelup']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   const V = ctx.App.rpgViews;
-  assert.deepEqual(plain(V.levelUp.rewards(8, 10, 'f').map((x) => [x.kind, x.name])), [['Marco nuevo', 'Puntada doble'], ['Fondo nuevo', 'Acolchado ciruela']]);
-  assert.deepEqual(plain(V.levelUp.rewards(6, 7, 'm').map((x) => x.name)), ['Muñeco susurrante']);
-  assert.equal(V.levelUp.rewards(10, 11, 'f').length, 0);
+  assert.deepEqual(plain(V.levelUp.rewards(1, 2, 'm').map((x) => [x.kind, x.name])), [['Título nuevo', 'Muñeco olvidado']]);
+  assert.deepEqual(plain(V.levelUp.rewards(4, 5, 'f').map((x) => [x.kind, x.name, !!x.frame])), [['Marco nuevo', 'Hilo suelto', true]]);
+  assert.deepEqual(plain(V.levelUp.rewards(7, 8, 'f').map((x) => [x.kind, x.name, !!x.frame])), [['Fondo nuevo', 'próximamente', false]], 'reservado: se anuncia, no se da');
+  assert.deepEqual(plain(V.levelUp.rewards(14, 15, 'f').map((x) => [x.kind, x.name, !!x.frame])), [['Marco nuevo', 'Collar de botones', true]]);
+  assert.deepEqual(plain(V.levelUp.rewards(22, 23, 'f').map((x) => [x.kind, x.name, !!x.frame])), [['Marco nuevo', 'Lacitos de encaje', true], ['Fondo nuevo', 'próximamente', false]], 'el marco se da; el fondo, reservado, solo se anuncia');
+  assert.equal(V.levelUp.rewards(9, 11, 'f').length, 0);
   assert.equal(V.starsSvg(0), '');
   assert.equal((V.starsSvg(5).match(/class="fr-star"/g) || []).length, 5);
   const many = V.starsSvg(15);

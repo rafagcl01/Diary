@@ -74,10 +74,22 @@
       fresh.forEach(function (b) { markChest(b.id); });
     }
     // Antes de pintar, se borran los archivados del sistema anterior (si los hay).
+    // Si desde la última vez que se pintó un jefe ha caído (todos sus pasos hechos, con un check o con una actividad),
+    // sale su escena (V.fx.bossDown). Al abrir la ficha no: solo lo que cae mientras la miras.
+    var alive = null;
     function reload() {
       return bosses.purgeArchived().catch(function () {}).then(function () {
         return Promise.all([bosses.state(), acts.list(), rpg.state()]);
-      }).then(function (r) { state = r[0]; actList = r[1]; st = r[2]; paint(); });
+      }).then(function (r) {
+        state = r[0]; actList = r[1]; st = r[2]; paint();
+        var fallen = alive ? state.bosses.filter(function (b) { return alive[b.id] && (b.sealed || b.defeated); }) : [];
+        alive = {}; state.bosses.forEach(function (b) { if (!b.sealed && !b.defeated) alive[b.id] = true; });
+        if (V.fx) fallen.reduce(function (p, b) {
+          var line = b.defeated ? 'Su botín ya es tuyo: <b>+' + b.rewardXp + ' XP</b>.'
+            : 'Su botín se abre ' + (b.daysLeft === 1 ? 'mañana' : 'en ' + b.daysLeft + ' días') + ' (<b>+' + b.xp + ' XP</b>).';
+          return p.then(function () { return V.fx.bossDown(b, line); });
+        }, Promise.resolve());
+      });
     }
     function actionsHtml() {
       return '<button type="button" class="btn" data-act="save">Guardar</button>' +
@@ -217,7 +229,7 @@
             return ctx.afterChange(null, events).then(function () { if (err) say(err.message); }, function (e) { say((err || e).message); return reload(); });
           });
       }
-      if (on) return go();
+      if (on) { if (V.fx) { V.fx.hit(cardEl); V.fx.sparks(t, R.BOSS_STEP_XP); } return go(); }   // golpe al jefe y chispas a la barra
       // Desmarcar quita sus 5 XP: primero se pregunta en la misma fila.
       var text = t.parentNode && t.parentNode.querySelector('.bs-text');
       App.ui.askUncheck(t, 'li', '¿Desmarcar <b>' + esc(text ? text.textContent : 'el paso') + '</b>? Se quitan sus ' + App.ui.xpText(R.BOSS_STEP_XP) + '.', go);
