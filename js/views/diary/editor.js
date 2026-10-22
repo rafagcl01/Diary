@@ -100,7 +100,7 @@
             '<div id="emo-form" hidden>' +
               '<h4 id="emo-form-title">Nueva emoción</h4>' +
               '<label class="field"><span>Nombre</span><input id="emo-name" type="text" maxlength="' + D.EMOTION_LIMITS.name + '" autocomplete="off" placeholder="Por ejemplo, Nostalgia"></label>' +
-              '<fieldset class="symbols"><legend>Símbolo</legend><div class="symbol-grid" id="emo-symbols"></div></fieldset>' +
+              '<div id="emo-symbols"></div>' +
               '<div class="btn-row"><button type="button" class="btn" id="emo-save">Guardar emoción</button><button type="button" class="btn secondary" id="emo-cancel">Cancelar</button></div>' +
             '</div>' +
             '<p class="msg" id="emo-msg" role="status" data-kind="info"></p>' +
@@ -230,11 +230,9 @@
           $('#emo-edit').disabled = !(emoLoaded && n0(chosen) && byId[chosen[chosen.length - 1]]);   // edita la última marcada
         }
         function n0(a) { return a.length > 0; }
+        // La caja de símbolos de toda la aplicación: abierta al crear una emoción, cerrada al editarla.
         function paintSymbols() {
-          $('#emo-symbols').innerHTML = D.EMOTION_SYMBOLS.map(function (s) {
-            return '<label class="symbol"><input type="radio" name="emo-symbol" value="' + s.id + '"' + (formSymbol === s.id ? ' checked' : '') + '>' +
-              '<span class="symbol-box">' + icon(s.id) + '</span><span class="sr">' + esc(s.label) + '</span></label>';
-          }).join('');
+          $('#emo-symbols').innerHTML = App.ui.symbolPicker({ name: 'emo-symbol', value: formSymbol, open: !editingEmotion, legend: 'Símbolo' });
         }
         function openForm(emotion) {
           editingEmotion = emotion ? emotion.id : null; formSymbol = emotion ? emotion.symbol : null;
@@ -402,7 +400,7 @@
         function confirmRemovals(items, go) {
           var xp = items.reduce(function (t, it) { return t + it.xp; }, 0);
           $('#e-confirm').innerHTML = '<div class="msg e-remove" data-kind="info"><b>Al guardar se quitará de tu personaje:</b><ul>' + items.map(function (it) {
-            return '<li>' + esc(it.label) + ' (entrada ' + it.n + ') · ' + it.xp + ' XP' + (it.kind === 'task' ? ', y vuelve a estar pendiente en su lista' : '') + '</li>';
+            return '<li>' + esc(it.label) + (it.kind === 'diary' ? ' (la página se queda sin texto)' : ' (entrada ' + it.n + ')') + ' · ' + it.xp + ' XP' + (it.kind === 'task' ? ', y vuelve a estar pendiente en su lista' : '') + '</li>';
           }).join('') + '</ul><div class="btn-row"><button type="button" class="btn" id="e-rm-yes">Guardar y quitar ' + xp + ' XP</button>' +
             '<button type="button" class="btn secondary" id="e-rm-no">Volver a editar</button></div></div>';
           $('#e-rm-yes').addEventListener('click', function () { $('#e-confirm').innerHTML = ''; go(); });
@@ -419,7 +417,7 @@
           var r = D.repo();
           if (!r) { say('Conecta tus datos para guardar. Mientras tanto, tu texto sigue guardado como borrador en este navegador.', 'error'); return; }
           $('#e-confirm').innerHTML = '';
-          var check = actRepo && R.diaryRemovals && prev ? R.diaryRemovals(prev.blocks, s.blocks).catch(function () { return []; }) : Promise.resolve([]);
+          var check = actRepo && R.diaryRemovals && prev ? R.diaryRemovals(prev.blocks, s.blocks, day).catch(function () { return []; }) : Promise.resolve([]);
           busy = true; $('#e-save').disabled = true;
           check.then(function (items) {
             busy = false; $('#e-save').disabled = false;
@@ -449,6 +447,7 @@
               }).then(function (res) {
                 if (!res || !V.toast) return;
                 V.toast.diary(res);
+                if (res.oldPage) V.toast.show({ kind: 'char', title: 'Actividades de otro día', text: 'Se quedan en la página, pero solo se apuntan en tu personaje las de hoy o ayer.' });
                 if (res.failed.length) V.toast.show({ kind: 'char', title: 'No se pudieron registrar algunas actividades', text: res.failed[0] + ' Vuelve a guardar la página para intentarlo otra vez.' });
               }).catch(function (e) {
                 if (V.toast) V.toast.show({ kind: 'char', title: 'Tu personaje no se ha actualizado', text: ((e && e.message) || '') + ' La página sí está guardada: vuelve a guardarla para intentarlo otra vez.' });

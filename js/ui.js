@@ -53,6 +53,20 @@
     });
   };
 
+  // La criatura de los huecos: un remiendo cosido con un ojo que asoma por la costura (de vez en cuando parpadea, salvo con
+  // los efectos apagados). Va donde algo está vacío, con el mismo trazo que los garabatos de la hoja. `text` es HTML de confianza.
+  App.creature = function (text) {
+    return '<div class="creature">' +
+      '<svg viewBox="0 0 92 80" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path class="cr-patch" d="M14 18c10-8 50-10 64-2 8 6 8 40 0 48-12 9-52 9-64 1-8-7-9-40 0-47z" stroke-dasharray="5 5"/>' +
+        '<path class="cr-white" d="M24 40c10-9 34-9 44 0-10 9-34 9-44 0z"/>' +
+        '<circle class="cr-iris" cx="49" cy="40" r="6" stroke="none"/><circle cx="51" cy="38" r="1.6" fill="#fff" stroke="none"/>' +
+        '<path class="cr-lid" d="M24 40c10-9 34-9 44 0-10 9-34 9-44 0z"/>' +
+        '<path d="M20 31l4 3M20 49l4-3M72 31l-4 3M72 49l-4-3M34 27l1 4M58 27l-1 4M34 53l1-4M58 53l-1-4"/>' +
+        '<path d="M8 10l5 5M13 10l-5 5" stroke-width="1.6"/>' +
+      '</svg><p>' + text + '</p></div>';
+  };
+
   App.emptyState = function (o) {
     var tag = o.tag === undefined ? 'Próximamente' : o.tag;
     return '<section class="card stitched empty" aria-labelledby="empty-title">' +

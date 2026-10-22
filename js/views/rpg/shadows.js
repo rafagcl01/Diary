@@ -1,19 +1,26 @@
 // Panel «Sombras» de la ficha: una tarjeta por sombra con sus contrahechizos, la tira de los últimos 14 días
-// (vacío / apareció / purificada), el recuento del mes y «Apareció hoy» (con «Deshacer»). Con 4 apariciones en 14 días,
+// (vacío / apareció / purificada; se puede tocar para apuntarla o quitarla otro día), el recuento del mes y «Apareció hoy» (con «Deshacer»). Con 4 apariciones en 14 días,
 // la oferta de convertirla en jefe. «Frecuencia» abre las barras de los últimos 6 meses. Nunca toca la XP.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
   var MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
-  function stripHtml(s) {
+  // La tira de 14 días se puede tocar: un día vacío pregunta «¿Apareció el …?» y uno con puntada, «¿Quitarla?».
+  // `ask` = { id, day } del día que se está preguntando (la pregunta sale debajo de la tira).
+  function stripHtml(s, ask) {
     var label = { none: 'no apareció', ap: 'apareció', ok: 'purificada' };
-    return '<ol class="sh-strip" aria-label="Últimos ' + R.SHADOW_STRIP + ' días">' + s.strip.map(function (d, i) {
-      return '<li class="sh-day" data-state="' + d.state + '"' + (i === s.strip.length - 1 ? ' data-today="true"' : '') + ' title="' + esc(U.fmtDay(d.day)) + ': ' + label[d.state] + '">' +
-        '<span class="sr">' + esc(U.fmtDay(d.day)) + ': ' + label[d.state] + '</span></li>';
-    }).join('') + '</ol><p class="sh-strip-cap" aria-hidden="true"><span>hace ' + R.SHADOW_STRIP + ' días</span><span>hoy</span></p>';
+    var asking = ask && ask.id === s.id ? s.strip.filter(function (d) { return d.day === ask.day; })[0] : null;
+    return '<ol class="sh-strip" aria-label="Últimos ' + R.SHADOW_STRIP + ' días. Toca un día para apuntarla o quitarla">' + s.strip.map(function (d, i) {
+      return '<li><button type="button" class="sh-day" data-act="sh-day" data-id="' + esc(s.id) + '" data-day="' + esc(d.day) + '" data-state="' + d.state + '"' +
+        (i === s.strip.length - 1 ? ' data-today="true"' : '') + ' aria-pressed="' + (!!asking && asking.day === d.day) + '" title="' + esc(U.fmtDay(d.day)) + ': ' + label[d.state] + '">' +
+        '<span class="sr">' + esc(U.fmtDay(d.day)) + ': ' + label[d.state] + '</span></button></li>';
+    }).join('') + '</ol><p class="sh-strip-cap" aria-hidden="true"><span>hace ' + (R.SHADOW_STRIP - 1) + ' días</span><span>hoy</span></p>' +
+      (asking ? '<div class="sh-ask" role="group" aria-label="Confirmar"><span class="sh-ask-q">' + (asking.state === 'none' ? '¿Apareció el <b>' + esc(U.fmtDay(asking.day)) + '</b>?' : '¿Quitar la del <b>' + esc(U.fmtDay(asking.day)) + '</b>?') + '</span>' +
+        '<button type="button" class="mini sh-ask-yes" data-act="sh-day-yes" data-id="' + esc(s.id) + '" data-day="' + esc(asking.day) + '" data-had="' + (asking.state !== 'none') + '">' + (asking.state === 'none' ? 'Sí' : 'Sí, quitarla') + '</button>' +
+        '<button type="button" class="mini" data-act="sh-day-no">No</button></div>' : '');
   }
-  function card(s, actNames, busyId) {
+  function card(s, actNames, busyId, ask) {
     var counters = s.counters.map(function (id) { return '<b>' + esc(actNames[id] || 'Actividad') + '</b>'; }).join(' · ');
     var now = s.today
       ? '<p class="sh-now' + (s.today.purified ? ' ok' : '') + '">' + (s.today.purified ? 'Apareció hoy · purificada' : 'Apareció hoy · sin purificar') +
@@ -23,7 +30,7 @@
     return '<li class="sh-card has-edit' + (s.today && !s.today.purified ? ' sh-live' : '') + '" data-id="' + esc(s.id) + '">' +
       '<div class="sh-top"><span class="sh-ic">' + icon(s.icon) + '</span><div class="sh-id"><h3>' + esc(s.name) + '</h3>' +
         '<p class="sh-counter">Contrahechizos: ' + (counters || '<span class="soft">ninguno</span>') + '</p></div></div>' +
-      stripHtml(s) +
+      stripHtml(s, ask) +
       '<p class="sh-stat">Este mes: <b>' + plural(s.monthCount, 'aparición', 'apariciones') + '</b> · <b>' + s.monthPurified + '</b> ' + (s.monthPurified === 1 ? 'purificada' : 'purificadas') + '</p>' +
       '<div class="sh-act">' + now + '</div>' +
       (s.offer ? '<div class="sh-offer"><p>' + esc(s.name) + ' ha aparecido <b>' + s.recentCount + ' veces en ' + R.SHADOW_OFFER.days + ' días</b>. ¿La conviertes en un jefe para enfrentarla poco a poco?</p>' +
@@ -63,11 +70,10 @@
     var shadows = ctx.shadows, acts = ctx.acts;
     host.innerHTML = '<div class="col-head"><h2>Sombras</h2><div class="sh-tools"><button type="button" class="btn secondary" data-act="sh-stats" aria-haspopup="dialog">Frecuencia</button>' +
       '<button type="button" class="btn secondary" data-act="sh-new" aria-haspopup="dialog">Nueva sombra</button></div></div>' +
-      '<p class="soft col-lead">Apuntar que apareció nunca quita XP. Una sombra queda purificada si ese día o el siguiente registras uno de sus contrahechizos.</p>' +
       '<p class="msg" id="sh-msg" role="status" data-kind="ok"></p><div id="sh-body"></div>' +
       '<dialog class="confirm rpg-dialog sh-dialog" id="sh-dialog" aria-labelledby="sh-dtitle"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#sh-body');
-    var state = null, actList = [], form = null, busy = null, statsFor = null;
+    var state = null, actList = [], form = null, busy = null, statsFor = null, ask = null;
 
     function actNames() { var o = {}; actList.forEach(function (a) { o[a.id] = a.name; }); return o; }
     function say(t, kind) { var el = $('#sh-msg'); el.textContent = t || ''; el.setAttribute('data-kind', kind || 'ok'); }
@@ -76,7 +82,7 @@
 
     function paint() {
       var names = actNames(), live = state.shadows, arch = state.archived;
-      body.innerHTML = (live.length ? '<ul class="sh-list">' + live.map(function (s) { return card(s, names, busy); }).join('') + '</ul>' +
+      body.innerHTML = (live.length ? '<ul class="sh-list">' + live.map(function (s) { return card(s, names, busy, ask); }).join('') + '</ul>' +
           '<p class="sh-legend" aria-hidden="true"><span><i data-state="none"></i>No apareció</span><span><i data-state="ap"></i>Apareció</span><span><i data-state="ok"></i>Purificada</span></p>'
         : '<div class="sh-empty"><p>Todavía no tienes sombras. Una sombra es algo que vuelve y no quieres que mande: el insomnio, rumiar, el móvil a deshoras.</p>' +
           '<p class="soft">Le pones sus contrahechizos (actividades) y, cuando aparezca, lo apuntas con un toque. Nunca quita XP.</p></div>') +
@@ -105,7 +111,7 @@
       form = { id: s ? s.id : null, counters: s ? s.counters.slice() : [], archived: s ? s.archived : false };
       dlg().innerHTML = '<h3 id="sh-dtitle">' + (s ? 'Editar sombra' : 'Nueva sombra') + '</h3>' +
         '<label class="field"><span>Nombre</span><input id="shf-name" type="text" maxlength="' + R.SHADOW_LIMITS.name + '" autocomplete="off" value="' + esc(s ? s.name : '') + '" placeholder="Por ejemplo, Insomnio"></label>' +
-        U.symbolGrid('shf-icon', R.ICONS, s ? s.icon : 'moon') +
+        U.symbolGrid('shf-icon', s ? s.icon : 'moon', !s) +
         '<fieldset class="shares"><legend>Contrahechizos</legend><p class="soft">Las actividades que la purifican si las registras ese día o el siguiente. No dan XP extra.</p>' +
           '<ul class="emo-caps act-caps" id="shf-counters" aria-label="Contrahechizos">' + counterCaps() + '</ul></fieldset>' +
         '<p class="msg" id="sh-dmsg" role="status" data-kind="error"></p>' +
@@ -163,6 +169,15 @@
       if (act === 'sh-restore') return run(id, function () { return shadows.setArchived(id, false); }, 'Sombra recuperada.');
       if (act === 'sh-appear') return run(id, function () { return shadows.appear(id, R.logicalDay(), 'ficha'); }, s ? s.name + ': apuntada. No quita XP.' : '');
       if (act === 'sh-undo') return run(id, function () { return R.removeShadowAppearance(id, R.logicalDay()); }, 'Quitada la aparición de hoy.');
+      // Tocar un día de la tira: se pregunta debajo; «Sí» la apunta (o la quita, si ya estaba). Sin XP en juego.
+      if (act === 'sh-day') { var dd = t.getAttribute('data-day'); ask = ask && ask.id === id && ask.day === dd ? null : { id: id, day: dd }; paint(); var y = body.querySelector('.sh-ask-yes'); if (y && y.focus) y.focus(); return; }
+      if (act === 'sh-day-no') { ask = null; return paint(); }
+      if (act === 'sh-day-yes') {
+        var day = t.getAttribute('data-day'), had = t.getAttribute('data-had') === 'true';
+        ask = null;
+        return run(id, function () { return had ? R.removeShadowAppearance(id, day) : shadows.appear(id, day, 'ficha'); },
+          (s ? s.name + ': ' : '') + (had ? 'quitada la del ' : 'apuntada el ') + U.fmtDay(day) + '.');
+      }
       if (act === 'sh-offer-no') return run(id, function () { return shadows.dismissOffer(id); }, '');
       if (act === 'sh-boss') {
         if (!s) return;

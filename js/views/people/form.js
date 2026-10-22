@@ -74,7 +74,7 @@
                 '<button type="button" class="mini" id="p-photo-rm"' + (photo ? '' : ' hidden') + '>Quitar foto</button></div>' +
               '<small>Se guarda reducida (cuadrada, 160 px) dentro de tus datos. Cuantas más fotos, más pesa el archivo de fichas.</small></div>' +
             '<label class="field"><span>Fecha aproximada en que la conocí <small>(opcional)</small></span><input id="p-met" type="text" inputmode="numeric" autocomplete="off" placeholder="2019, 2019-05 o 2019-05-14" value="' + esc(base.met) + '"></label>' +
-            '<fieldset class="symbols"><legend>Avatar</legend><div class="symbol-grid" id="p-symbols"></div></fieldset>' +
+            '<div id="p-symbols"></div>' +
             '<label class="field"><span>Notas <small>(solo para ti)</small></span><textarea id="p-notes" rows="5" maxlength="' + D.PEOPLE_LIMITS.notes + '">' + esc(base.notes) + '</textarea></label>' +
             '<div class="field"><span id="tag-l">Etiquetas</span><ul class="chips" id="p-tags" aria-live="polite">' + chipList(tags, 'tag') + '</ul>' +
               '<input id="p-tag" type="text" maxlength="' + D.LIMITS.tag + '" autocomplete="off" aria-labelledby="tag-l" placeholder="Una etiqueta y pulsa Intro"></div>' +
@@ -97,11 +97,10 @@
 
         function $(sel) { return root.querySelector(sel); }
         function say(text, kind) { var m = $('#p-msg'); m.textContent = text; m.setAttribute('data-kind', kind || 'info'); }
+        // La caja de símbolos de toda la aplicación, con «La inicial del nombre» delante. Abierta al crear una ficha.
         function paintSymbols() {
-          $('#p-symbols').innerHTML = [{ id: '', label: 'La inicial del nombre' }].concat(D.EMOTION_SYMBOLS).map(function (s) {
-            return '<label class="symbol"><input type="radio" name="p-symbol" value="' + s.id + '"' + ((symbol || '') === s.id ? ' checked' : '') + '>' +
-              '<span class="symbol-box">' + (s.id ? icon(s.id) : '<span class="av-letter">Aa</span>') + '</span><span class="sr">' + esc(s.label) + '</span></label>';
-          }).join('');
+          $('#p-symbols').innerHTML = App.ui.symbolPicker({ name: 'p-symbol', value: symbol || '', open: !id, legend: 'Avatar',
+            extra: [{ id: '', label: 'La inicial del nombre', html: '<span class="av-letter">Aa</span>' }] });
         }
         paintSymbols();
         function paintPhoto() {

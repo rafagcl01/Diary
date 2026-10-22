@@ -341,15 +341,19 @@ test('diario: se puede filtrar las páginas por persona', async () => {
   assert.match(root.els['#list'].innerHTML, /2026-10-10/); assert.ok(!/2026-10-11/.test(root.els['#list'].innerHTML));
 });
 
-test('inicio: personas recientes por fecha del último recuerdo, no por cantidad', async () => {
-  const { App, repo, ppl } = await connected();
-  const marcos = await ppl.create({ name: 'Marcos' }); const lucia = await ppl.create({ name: 'Lucía' });
-  await repo.save({ day: '2026-09-01', blocks: [{ text: 'a', people: [marcos.id] }, { text: 'b', people: [marcos.id] }, { text: 'c', people: [marcos.id] }] }, { base: null });
-  await repo.save({ day: '2026-10-05', blocks: [{ text: 'd', people: [lucia.id] }] }, { base: null });
+test('inicio: avisa de los cumpleaños de hoy (con la edad si se sabe el año) y si no hay ninguno no dice nada', async () => {
+  const { App, ppl } = await connected();
+  const root0 = fakeRoot(); App.views.home.render(root0); await tick(120);
+  assert.equal(root0.els['#home-bday'].innerHTML, '', 'sin fichas, no hay aviso (la línea sigue oculta)');
+  const today = App.diary.today(), md = today.slice(5), y = Number(today.slice(0, 4));
+  await ppl.create({ name: 'Lucía <i>', birthday: (y - 30) + '-' + md });
+  await ppl.create({ name: 'Marcos', birthday: md });
+  await ppl.create({ name: 'Otra', birthday: md === '01-01' ? '01-02' : '01-01' });
   const root = fakeRoot(); App.views.home.render(root); await tick(120);
-  const html = root.els['#home-people-body'].innerHTML;
-  assert.ok(html.indexOf('Lucía') < html.indexOf('Marcos'), 'la más reciente primero, aunque Marcos tenga más fragmentos');
-  assert.match(html, /href="#\/personas\/pe_[0-9a-f]{8}"/); assert.ok(!/fragmento|veces|más/i.test(html), 'sin recuentos: no hay ranking');
+  const html = root.els['#home-bday'].innerHTML;
+  assert.equal(root.els['#home-bday'].hidden, false);
+  assert.match(html, /Hoy cumplen años/); assert.match(html, /Lucía &lt;i&gt;<\/a> \(30\)/); assert.match(html, /Marcos<\/a>/);
+  assert.match(html, /href="#\/personas\/pe_[0-9a-f]{8}"/); assert.ok(!/Otra/.test(html));
 });
 
 test('inicio: el botón de la primera entrada lleva a una dirección que existe', async () => {

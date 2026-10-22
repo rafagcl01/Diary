@@ -14,11 +14,15 @@
         y: now.getFullYear(), m: now.getMonth(), q: emptyQuery()
       };
       var todayKey = D.today();
+      // Ayer (fecha local): escribir hoy o ayer da la XP del diario; otras fechas se escriben igual, sin XP.
+      var yd = new Date(); yd.setDate(yd.getDate() - 1);
+      var yesterdayKey = yd.getFullYear() + '-' + ('0' + (yd.getMonth() + 1)).slice(-2) + '-' + ('0' + yd.getDate()).slice(-2);
 
       root.innerHTML = '<div class="view diary-view">' +
         App.pageHeader('Diario', '', 'cuaderno privado') +
         '<div class="btn-row page-actions">' +
           '<a class="btn" href="#/diario/hoy">Escribir una entrada hoy</a>' +
+          '<a class="btn secondary" href="#/diario/' + yesterdayKey + '/editar/nuevo">Escribir una entrada de ayer</a>' +
           '<label class="otherday"><span class="sr">Escribir en otra fecha</span><input id="other-day" type="date" max="' + todayKey + '"></label>' +
           '<button type="button" class="btn secondary" id="other-go">Escribir en esa fecha</button>' +
         '</div>' +

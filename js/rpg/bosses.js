@@ -2,6 +2,10 @@
 // completarse y, al completar todos, el jefe es derrotado y da la XP grande (según su nivel).
 //  - Un paso puede ser un check que marcas tú (una sola vez) o «hacer X actividad N veces» (se completa solo).
 //  - Todo sale del registro de XP: paso = clave `boss:<jefe>:<paso>`, derrota = clave `boss:<jefe>`. Nada se da dos veces.
+//  - Los jefes son para metas grandes: el premio de la derrota solo se cobra cuando han pasado 7 / 14 / 30 días desde
+//    que lo creaste (jefe / mayor / final, en config.js). Si completas los pasos antes, el jefe queda «Derrotado» (fijo)
+//    con el botín lacrado (`sealed`), y la XP se cobra sola el día que se cumple el plazo.
+//  - En los pasos de actividad cuenta como mucho una vez por día (ver R.activityCount).
 //  - La imagen es opcional: un dibujo de la batería incluida o el enlace directo a un GIF/imagen de internet (no se descarga ni se guarda,
 //    solo se guarda el enlace; solo se admiten los sitios de R.IMAGE_SITES).
 // Se guardan en rpg/bosses.json.
@@ -9,8 +13,8 @@
   var R = App.rpg;
   var PATH = 'rpg/bosses.json';
   function invalid(msg) { return App.storageError('invalid', msg); }
-  R.BOSS_TIERS = [{ id: 'jefe', label: 'Jefe', xp: 250 }, { id: 'mayor', label: 'Jefe mayor', xp: 400 }, { id: 'final', label: 'Jefe final', xp: 600 }];
-  R.BOSS_STEP_XP = 5;
+  R.BOSS_TIERS = R.CONFIG.bosses.tiers;
+  R.BOSS_STEP_XP = R.CONFIG.bosses.stepXp;
   R.BOSS_LIMITS = { name: 60, description: 200, step: 80, steps: 12, count: 40, target: 99, url: 300 };
   R.BOSS_ID_RE = /^bo_[0-9a-f]{8}$/;
   R.STEP_ID_RE = /^st_[0-9a-f]{8}$/;
@@ -21,6 +25,12 @@
   R.isBossArt = function (id) { return R.BOSS_ART.some(function (a) { return a.id === id; }); };
   R.newBossId = function () { return 'bo_' + R.newSubId().slice(3); };
   R.tierXp = function (id) { var t = R.BOSS_TIERS.filter(function (x) { return x.id === id; })[0]; return t ? t.xp : 0; };
+  R.tierDays = function (id) { var t = R.BOSS_TIERS.filter(function (x) { return x.id === id; })[0]; return t ? t.days || 0 : 0; };
+  // Primer día en que se puede cobrar la derrota: el de creación + los días de su nivel.
+  R.bossUnlockDay = function (b) {
+    var created = typeof b.createdAt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(b.createdAt) ? b.createdAt.slice(0, 10) : (b.startDay || R.today());
+    return R.shiftDay(created, R.tierDays(b.tier));
+  };
   // Sitios admitidos para imágenes y GIFs por enlace (avatar y jefes); el enlace debe ser directo a la imagen.
   // Cada uno tiene que estar también en img-src de la política de seguridad de index.html (lo comprueba una prueba).
   R.IMAGE_SITES = 'Giphy, Tenor, Imgur, Pinterest, Wikipedia, Unsplash, Google Fotos, Reddit, Tumblr, Flickr o X (Twitter)';
@@ -86,7 +96,8 @@
   };
 
   // Estado de un jefe a partir del registro: pasos hechos, vida restante y si está derrotado.
-  R.bossView = function (b, entries) {
+  R.bossView = function (b, entries, today) {
+    today = today || R.today();
     var byKey = {}; entries.forEach(function (e) { byKey[e.key] = e; });
     var steps = b.steps.map(function (s) {
       var done = !!byKey['boss:' + b.id + ':' + s.id];
@@ -94,9 +105,11 @@
       return Object.assign({}, s, { done: done, count: Math.min(count, s.activity ? s.count : 1), target: s.activity ? s.count : 1, ready: !done && !!s.activity && count >= s.count });
     });
     var doneN = steps.filter(function (s) { return s.done; }).length;
-    var defeated = !!byKey['boss:' + b.id];
+    var defeated = !!byKey['boss:' + b.id], unlock = R.bossUnlockDay(b);
     return Object.assign({}, b, { steps: steps, doneCount: doneN, defeated: defeated, xp: R.tierXp(b.tier), rewardXp: defeated ? byKey['boss:' + b.id].xp : null,
-      defeatedAt: defeated ? byKey['boss:' + b.id].day : null, allDone: doneN === steps.length });
+      defeatedAt: defeated ? byKey['boss:' + b.id].day : null, allDone: doneN === steps.length, unlockDay: unlock, unlocked: today >= unlock,
+      // Todos los pasos hechos antes de tiempo: ya está derrotado (queda fijo) y el botín espera lacrado.
+      sealed: !defeated && doneN === steps.length && today < unlock, daysLeft: Math.max(0, Math.round((Date.parse(unlock) - Date.parse(today)) / 86400000)) });
   };
 
   App.createBossRepo = function (store, rpg) {
@@ -154,7 +167,7 @@
         return Promise.resolve().then(function () {
           return mutate('Edita un jefe', function (list, st) {
             var i = find(list, id);
-            if (st.entries.some(function (e) { return e.key === 'boss:' + id; })) throw invalid('Un jefe derrotado no se puede cambiar.');
+            if (st.entries.some(function (e) { return e.key === 'boss:' + id; }) || R.bossView(list[i], st.entries).sealed) throw invalid('Un jefe derrotado no se puede cambiar.');
             var b = R.sanitizeBoss(input, st.structure, list[i]);
             list[i].steps.forEach(function (old) {
               if (st.entries.some(function (e) { return e.key === 'boss:' + id + ':' + old.id; }) && !b.steps.some(function (s) { return s.id === old.id; })) {
@@ -203,7 +216,7 @@
           var s = b.steps.filter(function (x) { return x.id === stepId; })[0];
           if (!s) throw invalid('Ese paso no existe.');
           if (s.activity) throw invalid('Este paso se completa solo al registrar la actividad.');
-          if (r[1].entries.some(function (e) { return e.key === 'boss:' + id; })) throw invalid('Ese jefe ya está derrotado: sus pasos no se pueden desmarcar.');
+          if (r[1].entries.some(function (e) { return e.key === 'boss:' + id; }) || R.bossView(b, r[1].entries).sealed) throw invalid('Ese jefe ya está derrotado: sus pasos no se pueden desmarcar.');
           var key = 'boss:' + id + ':' + stepId;
           if (!r[1].entries.some(function (e) { return e.key === key; })) return [];
           return rpg.removeEntry(key).then(function () { return []; });
@@ -221,7 +234,7 @@
               return ready.reduce(function (c, s) { return c.then(function () { return grant(raw, 'boss:' + raw.id + ':' + s.id, s.text, R.BOSS_STEP_XP, events, 'step'); }); }, Promise.resolve())
                 .then(function () { return rpg.state(); }).then(function (st2) {
                   var v2 = R.bossView(raw, st2.entries);
-                  if (!v2.defeated && v2.allDone) return grant(raw, 'boss:' + raw.id, raw.name, R.tierXp(raw.tier), events, 'boss');
+                  if (!v2.defeated && v2.allDone && v2.unlocked) return grant(raw, 'boss:' + raw.id, raw.name, R.tierXp(raw.tier), events, 'boss');
                 });
             });
           }, Promise.resolve());

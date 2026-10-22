@@ -9,7 +9,7 @@
   function invalid(msg) { return App.storageError('invalid', msg); }
   function ledgerPath(year) { return LEDGER_PREFIX + year + '.json'; }
 
-  R.AVATARS = ['mended', 'moon', 'star', 'rose', 'eye', 'key', 'locket', 'ghost', 'skull', 'cat', 'butterfly', 'cherry', 'crown', 'bow'];
+  R.AVATARS = App.SYMBOL_IDS;   // el símbolo del personaje sale de la galería única (icons.js)
   // Imagen del avatar (opcional): { kind: 'photo', data: 'data:image/jpeg;base64,…' } o { kind: 'url', url } (imagen o GIF
   // por enlace, de los sitios de R.IMAGE_SITES; no se descarga). El símbolo se guarda siempre: es lo que se ve si no hay
   // imagen o si el enlace no carga. Devuelve null si no vale.
@@ -82,7 +82,11 @@
         return store.readJson(PROFILE, null).then(function (doc) {
           var d = doc && typeof doc === 'object' ? doc : {};
           return { name: R.cleanText(d.name, R.LIMITS.name), avatar: R.AVATARS.indexOf(d.avatar) >= 0 ? d.avatar : 'mended', image: R.cleanAvatarImage(d.image),
-            title: R.isTitle(d.title) ? d.title : null };
+            title: R.isTitle(d.title) ? d.title : null,
+            // Forma de títulos y rasgos (f / m / n), fondo de la ficha y si sale la pantalla al subir de nivel.
+            form: R.TEXT_FORMS.indexOf(d.form) >= 0 ? d.form : 'f',
+            background: R.isBackground(d.background) ? d.background : 'papel',
+            levelUpScreen: d.levelUpScreen !== false };
         });
       });
     }
@@ -141,7 +145,13 @@
           }
           var title = input && input.title !== undefined ? input.title : cur.title;
           if (title !== null && !R.isTitle(title)) throw invalid('Ese título no existe.');
-          var doc = { version: 1, name: name, avatar: avatar };
+          // Lo que no se pasa se conserva.
+          var form = input && input.form !== undefined ? input.form : cur.form;
+          if (R.TEXT_FORMS.indexOf(form) < 0) throw invalid('Elige femenina, masculina o neutra.');
+          var background = input && input.background !== undefined ? input.background : cur.background;
+          if (!R.isBackground(background)) throw invalid('Ese fondo no existe.');
+          var levelUpScreen = input && input.levelUpScreen !== undefined ? input.levelUpScreen !== false : cur.levelUpScreen;
+          var doc = { version: 1, name: name, avatar: avatar, form: form, background: background, levelUpScreen: levelUpScreen };
           if (image) doc.image = image;
           if (title) doc.title = title;
           return store.writeJson(PROFILE, doc, { force: true, message: 'Actualiza el personaje' });
@@ -154,7 +164,7 @@
           var level = R.computeState(r[2], r[1]).general.level;
           if (id !== null && !R.titlesFor(level).some(function (t) { return t.id === id; })) throw invalid('Ese título todavía no lo has conseguido.');
           var p = r[0];
-          return self.saveProfile({ name: p.name, avatar: p.avatar, image: p.image, title: id });
+          return self.saveProfile({ name: p.name, avatar: p.avatar, image: p.image, title: id });   // forma, fondo y pantalla se conservan
         });
       },
 
@@ -224,24 +234,26 @@
       },
 
       // Borra del todo un registro (y el ajuste que lo anulara con el sistema anterior, para no restar dos veces).
-      // Solo actividades y pasos de jefe (al desmarcarlos); el resto de recompensas no se tocan. Sus XP dejan de contar.
+      // Solo actividades, pasos de jefe, tareas, misiones diarias y la XP del diario (al deshacerlos, siempre con
+      // confirmación en la pantalla); el resto de recompensas no se tocan. Sus XP dejan de contar.
       // Usa lo que ya hay en memoria para saber en qué año está; solo relee todo si no lo encuentra (p. ej. lo apuntó otro
       // dispositivo). Lo que se borra se decide sobre el archivo recién leído al escribir, así que nada se queda a medias.
       removeEntry: function (key) {
         function find(all) { return all.filter(function (x) { return x.key === key; })[0]; }
-        function gone(x) { return x && (x.key === key || (x.kind === 'adjustment' && x.reverses === key)); }
+        // Con la actividad se va también su XP descansada (si la tuvo).
+        function gone(x) { return x && (x.key === key || x.key === 'rested:' + key || (x.kind === 'adjustment' && x.reverses === key)); }
         return loadEntries().then(function (all) { return find(all) ? all : loadEntries(true, true); }).then(function (all) {
           var e = find(all);
           if (!e) throw invalid('Ese registro ya no existe.');
-          var undoable = e.kind === 'activity' || R.isBossStepKey(key) || (R.isTodoTaskKey && R.isTodoTaskKey(key)) || (R.isDailyKey && R.isDailyKey(key));
-          if (!undoable) throw invalid('Solo se pueden borrar actividades, pasos de jefe, tareas y misiones diarias.');
+          var undoable = e.kind === 'activity' || R.isBossStepKey(key) || (R.isTodoTaskKey && R.isTodoTaskKey(key)) || (R.isDailyKey && R.isDailyKey(key)) || R.isDiaryXpKey(key);
+          if (!undoable) throw invalid('Solo se pueden borrar actividades, pasos de jefe, tareas, misiones diarias y la XP de escribir en el diario.');
           var years = {}; all.filter(gone).forEach(function (x) { years[String(x.day).slice(0, 4)] = true; });
           return Object.keys(years).reduce(function (p, year) {
             return p.then(function () {
               return store.updateJson(ledgerPath(year), function (doc) {
                 if (!doc || !Array.isArray(doc.entries)) throw invalid('El registro de experiencia de ' + year + ' está dañado. No lo toco; revísalo en GitHub.');
                 return Object.assign({}, doc, { entries: doc.entries.filter(function (x) { return !gone(x); }) });
-              }, { fallback: null, message: e.kind === 'activity' ? 'Borra una actividad' : R.isBossStepKey(key) ? 'Desmarca un paso de jefe' : R.isDailyKey && R.isDailyKey(key) ? 'Desmarca una misión diaria' : 'Desmarca una tarea' }).then(function (written) { applyYear(year, written); });
+              }, { fallback: null, message: e.kind === 'activity' ? 'Borra una actividad' : R.isBossStepKey(key) ? 'Desmarca un paso de jefe' : R.isDailyKey && R.isDailyKey(key) ? 'Desmarca una misión diaria' : R.isDiaryXpKey(key) ? 'Quita la XP del diario' : 'Desmarca una tarea' }).then(function (written) { applyYear(year, written); });
             });
           }, Promise.resolve()).then(function () { return e; });
         });

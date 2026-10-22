@@ -45,6 +45,13 @@
     } else {
       root.dataset.theme = p.theme;
     }
+    // La barra del navegador (móvil) sigue al tema elegido; en automático, cada meta vale para su modo del sistema.
+    var BAR = { light: '#FFF5F8', dark: '#1B141E' };
+    var metas = document.querySelectorAll ? document.querySelectorAll('meta[name="theme-color"]') : [];
+    Array.prototype.forEach.call(metas, function (m) {
+      var own = /dark/.test(m.getAttribute('media') || '') ? 'dark' : 'light';
+      m.setAttribute('content', BAR[p.theme === 'auto' ? own : p.theme]);
+    });
   }
 
   App.prefs = { get: get, set: set, apply: apply, MOTION: MOTION, THEME: THEME };

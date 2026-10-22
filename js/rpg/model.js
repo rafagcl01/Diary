@@ -2,40 +2,52 @@
 //
 // Reglas que se cumplen aquí y en el repositorio:
 //  - El nivel y el progreso NUNCA se guardan: se calculan sumando el registro de experiencia (ledger).
-//  - La experiencia solo entra por acciones explícitas (misiones, logros o apuntes manuales). Ni el diario,
-//    ni los estados de ánimo, ni las emociones dan o quitan XP.
-//  - Cada apunte tiene una clave única (idempotencia): el mismo apunte no puede contarse dos veces.
+//  - La experiencia solo entra por acciones explícitas (actividades, tareas, misiones, jefes, apuntes manuales) y por
+//    escribir en el diario (10 XP el primer bloque con texto del día, solo al nivel general). Ni los estados de ánimo
+//    ni las emociones dan o quitan XP.
+//  - Cada apunte tiene una clave única (idempotencia): el mismo apunte no puede contarse dos veces. Y guarda la XP que dio
+//    en su momento: cambiar los valores (config.js) no cambia el pasado.
 //  - Las correcciones son apuntes de ajuste visibles, con motivo; nada se borra en silencio.
+// Todos los números (XP, topes, curvas) están en config.js.
 (function (App) {
   var R = App.rpg = App.rpg || {};
+  var C = R.CONFIG;
 
   // ---- Niveles ----
-  R.GENERAL_LEVEL = { base: 100, step: 25 };   // XP para pasar del nivel n al n+1: 100 + 25·(n−1)
-  R.SUB_LEVEL = { base: 80, step: 20 };        // 80 + 20·(n−1)
-  R.QUEST_SIZES = [
-    { id: 'pequena', label: 'Pequeña', xp: 15 },
-    { id: 'normal', label: 'Normal', xp: 30 },
-    { id: 'dificil', label: 'Difícil', xp: 60 },
-    { id: 'epica', label: 'Épica', xp: 100 }
-  ];
+  R.GENERAL_LEVEL = C.levels.general;   // XP para pasar del nivel n al n+1: round(55 · n^1,2), hasta el nivel 30
+  R.MAIN_LEVEL = C.levels.main;         // atributos: la misma forma × 0,3, con la SUMA de la XP de sus subcategorías
+  R.SUB_LEVEL = C.levels.sub;           // subcategorías: la misma forma × 0,2
+  R.QUEST_SIZES = C.questSizes;
   R.LIMITS = { name: 40, description: 200, reason: 200, label: 80, subs: 40, maxXp: 5000 };
 
+  // XP para pasar del nivel n al n+1 con una curva { base, exp, factor }. Nunca menos de 1.
+  R.levelNeed = function (n, curve) {
+    curve = curve || R.GENERAL_LEVEL;
+    return Math.max(1, Math.round(curve.base * (curve.factor || 1) * Math.pow(n, curve.exp)));
+  };
   // De la experiencia total al nivel. Devuelve el nivel, la XP dentro del nivel, la que falta para el siguiente y la fracción (0–1).
+  // Con `curve.max` (el personaje, nivel 30) no se pasa de ahí: lo de después suma constelaciones (una estrella cada
+  // CONFIG.constellation.xp), y `into`/`need`/`fraction` pasan a ser el camino hacia la siguiente estrella.
   R.levelInfo = function (total, curve) {
     curve = curve || R.GENERAL_LEVEL;
-    var xp = Math.max(0, Math.floor(Number(total) || 0)), level = 1, need = curve.base;
-    while (xp >= need && level < 999) { xp -= need; level++; need = curve.base + curve.step * (level - 1); }
-    return { level: level, into: xp, need: need, fraction: need ? xp / need : 0, total: Math.max(0, Math.floor(Number(total) || 0)) };
+    var cap = curve.max || 999;
+    var xp = Math.max(0, Math.floor(Number(total) || 0)), level = 1, need = R.levelNeed(1, curve);
+    while (xp >= need && level < cap) { xp -= need; level++; need = R.levelNeed(level, curve); }
+    var all = Math.max(0, Math.floor(Number(total) || 0));
+    if (curve.max && level >= cap) {
+      var step = C.constellation.xp, stars = Math.floor(xp / step), rest = xp - stars * step;
+      return { level: level, max: true, stars: stars, into: rest, need: step, fraction: rest / step, total: all, start: all - rest, next: all - rest + step };
+    }
+    // start: XP total con la que empezó este nivel; next: la que hace falta para el siguiente (la ficha enseña «70 / 181 XP»).
+    return { level: level, max: false, stars: 0, into: xp, need: need, fraction: need ? xp / need : 0, total: all, start: all - xp, next: all - xp + need };
+  };
+  // XP total que hace falta para llegar al nivel `level` (desde 0).
+  R.xpForLevel = function (level, curve) {
+    var t = 0; for (var n = 1; n < level; n++) t += R.levelNeed(n, curve); return t;
   };
   // Marcos del avatar según el nivel general (solo decoración). Para cambiarlos basta con tocar esta lista
   // (y su dibujo en views/rpg/avatar.js, por id). Ordenados por nivel; el primero debe empezar en el nivel 1.
-  R.AVATAR_FRAMES = [
-    { id: 'puntada', name: 'Puntada', level: 1 },
-    { id: 'encaje', name: 'Encaje', level: 5 },
-    { id: 'rosas', name: 'Rosas y espinas', level: 10 },
-    { id: 'alas', name: 'Alas de murciélago', level: 20 },
-    { id: 'corona', name: 'Corona vampírica', level: 35 }
-  ];
+  R.AVATAR_FRAMES = C.frames;
   // El marco de un nivel y el siguiente (null si ya tienes el último).
   R.frameFor = function (level) {
     var list = R.AVATAR_FRAMES, cur = list[0], next = null;
@@ -44,11 +56,19 @@
   };
   // Títulos del personaje, por nivel general (solo decoración: no dan XP). Para cambiarlos basta con tocar esta lista.
   // El primero debe empezar en el nivel 1. Lo conseguido se calcula del nivel; solo se guarda cuál eliges (profile.title).
-  R.TITLES = [
-    { id: 'muneca_inquieta', name: 'Muñeca inquieta', level: 1 },
-    { id: 'muneca_susurrante', name: 'Muñeca susurrante', level: 15 },
-    { id: 'gran_posesion', name: 'Gran posesión', level: 30 }
-  ];
+  R.TITLES = C.titles;
+  // Textos con tres formas (títulos y rasgos): f = femenina, m = masculina, n = neutra (Configuración → Tu personaje).
+  R.TEXT_FORMS = ['f', 'm', 'n'];
+  R.named = function (item, form) {
+    if (!item) return '';
+    var n = item.names || {};
+    return n[R.TEXT_FORMS.indexOf(form) >= 0 ? form : 'f'] || n.f || item.name || '';
+  };
+  C.titles.concat(C.traits).forEach(function (x) { if (x.names && !x.name) x.name = x.names.f; });   // por defecto, la femenina
+  // Fondos de la ficha, por nivel general (se eligen en Configuración → Tu personaje).
+  R.BACKGROUNDS = C.backgrounds;
+  R.isBackground = function (id) { return R.BACKGROUNDS.some(function (b) { return b.id === id; }); };
+  R.backgroundsFor = function (level) { return R.BACKGROUNDS.filter(function (b) { return level >= b.level; }); };
   R.isTitle = function (id) { return R.TITLES.some(function (t) { return t.id === id; }); };
   R.titlesFor = function (level) { return R.TITLES.filter(function (t) { return level >= t.level; }); };
   // El que se ve: el elegido si ya está conseguido; si no, el más alto conseguido.
@@ -110,9 +130,7 @@
   ];
 
   // Galería de iconos para atributos y subcategorías (los dibujos viven en icons.js).
-  R.ICONS = ['heart', 'dumbbell', 'leaf', 'bolt', 'moon', 'mirror', 'star', 'book', 'key', 'tarot', 'spark', 'eye', 'people', 'butterfly', 'rose', 'locket', 'bow',
-    'compass', 'sun', 'candle', 'umbrella', 'pencil', 'film', 'ghost', 'skull', 'cat', 'cross', 'cherry', 'cloud', 'drop', 'crown', 'flower', 'mended',
-    'globe', 'speech', 'coin', 'briefcase', 'flag'];
+  R.ICONS = App.SYMBOL_IDS;   // la galería única de icons.js (la misma para todo)
   R.isIcon = function (id) { return R.ICONS.indexOf(id) >= 0; };
 
   function cleanText(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -221,12 +239,12 @@
         var info = R.levelInfo(t.subs[s.id] || 0, R.SUB_LEVEL);
         return Object.assign({}, s, { xp: info.total, level: info.level, into: info.into, need: info.need, fraction: info.fraction, progress: (info.level - 1) + info.fraction });
       });
-      var byId = {}; subs.forEach(function (s) { byId[s.id] = s; });
-      var value = counted.length ? counted.reduce(function (sum, s) { return sum + byId[s.id].progress; }, 0) / counted.length : 0;
+      // El atributo sube con la SUMA de la XP de todas sus subcategorías (también las archivadas: no se pierde nada),
+      // con su propia curva. Crear o archivar una subcategoría no le cambia el nivel: solo puede subir.
+      var xp = subs.reduce(function (sum, s) { return sum + s.xp; }, 0), info = R.levelInfo(xp, R.MAIN_LEVEL);
       return {
-        id: a.id, name: a.name, icon: a.icon, description: a.description,
-        subs: subs, value: value, level: Math.floor(value) + 1, fraction: value - Math.floor(value),
-        xp: counted.reduce(function (sum, s) { return sum + byId[s.id].xp; }, 0)
+        id: a.id, name: a.name, icon: a.icon, description: a.description, counted: counted.length,
+        subs: subs, value: (info.level - 1) + info.fraction, level: info.level, fraction: info.fraction, into: info.into, need: info.need, xp: xp
       };
     });
     return { general: R.levelInfo(t.general, R.GENERAL_LEVEL), mains: mains, subTotals: t.subs };
@@ -284,8 +302,14 @@
   };
 
   // Toda actividad da exactamente 5 XP, en puntos enteros repartidos entre subcategorías (p. ej. 2 + 3).
-  R.ACTIVITY_MAX = 5;
-  R.ACTIVITY_XP = 5;
+  // Solo las 10 primeras de cada día dan XP; las demás se registran con 0 XP (`capped`) y cuentan igual para las misiones.
+  R.ACTIVITY_MAX = C.activity.xp;
+  R.ACTIVITY_XP = C.activity.xp;
+  R.ACTIVITY_PER_DAY = C.activity.perDay;
+  // Escribir en el diario: un apunte por día (`diary:<día>`), solo al nivel general.
+  R.DIARY_XP = C.diary.xp;
+  R.diaryXpKey = function (day) { return 'diary:' + day; };
+  R.isDiaryXpKey = function (key) { return /^diary:\d{4}-\d{2}-\d{2}$/.test(String(key)); };
   R.ACT_ID_RE = /^[a-z0-9][a-z0-9_-]{1,30}$/;
 
   // Claves de los apuntes que ya se han anulado (un ajuste con `reverses`), y recuento de actividades no anuladas.
@@ -294,15 +318,25 @@
     (entries || []).forEach(function (e) { if (e && typeof e.reverses === 'string') out[e.reverses] = true; });
     return out;
   };
-  R.activityCount = function (entries, activityId, from, to) {
-    var voided = R.voidedKeys(entries), n = 0;
+  // Para «haz esta actividad N veces» (misiones semanales y pasos de jefe): cuenta como mucho UNA por actividad y día,
+  // así que registrarla tres veces el mismo día cuenta una. `activityIds` puede ser un id o una lista (vale cualquiera:
+  // gimnasio y correr el mismo día cuentan dos). Las de 0 XP por el tope también cuentan.
+  R.activityCount = function (entries, activityIds, from, to) {
+    var ids = Array.isArray(activityIds) ? activityIds : [activityIds];
+    var voided = R.voidedKeys(entries), seen = {}, n = 0;
     (entries || []).forEach(function (e) {
-      if (!e || e.kind !== 'activity' || e.activity !== activityId || voided[e.key]) return;
+      if (!e || e.kind !== 'activity' || ids.indexOf(e.activity) < 0 || voided[e.key]) return;
       if (from && e.day < from) return;
       if (to && e.day > to) return;
-      n++;
+      var k = e.activity + '|' + e.day;
+      if (!seen[k]) { seen[k] = true; n++; }
     });
     return n;
+  };
+  // Actividades de un día que dieron XP (no anuladas): para el tope diario.
+  R.activitiesWithXp = function (entries, day) {
+    var voided = R.voidedKeys(entries);
+    return (entries || []).filter(function (e) { return e && e.kind === 'activity' && e.day === day && e.xp > 0 && !voided[e.key]; }).length;
   };
 
   // Validación de un apunte de experiencia (lanza un error claro). `structure` sirve para comprobar las subcategorías.
@@ -312,7 +346,7 @@
     function bad(msg) { return App.storageError('invalid', msg); }
     if (!input || typeof input !== 'object') throw bad('El apunte no es válido.');
     var kind = input.kind;
-    if (['manual', 'quest', 'achievement', 'adjustment', 'activity'].indexOf(kind) < 0) throw bad('El tipo de apunte no es válido.');
+    if (['manual', 'quest', 'achievement', 'adjustment', 'activity', 'diary', 'rested'].indexOf(kind) < 0) throw bad('El tipo de apunte no es válido.');
     var key = String(input.key || '');
     if (!/^[A-Za-z0-9:_-]{3,80}$/.test(key)) throw bad('El apunte no tiene una clave válida.');
     var label = cleanText(input.label, R.LIMITS.label);
@@ -320,7 +354,11 @@
     var reason = cleanText(input.reason, R.LIMITS.reason);
     if (kind === 'adjustment' && !reason) throw bad('Un ajuste necesita un motivo.');
     var xp = Number(input.xp);
-    if (!isFinite(xp) || Math.floor(xp) !== xp || xp === 0) throw bad('La experiencia debe ser un número entero distinto de 0.');
+    // Con 0 XP solo valen las actividades y tareas que llegan después del tope del día (`capped`): se registran sin XP.
+    var capped = input.capped === true && (kind === 'activity' || kind === 'quest');
+    if (!isFinite(xp) || Math.floor(xp) !== xp || (xp === 0 && !capped) || (capped && xp < 0)) throw bad('La experiencia debe ser un número entero distinto de 0.');
+    if (kind === 'diary' && (xp !== R.DIARY_XP || !R.isDiaryXpKey(key))) throw bad('El apunte del diario no es válido.');
+    if (kind === 'rested' && (xp !== C.rested.xp || !/^rested:act:/.test(key))) throw bad('La XP descansada no es válida.');
     if (Math.abs(xp) > R.LIMITS.maxXp) throw bad('Demasiada experiencia de una vez (máximo ' + R.LIMITS.maxXp + ').');
     if (xp < 0 && kind !== 'adjustment') throw bad('Solo un ajuste puede quitar experiencia.');
     var activity = '';
@@ -337,7 +375,8 @@
       seen[id] = true;
     }
     var seen = {}, splits;
-    if (Array.isArray(input.points)) {
+    if (xp === 0 || kind === 'diary') splits = [];   // sin XP no hay nada que repartir; el diario va solo al nivel general
+    else if (Array.isArray(input.points)) {
       var sum = 0;
       splits = input.points.map(function (p) {
         var v = Number(p && p.xp);
@@ -357,6 +396,7 @@
     var day = typeof input.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : (opts.today || R.today());
     var out = { key: key, kind: kind, label: label, reason: reason, xp: xp, day: day, splits: splits, at: typeof input.at === 'string' ? input.at : new Date().toISOString() };
     if (activity) out.activity = activity;
+    if (capped && xp === 0) out.capped = true;
     if (typeof input.quest === 'string' && /^[A-Za-z0-9_]{3,40}$/.test(input.quest)) out.quest = input.quest;
     if (kind === 'adjustment' && typeof input.reverses === 'string' && /^[A-Za-z0-9:_-]{3,80}$/.test(input.reverses)) out.reverses = input.reverses;
     return out;

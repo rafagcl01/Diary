@@ -1,6 +1,8 @@
 // Misiones semanales: se repiten cada semana (de lunes a domingo) y dan más XP que una actividad.
-//  - Modo «actividad»: «hacer X actividad N veces». Cuenta los registros no anulados de esa semana; al llegar a N
-//    la misión se completa SOLA y da su recompensa (sin botón de reclamar).
+//  - Modo «actividad»: «hacer N veces alguna de estas actividades» (una o varias: «Ejercicio 3 veces» con gimnasio o
+//    correr). Cuenta como mucho una por actividad y día (ver R.activityCount); al llegar a N la misión se completa SOLA
+//    y da su recompensa (sin botón de reclamar).
+//  - Como mucho 5 misiones activas a la vez (config.js).
 //  - Modo «checks»: N casillas que marcas tú (1 casilla = un solo check; sirve también para una misión de solo descripción).
 //  - La recompensa es una clave única por misión y semana (`weekly:<misión>:<semana>`): no puede darse dos veces.
 // Se guardan en rpg/weekly.json (plantillas + casillas marcadas por semana). El estado «completada» sale del registro de XP.
@@ -9,7 +11,9 @@
   var PATH = 'rpg/weekly.json';
   function invalid(msg) { return App.storageError('invalid', msg); }
   var DAY_MS = 86400000;
-  R.WEEKLY_LIMITS = { name: 60, description: 200, target: 14, count: 60 };
+  R.WEEKLY_LIMITS = { name: 60, description: 200, target: 14, count: R.CONFIG.weekly.maxActive, activities: 8 };
+  // Actividades que cuentan para una misión (las de antes de poder elegir varias guardaban solo `activity`).
+  R.weeklyActivities = function (m) { return m && Array.isArray(m.activities) && m.activities.length ? m.activities : (m && m.activity ? [m.activity] : []); };
   R.WEEKLY_ID_RE = /^wm_[0-9a-f]{8}$/;
   R.newWeeklyId = function () { return 'wm_' + R.newSubId().slice(3); };
   R.sizeXp = function (id) { var z = R.QUEST_SIZES.filter(function (q) { return q.id === id; })[0]; return z ? z.xp : 0; };
@@ -50,10 +54,12 @@
     if (shares.length && total !== 100) throw invalid('Los porcentajes deben sumar 100 (ahora suman ' + total + ').');
     var target = Number(input.target);
     if (!isFinite(target) || Math.floor(target) !== target || target < 1 || target > R.WEEKLY_LIMITS.target) throw invalid('El número debe ser un entero entre 1 y ' + R.WEEKLY_LIMITS.target + '.');
-    var activity = null;
+    var activities = [];
     if (input.mode === 'activity') {
-      activity = String(input.activity || '');
-      if (!R.ACT_ID_RE.test(activity) || activity === 'puntual') throw invalid('Elige la actividad que cuenta para esta misión.');
+      var raw = Array.isArray(input.activities) ? input.activities : (input.activity ? [input.activity] : []);
+      raw.forEach(function (a) { a = String(a || ''); if (R.ACT_ID_RE.test(a) && a !== 'puntual' && activities.indexOf(a) < 0) activities.push(a); });
+      if (!activities.length) throw invalid('Elige al menos una actividad que cuente para esta misión.');
+      if (activities.length > R.WEEKLY_LIMITS.activities) throw invalid('Como mucho ' + R.WEEKLY_LIMITS.activities + ' actividades por misión.');
     } else if (input.mode !== 'checks') throw invalid('Elige cómo se completa la misión.');
     // «Solo esta semana» (repeat: false) se borra el lunes a las 3:00; «repetir» vuelve a empezar cada semana.
     // Sin elegir: una nueva es de una semana; una que ya existía conserva lo que tenía (las antiguas, sin el campo, repiten).
@@ -61,7 +67,7 @@
     var week = repeat ? null : (base && base.repeat === false && base.week ? base.week : R.currentWeek());
     return {
       id: base && base.id ? base.id : R.newWeeklyId(), name: name, description: R.cleanText(input.description, R.WEEKLY_LIMITS.description),
-      size: input.size, shares: shares, mode: input.mode, activity: activity, target: target, repeat: repeat, week: week,
+      size: input.size, shares: shares, mode: input.mode, activities: activities, activity: activities[0] || null, target: target, repeat: repeat, week: week,
       createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString()
     };
   };
@@ -80,7 +86,7 @@
       var saved = (progress[m.id + '|' + weekKey] || {}).checks || [];
       for (var i = 0; i < m.target; i++) checks.push(saved[i] === true);
       count = checks.filter(Boolean).length;
-    } else count = R.activityCount(entries, m.activity, range.from, range.to);
+    } else count = R.activityCount(entries, R.weeklyActivities(m), range.from, range.to);
     var done = !!reward;
     var weeksDone = entries.filter(function (e) { return e.key.indexOf('weekly:' + m.id + ':') === 0; }).length;
     return Object.assign({}, m, { week: weekKey, xp: R.sizeXp(m.size), count: count, checks: checks, done: done, rewardXp: reward ? reward.xp : null, ready: !done && count >= m.target, weeksDone: weeksDone });
@@ -132,7 +138,8 @@
       create: function (input) {
         return Promise.resolve().then(function () {
           return mutate('Crea una misión semanal', function (d, st) {
-            if (d.missions.length >= R.WEEKLY_LIMITS.count) throw invalid('Ya tienes el máximo de misiones semanales.');
+            var active = d.missions.filter(function (m) { return m && R.WEEKLY_ID_RE.test(m.id) && !m.archived && !R.weeklyExpired(m); }).length;
+            if (active >= R.WEEKLY_LIMITS.count) throw invalid('Ya tienes ' + R.WEEKLY_LIMITS.count + ' misiones semanales activas, el máximo. Elimina una para crear otra.');
             var m = R.sanitizeWeekly(input, st.structure, null);
             d.missions.push(m); return m;
           });

@@ -12,7 +12,7 @@ const files = [
   'diary/entries.js', 'diary/repository.js', 'diary/drafts.js', 'diary/emotions.js', 'diary/people.js', 'diary/stats.js',
   'views/home.js', 'views/diary/percent.js', 'views/diary/deco.js', 'views/diary/html.js', 'views/diary/list.js', 'views/diary/read.js', 'views/people/html.js', 'views/diary/people-picker.js', 'views/diary/editor.js', 'views/diary.js',
   'views/people/list.js', 'views/people/card.js', 'views/people/form.js', 'views/people.js', 'views/mood.js',
-  'rpg/model.js', 'rpg/repository.js', 'rpg/activities.js', 'rpg/weekly.js', 'rpg/bosses.js', 'views/rpg/radar.js', 'views/rpg/pickers.js', 'views/rpg/toast.js', 'views/rpg/boss-art.js', 'views/rpg/activities.js', 'views/rpg/weekly.js', 'views/rpg/boss.js', 'views/character.js', 'views/collection.js', 'views/settings.js',
+  'rpg/config.js', 'rpg/model.js', 'rpg/repository.js', 'rpg/activities.js', 'rpg/weekly.js', 'rpg/bosses.js', 'views/rpg/radar.js', 'views/rpg/pickers.js', 'views/rpg/toast.js', 'views/rpg/boss-art.js', 'views/rpg/activities.js', 'views/rpg/weekly.js', 'views/rpg/boss.js', 'views/character.js', 'views/collection.js', 'views/settings.js',
   'sections.js',
 ];
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -94,7 +94,7 @@ test('el inicio ofrece las cinco caras de ánimo como botones, sin dar más peso
   assert.equal(faces.length, 5);
   assert.equal((root.innerHTML.match(/role="radio"/g) || []).length, 5);
   assert.match(root.innerHTML, /href="#\/diario\/hoy"/, 'el acceso principal lleva a escribir hoy');
-  assert.match(root.innerHTML, /href="#\/animo"/);
+  assert.match(root.innerHTML, /id="home-mood-save"/, 'y apuntar solo el ánimo, sin escribir');
 });
 
 test('index.html: scripts existentes, en orden y sin módulos', () => {

@@ -66,4 +66,19 @@
   App.icon = function (name, extraClass) {
     return '<svg class="ic ' + (extraClass || '') + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (paths[name] || '') + '</svg>';
   };
+
+  // ---- La galería de símbolos: UNA para toda la aplicación ----
+  // Actividades, atributos, subcategorías, sombras, emociones, avatar de las personas y avatar del personaje eligen de
+  // aquí, siempre con la misma caja (App.ui.symbolPicker, en components.js). Agrupada por temas; cada uno con su nombre.
+  // Lo que no está aquí (casa, lápiz de editar, reloj, dado…) son iconos de la interfaz, no se eligen.
+  App.SYMBOL_GROUPS = [
+    { label: 'Corazón y cosas bonitas', items: [['heart', 'Corazón'], ['mended', 'Corazón remendado'], ['bow', 'Lazo'], ['locket', 'Relicario'], ['rose', 'Rosa'], ['flower', 'Flor'], ['cherry', 'Cerezas'], ['butterfly', 'Mariposa']] },
+    { label: 'Cielo y tiempo', items: [['star', 'Estrella'], ['moon', 'Luna'], ['sun', 'Sol'], ['cloud', 'Nube'], ['drop', 'Gota'], ['umbrella', 'Paraguas'], ['spark', 'Chispa']] },
+    { label: 'Magia y misterio', items: [['tarot', 'Tarot'], ['pentagram', 'Pentagrama'], ['candle', 'Vela'], ['cross', 'Cruz'], ['eye', 'Ojo'], ['key', 'Llave'], ['crown', 'Corona'], ['ghost', 'Fantasma'], ['skull', 'Calavera'], ['cat', 'Gato']] },
+    { label: 'Vida diaria', items: [['leaf', 'Hoja'], ['dumbbell', 'Pesa'], ['bolt', 'Rayo'], ['mirror', 'Espejo'], ['book', 'Libro'], ['pencil', 'Lápiz'], ['film', 'Película'], ['compass', 'Brújula'], ['globe', 'Mundo'], ['speech', 'Conversación'], ['coin', 'Moneda'], ['briefcase', 'Maletín'], ['flag', 'Bandera'], ['people', 'Personas']] }
+  ];
+  App.SYMBOLS = [].concat.apply([], App.SYMBOL_GROUPS.map(function (g) { return g.items.map(function (x) { return { id: x[0], label: x[1] }; }); }));
+  App.SYMBOL_IDS = App.SYMBOLS.map(function (s) { return s.id; });
+  App.isSymbol = function (id) { return App.SYMBOL_IDS.indexOf(id) >= 0; };
+  App.symbolLabel = function (id) { for (var i = 0; i < App.SYMBOLS.length; i++) if (App.SYMBOLS[i].id === id) return App.SYMBOLS[i].label; return ''; };
 })(window.App = window.App || {});

@@ -8,9 +8,19 @@
       ? '<div class="sub-tools del-row"><span class="del-ask">¿Eliminar este jefe? La XP que ya te dio se queda.</span><button type="button" class="mini danger" data-act="del-yes" data-id="' + esc(b.id) + '">Sí, eliminar</button><button type="button" class="mini" data-act="del-no">No</button></div>'
       : '<div class="sub-tools"><button type="button" class="mini" data-act="del-card" data-id="' + esc(b.id) + '">Eliminar</button></div>';
   }
-  function card(b, actNames, asking) {
+  // Cofre del botín: lacrado (el jefe ya está derrotado, pero aún no se puede cobrar) o abierto. `opening`: se abre ahora,
+  // con una animación corta (la primera vez que se ve; con «Efectos» apagado, ya abierto).
+  V.chestSvg = function (open, opening) {
+    return '<svg class="bs-chest' + (open ? ' open' : '') + (opening ? ' opening' : '') + '" viewBox="0 0 110 90" aria-hidden="true" focusable="false">' +
+      '<g class="ch-glow"><circle cx="55" cy="38" r="26" fill="rgba(244,213,141,.25)"/><path d="M55 8v10M35 16l6 8M75 16l-6 8" stroke="#F4D58D" stroke-width="2.5" stroke-linecap="round"/></g>' +
+      '<rect x="18" y="44" width="74" height="38" rx="6" fill="#5A2848" stroke="#F3C6DA" stroke-width="2"/><path d="M18 56h74" stroke="#F3C6DA" stroke-width="1.5" stroke-dasharray="4 4"/>' +
+      '<g class="ch-lid"><path d="M18 46v-8a16 16 0 0 1 16-16h42a16 16 0 0 1 16 16v8z" fill="#6E3A66" stroke="#F3C6DA" stroke-width="2"/><path d="M26 30h58" stroke="#F3C6DA" stroke-width="1.5" stroke-dasharray="4 4"/></g>' +
+      '<g class="ch-seal"><circle cx="55" cy="48" r="9" fill="#A52E69" stroke="#19131B" stroke-width="1.5"/><path d="M55 53c-5-3.5-6-6.5-4.5-8.5 1.2-1.6 3.3-1.4 4.5.4 1.2-1.8 3.3-2 4.5-.4 1.5 2 .5 5-4.5 8.5z" fill="#F3C6DA"/></g></svg>';
+  };
+  function card(b, actNames, asking, opening) {
     var left = b.steps.length - b.doneCount, hp = b.steps.length ? left / b.steps.length : 0;
     var tier = R.BOSS_TIERS.filter(function (t) { return t.id === b.tier; })[0];
+    if (b.sealed || b.defeated) return trophy(b, tier, actNames, asking, opening);
     // Cada paso con la casilla compartida. Los de check se marcan y desmarcan (sus 5 XP van y vienen, nunca dos veces);
     // los de actividad se marcan solos y su casilla no se pulsa. Con el jefe derrotado, todo queda fijo.
     var steps = '<ul class="bs-steps" aria-label="Pasos de ' + esc(b.name) + '">' + b.steps.map(function (s) {
@@ -22,15 +32,29 @@
     return '<li class="bs-card' + (b.defeated ? '' : ' has-edit') + '" data-tier="' + b.tier + '" data-defeated="' + b.defeated + '">' + V.bossImage(b) +
       '<div class="bs-head"><h3>' + esc(b.name) + '</h3><span class="tag card-tag">' + esc(tier.label) + '</span></div>' +
       (b.description ? '<p class="soft">' + esc(b.description) + '</p>' : '') +
-      (b.defeated ? '<p class="bs-win">¡Derrotado! +' + b.rewardXp + ' XP</p>' :
-        '<div class="hpbar" role="img" aria-label="Vida: quedan ' + left + ' de ' + b.steps.length + ' pasos"><span style="width:' + Math.round(hp * 100) + '%"></span></div>') +
-      steps + (b.defeated ? defeatedTools(b, asking === b.id) : App.ui.editButton('data-act="edit" data-id="' + esc(b.id) + '"', 'Editar ' + b.name)) + '</li>';
+      '<div class="hpbar" role="img" aria-label="Vida: quedan ' + left + ' de ' + b.steps.length + ' pasos"><span style="width:' + Math.round(hp * 100) + '%"></span></div>' +
+      (b.unlocked ? '' : '<p class="soft bs-unlock">Su botín se puede abrir desde el ' + esc(U.fmtDay(b.unlockDay)) + '.</p>') +
+      steps + App.ui.editButton('data-act="edit" data-id="' + esc(b.id) + '"', 'Editar ' + b.name) + '</li>';
   }
+  // Derrotado: con el botín lacrado (cuenta atrás) o ya abierto. Sus pasos quedan fijos; se puede eliminar.
+  function trophy(b, tier, actNames, asking, opening) {
+    var open = b.defeated;
+    var text = open ? '¡Botín abierto! <b class="bs-loot">+' + b.rewardXp + ' XP</b>'
+      : 'Todos los pasos hechos. <b class="bs-loot">El botín se abre ' + (b.daysLeft === 1 ? 'mañana' : 'en ' + b.daysLeft + ' días') + '</b> (+' + b.xp + ' XP).';
+    return '<li class="bs-card bs-trophy" data-tier="' + b.tier + '" data-defeated="true">' +
+      '<div class="bs-head"><h3>' + esc(b.name) + '</h3><span class="tag card-tag bs-done-tag">Derrotado</span></div>' +
+      '<div class="bs-chest-row">' + V.chestSvg(open, opening) + '<p class="bs-chest-text">' + text + '</p></div>' +
+      '<details class="bs-steps-done"><summary>Pasos (' + b.steps.length + ')</summary><ul class="bs-steps">' + b.steps.map(function (s) {
+        return '<li data-done="true"><span class="bs-text">' + esc(s.text) + '</span>' + (s.activity ? '<span class="soft bs-act">' + esc(actNames[s.activity] || 'Actividad') + '</span>' : '') + '</li>';
+      }).join('') + '</ul></details>' + defeatedTools(b, asking === b.id) + '</li>';
+  }
+  // El cofre se abre con animación una sola vez por jefe y navegador.
+  function chestSeen(id) { try { return localStorage.getItem('diario-rpg.chest.' + id) === '1'; } catch (e) { return true; } }
+  function markChest(id) { try { localStorage.setItem('diario-rpg.chest.' + id, '1'); } catch (e) { /* sin almacenamiento: no pasa nada */ } }
 
   V.bossPanel = function (host, ctx) {
     var bosses = ctx.bosses, acts = ctx.acts, rpg = ctx.rpg;
     host.innerHTML = '<div class="col-head"><h2>Jefes finales</h2><button type="button" class="btn secondary" data-act="new">Nuevo</button></div>' +
-      '<p class="soft col-lead">Retos grandes con varios pasos. Cada paso da un poco de XP; derrotarlo da mucha.</p>' +
       '<p class="msg" id="bs-msg" role="status" data-kind="ok"></p><div id="bs-body"></div>' +
       '<dialog class="confirm rpg-dialog" id="bs-dialog" aria-labelledby="bs-dtitle"></dialog>';
     var $ = function (s) { return host.querySelector(s); }, body = $('#bs-body');
@@ -38,11 +62,16 @@
 
     function names() { return U.subNames(st.structure); }
     function actNames() { var o = {}; actList.forEach(function (a) { o[a.id] = a.name; }); return o; }
+    // Arriba, los vivos, los lacrados (esperando el botín) y los que se acaban de abrir (con su animación, una vez);
+    // los derrotados de antes, plegados abajo.
     function paint() {
-      var live = state.bosses.filter(function (b) { return !b.defeated; }), done = state.bosses.filter(function (b) { return b.defeated; });
+      var recent = R.shiftDay(R.today(), -7);
+      var fresh = state.bosses.filter(function (b) { return b.defeated && !chestSeen(b.id) && b.defeatedAt >= recent; });
+      var live = state.bosses.filter(function (b) { return !b.defeated || fresh.indexOf(b) >= 0; }), done = state.bosses.filter(function (b) { return b.defeated && fresh.indexOf(b) < 0; });
       var openDone = !!(asking && done.some(function (b) { return b.id === asking; }));
-      body.innerHTML = (live.length ? '<ul class="bs-list">' + live.map(function (b) { return card(b, actNames()); }).join('') + '</ul>' : '<p class="soft">No hay ningún jefe activo. Crea uno y ponle sus pasos.</p>') +
+      body.innerHTML = (live.length ? '<ul class="bs-list">' + live.map(function (b) { return card(b, actNames(), asking, fresh.indexOf(b) >= 0); }).join('') + '</ul>' : App.creature('No hay ningún jefe activo. Crea uno y ponle sus pasos.')) +
         (done.length ? '<details class="archived"' + (openDone ? ' open' : '') + '><summary>Derrotados (' + done.length + ')</summary><ul class="bs-list">' + done.map(function (b) { return card(b, actNames(), asking); }).join('') + '</ul></details>' : '');
+      fresh.forEach(function (b) { markChest(b.id); });
     }
     // Antes de pintar, se borran los archivados del sistema anterior (si los hay).
     function reload() {
@@ -114,8 +143,8 @@
         '<label class="field"><span>Nombre</span><input id="bf-name" type="text" maxlength="' + R.BOSS_LIMITS.name + '" autocomplete="off" value="' + esc(b ? b.name : '') + '"></label>' +
         '<label class="field"><span>Descripción (opcional)</span><input id="bf-desc" type="text" maxlength="' + R.BOSS_LIMITS.description + '" autocomplete="off" value="' + esc(b ? b.description : '') + '"></label>' +
         '<fieldset class="symbols"><legend>Nivel (XP al derrotarlo)</legend><ul class="emo-caps" aria-label="Nivel">' + R.BOSS_TIERS.map(function (t) {
-          return '<li><button type="button" class="emo-cap" data-tier="' + t.id + '" aria-pressed="' + (t.id === form.tier) + '"><span>' + t.label + ' · ' + t.xp + ' XP</span></button></li>';
-        }).join('') + '</ul></fieldset>' +
+          return '<li><button type="button" class="emo-cap" data-tier="' + t.id + '" aria-pressed="' + (t.id === form.tier) + '"><span>' + t.label + ' · ' + t.xp + ' XP · ' + t.days + ' días</span></button></li>';
+        }).join('') + '</ul><p class="soft">Los jefes son para metas grandes: su premio se puede cobrar cuando han pasado esos días desde que lo creas. Cada paso da sus ' + R.BOSS_STEP_XP + ' XP al momento.</p></fieldset>' +
         '<fieldset class="symbols"><legend>Imagen</legend><div id="bf-image">' + imageBlock() + '</div></fieldset>' +
         '<fieldset class="shares"><legend>Pasos (cada uno da ' + R.BOSS_STEP_XP + ' XP)</legend><ul class="bs-rows" id="bf-steps">' + stepRows() + '</ul><button type="button" class="mini" data-act="step-add">Añadir paso</button></fieldset>' +
         '<fieldset class="shares"><legend>¿A qué subcategorías va la XP?</legend><p class="soft">Opcional. Sin ninguna, solo sube el nivel general.</p><div id="bf-pick">' + pickHtml() + '</div></fieldset>' +

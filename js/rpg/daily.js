@@ -2,6 +2,7 @@
 // distintos si se puede. Cada una es Pequeña (15) o Normal (30) y su XP va a su subcategoría; hacer las tres da
 // +15 extra («¡Día completo!»). Hay tres cambios (dado) al día. Desmarcar quita su XP, salvo con el día completo.
 // La batería son las de fábrica (R.DAILY_DEFAULTS) más las tuyas, menos las que elimines (Configuración).
+// Si hay un atributo dormido (ver rpg/growth.js), una de las tres es suya, con el sello «Despierta» (`wake`; misma XP).
 // Se guarda en rpg/daily.json: { custom, removed, day, picks (copia de las tres del día), rerolls }.
 // En el registro: misión = `daily:<día>:<misión>`, día completo = `daily:<día>`. Nada se cuenta dos veces.
 (function (App) {
@@ -10,9 +11,9 @@
   function invalid(msg) { return App.storageError('invalid', msg); }
   R.DAILY_PER_DAY = 3;
   R.DAILY_REROLLS = 3;
-  R.DAILY_BONUS_XP = 15;
+  R.DAILY_BONUS_XP = R.CONFIG.daily.bonus;
   R.DAILY_LIMITS = { name: 90, custom: 150 };
-  R.DAILY_SIZES = R.QUEST_SIZES.filter(function (z) { return z.id === 'pequena' || z.id === 'normal'; });
+  R.DAILY_SIZES = R.QUEST_SIZES.filter(function (z) { return R.CONFIG.daily.sizes.indexOf(z.id) >= 0; });
   R.DAILY_ID_RE = /^d[mc]_[a-z0-9_]{2,30}$/;
 
   function d(id, name, sub, size) { return { id: 'dm_' + id, name: name, sub: sub, size: size || 'pequena' }; }
@@ -78,7 +79,9 @@
     var pool = varied.length ? varied : free;
     return pool.length ? pool[randomInt(pool.length)] : null;
   };
-  function snapshot(m) { return { id: m.id, name: m.name, sub: m.sub, size: m.size }; }
+  function snapshot(m, wake) { var s = { id: m.id, name: m.name, sub: m.sub, size: m.size }; if (wake) s.wake = true; return s; }
+  // Las del atributo dormido (ver rpg/growth.js): una de las tres de hoy es suya, con el sello «Despierta».
+  function ofMain(catalog, structure, mainId) { return catalog.filter(function (m) { return mainOf(structure, m.sub) === mainId; }); }
 
   App.createDailyRepo = function (store, rpg) {
     var cache = null, pending = null;
@@ -113,7 +116,10 @@
           var today = R.logicalDay();
           if (d0.day === today && d0.picks.length) return;   // otro dispositivo se adelantó
           var cat = R.dailyCatalog(d0, st.structure), picks = [];
-          for (var i = 0; i < R.DAILY_PER_DAY; i++) { var m = R.pickDaily(cat, st.structure, picks); if (m) picks.push(snapshot(m)); }
+          var sleepy = R.dormantMain ? R.dormantMain(st.structure, st.entries, R.today()) : null;
+          var w = sleepy ? R.pickDaily(ofMain(cat, st.structure, sleepy.id), st.structure, picks) : null;
+          if (w) picks.push(snapshot(w, true));
+          for (var i = picks.length; i < R.DAILY_PER_DAY; i++) { var m = R.pickDaily(cat, st.structure, picks); if (m) picks.push(snapshot(m)); }
           d0.day = today; d0.picks = picks; d0.rerolls = 0;
         }).then(function () { return cache; });
       });
@@ -171,9 +177,12 @@
               if (i < 0) throw invalid('Esa misión ya no es de hoy.');
               if (st0.entries.some(function (e) { return e.key === keyOf(d0.day, id); })) throw invalid('Esa misión ya está hecha: desmárcala para poder cambiarla.');
               var others = d0.picks.filter(function (x, n) { return n !== i; });
-              var m = R.pickDaily(R.dailyCatalog(d0, st.structure).filter(function (x) { return x.id !== id; }), st.structure, others);
+              var pool = R.dailyCatalog(d0, st.structure).filter(function (x) { return x.id !== id; }), wake = !!d0.picks[i].wake, m = null;
+              // La del sello se cambia por otra del mismo atributo (si queda alguna); si no, por cualquiera, sin sello.
+              if (wake) { m = R.pickDaily(ofMain(pool, st.structure, mainOf(st.structure, d0.picks[i].sub)), st.structure, others); if (!m) wake = false; }
+              if (!m) m = R.pickDaily(pool, st.structure, others);
               if (!m) throw invalid('No quedan más misiones para cambiar. Añade alguna en Configuración.');
-              d0.picks[i] = snapshot(m); d0.rerolls += 1;
+              d0.picks[i] = snapshot(m, wake); d0.rerolls += 1;
               return d0.picks[i];
             });
           });

@@ -1,17 +1,24 @@
-// Listas de tareas: cada tarea da su XP al marcarla (Pequeña 2, Normal 5, Grande 10) y completar la lista entera da
-// la recompensa grande, elegida como en las misiones (15 / 30 / 60 / 100). La XP va al reparto de atributos de la lista.
+// Tareas: UNA lista por día. Cada tarea da su XP al marcarla (Pequeña 2, Normal 5, Grande 10) con un tope de 40 XP al día
+// por tareas; completar la lista da +20 si tiene al menos 3 tareas (valores en config.js). Toda la XP de tareas va solo al
+// nivel general (el `shares` que traen los archivos antiguos se conserva pero no se usa).
 //  - Desmarcar una tarea borra su apunte (su XP deja de contar); volver a marcarla la da otra vez, una sola vez.
-//  - Al completarse, la lista recibe su recompensa y queda fija como «Completada» hasta que la elimines.
+//    Con la lista completada, lo marcado queda fijo; se pueden seguir añadiendo y marcando tareas nuevas.
+//  - Pasado el tope, las tareas se marcan igual con 0 XP (`capped`); la que lo cruza da lo que queda.
 //  - Todo sale del registro de XP: tarea = clave `todo:<lista>:<tarea>`, lista completada = clave `todo:<lista>`.
-// Se guardan en rpg/todos.json. Eliminar una lista no quita la XP que ya dio.
-// Son listas del día: a las 3:00 (ver R.logicalDay) lo hecho se borra y lo pendiente pasa a una lista nueva del día
-// siguiente, con el mismo nombre, recompensa y reparto (ver cleanup). La XP ganada siempre se queda.
+//  - A las 3:00 (ver R.logicalDay) lo hecho se borra y lo pendiente pasa a la lista del día siguiente (con otro id,
+//    mismo `shares`). La XP ganada siempre se queda.
+// Se guarda en rpg/todos.json: { version: 2, list: { id, day, shares, tasks: [{ id, text, size }], createdAt } }.
+// Las versiones anteriores (varias listas) se juntan en la lista de hoy (ver R.migrateTodos).
 (function (App) {
   var R = App.rpg;
   var PATH = 'rpg/todos.json';
+  var T = R.CONFIG.tasks;
   function invalid(msg) { return App.storageError('invalid', msg); }
-  R.TASK_SIZES = [{ id: 'pequena', label: 'Pequeña', xp: 2 }, { id: 'normal', label: 'Normal', xp: 5 }, { id: 'grande', label: 'Grande', xp: 10 }];
-  R.TODO_LIMITS = { name: 60, task: 100, tasks: 40, lists: 40 };
+  R.TASK_SIZES = T.sizes;
+  R.TASK_XP_PER_DAY = T.perDay;
+  R.TODO_BONUS_XP = T.listBonus;
+  R.TODO_MIN_TASKS = T.listMin;
+  R.TODO_LIMITS = { task: 100, tasks: 40 };
   R.TODO_ID_RE = /^tl_[0-9a-f]{8}$/;
   R.TASK_ID_RE = /^tk_[0-9a-f]{8}$/;
   R.taskXp = function (size) { var z = R.TASK_SIZES.filter(function (s) { return s.id === size; })[0]; return z ? z.xp : 0; };
@@ -23,219 +30,236 @@
     if (!text) return null;
     return { id: t.id && R.TASK_ID_RE.test(t.id) ? t.id : newId('tk_'), text: text, size: R.taskXp(t.size) ? t.size : 'normal' };
   }
-  // Valida una lista (lanza un error claro). Las tareas sin texto se descartan.
-  R.sanitizeTodo = function (input, structure, base) {
-    if (!input || typeof input !== 'object') throw invalid('La lista no es válida.');
-    var name = R.cleanText(input.name, R.TODO_LIMITS.name);
-    if (!name) throw invalid('Ponle un nombre a la lista.');
-    if (!R.sizeXp(input.size)) throw invalid('Elige la recompensa de la lista.');
-    var seen = {}, total = 0;
-    var shares = (input.shares || []).map(function (s) {
-      var pct = Number(s && s.pct);
-      if (!isFinite(pct) || Math.floor(pct) !== pct || pct < 1 || pct > 100) throw invalid('Los porcentajes deben ser enteros entre 1 y 100.');
-      var f = R.findSub(structure, s.sub);
-      if (!f) throw invalid('Esa subcategoría no existe.');
-      if (f.sub.archived) throw invalid('«' + f.sub.name + '» está archivada.');
-      if (seen[s.sub]) throw invalid('Una subcategoría aparece dos veces.');
-      seen[s.sub] = true; total += pct;
-      return { sub: s.sub, pct: pct };
+  function validList(l) { return !!l && R.TODO_ID_RE.test(l.id) && Array.isArray(l.tasks); }
+  function newList(day, shares, tasks, from) {
+    var l = { id: newId('tl_'), day: day, shares: shares || [], tasks: tasks || [], createdAt: new Date().toISOString() };
+    if (from) l.carriedFrom = from;
+    return l;
+  }
+  function doneKeys(entries) { var o = {}; (entries || []).forEach(function (e) { o[e.key] = true; }); return o; }
+
+  // De cualquier versión del archivo a la lista única (sin escribir nada). Versión 1 (varias listas): la lista de hoy
+  // conserva su id y sus tareas (las hechas siguen hechas); lo pendiente de las demás se le añade al final. Lo hecho en
+  // otras listas no pasa: su XP ya está en el registro (si pasara, se podría volver a marcar). El reparto se conserva si
+  // todas las listas tenían el mismo; si no, se queda sin reparto (`mixedShares` para avisar).
+  // Devuelve { list, migrated, mixedShares }.
+  R.migrateTodos = function (doc, entries, today) {
+    if (!doc) return { list: null, migrated: false };
+    if (doc.version === 2 || doc.list !== undefined) return { list: validList(doc.list) ? doc.list : null, migrated: false };
+    var lists = (Array.isArray(doc.lists) ? doc.lists : []).filter(validList);
+    if (!lists.length) return { list: null, migrated: true };
+    var have = doneKeys(entries);
+    function pending(l) { return have['todo:' + l.id] ? [] : l.tasks.filter(function (t) { return !have['todo:' + l.id + ':' + t.id]; }); }
+    var keys = lists.map(function (l) { return JSON.stringify(l.shares || []); });
+    var same = keys.every(function (k) { return k === keys[0]; }), shares = same ? (lists[0].shares || []) : [];
+    // La de hoy (las de antes de tener día también eran de hoy: la limpieza de las 3:00 las fechaba hoy).
+    var base = lists.filter(function (l) { return l.day === today && !have['todo:' + l.id]; })[0] ||
+      lists.filter(function (l) { return !l.day && !have['todo:' + l.id]; })[0] || null;
+    var list = base ? { id: base.id, day: today, shares: shares, tasks: base.tasks.slice(), createdAt: base.createdAt || new Date().toISOString() } : newList(today, shares, []);
+    var ids = {}; list.tasks.forEach(function (t) { ids[t.id] = true; });
+    lists.forEach(function (l) {
+      if (l === base) return;
+      pending(l).forEach(function (t) { if (!ids[t.id] && list.tasks.length < R.TODO_LIMITS.tasks) { ids[t.id] = true; list.tasks.push({ id: t.id, text: t.text, size: t.size }); } });
     });
-    if (shares.length && total !== 100) throw invalid('Los porcentajes deben sumar 100 (ahora suman ' + total + ').');
-    var ids = {};
-    var tasks = (input.tasks || []).map(cleanTask).filter(function (t) { if (!t || ids[t.id]) return false; ids[t.id] = true; return true; });
-    if (tasks.length > R.TODO_LIMITS.tasks) throw invalid('Demasiadas tareas (máximo ' + R.TODO_LIMITS.tasks + ').');
-    return { id: base && base.id ? base.id : newId('tl_'), name: name, size: input.size, shares: shares, tasks: tasks,
-      day: base && base.day ? base.day : R.logicalDay(), createdAt: base && base.createdAt ? base.createdAt : new Date().toISOString() };
+    if (!base && !list.tasks.length) return { list: null, migrated: true, mixedShares: !same };
+    return { list: list, migrated: true, mixedShares: !same };
   };
 
-  // Estado de una lista a partir del registro: tareas hechas y si está completada.
+  // XP de tareas ya ganada un día (para el tope).
+  R.taskXpOn = function (entries, day) {
+    var voided = R.voidedKeys(entries);
+    return (entries || []).reduce(function (t, e) { return t + (e && R.isTodoTaskKey(e.key) && e.day === day && !voided[e.key] ? Math.max(0, e.xp) : 0); }, 0);
+  };
+
+  // Estado de la lista a partir del registro: tareas hechas (con la XP que dieron), si está completada, tope del día.
   R.todoView = function (l, entries) {
     var byKey = {}; entries.forEach(function (e) { byKey[e.key] = e; });
-    var tasks = l.tasks.map(function (t) { return Object.assign({}, t, { xp: R.taskXp(t.size), done: !!byKey['todo:' + l.id + ':' + t.id] }); });
+    var used = R.taskXpOn(entries, l.day), left = Math.max(0, R.TASK_XP_PER_DAY - used);
+    var tasks = l.tasks.map(function (t) {
+      var e = byKey['todo:' + l.id + ':' + t.id];
+      return Object.assign({}, t, { done: !!e, xp: e ? e.xp : Math.min(R.taskXp(t.size), left), sizeXp: R.taskXp(t.size), capped: e ? e.xp < R.taskXp(t.size) : left < R.taskXp(t.size) });
+    });
     var doneN = tasks.filter(function (t) { return t.done; }).length, fin = byKey['todo:' + l.id];
-    return Object.assign({}, l, { tasks: tasks, doneCount: doneN, xp: R.sizeXp(l.size), completed: !!fin, rewardXp: fin ? fin.xp : null, allDone: tasks.length > 0 && doneN === tasks.length });
+    return Object.assign({}, l, { name: 'Tareas de hoy', tasks: tasks, doneCount: doneN, xp: R.TODO_BONUS_XP, completed: !!fin, rewardXp: fin ? fin.xp : null,
+      allDone: tasks.length > 0 && doneN === tasks.length, eligible: tasks.length >= R.TODO_MIN_TASKS, usedXp: used, leftXp: left, capXp: R.TASK_XP_PER_DAY });
   };
 
   App.createTodoRepo = function (store, rpg) {
-    var cache = null, pending = null;
+    var cache, pending = null;   // cache: el documento tal cual está en el archivo (undefined = sin leer)
     function ensure(doc) {
-      if (doc && (typeof doc !== 'object' || !Array.isArray(doc.lists))) throw invalid('El archivo de tareas está dañado. No lo toco; revísalo en GitHub.');
-      return doc ? doc.lists : [];
+      if (doc && (typeof doc !== 'object' || (doc.list === undefined && !Array.isArray(doc.lists)) || (doc.list !== undefined && doc.list !== null && typeof doc.list !== 'object'))) {
+        throw invalid('El archivo de tareas está dañado. No lo toco; revísalo en GitHub.');
+      }
+      return doc;
     }
-    function valid(l) { return l && R.TODO_ID_RE.test(l.id) && Array.isArray(l.tasks); }
-    // De otro día (o sin día: listas de antes de este cambio, que se fechan hoy en la primera limpieza).
-    function stale(l) { return !l.day || l.day < R.logicalDay(); }
-    // Lo que ve la aplicación: solo las listas de hoy. Se calcula cada vez, así que a las 3:00 desaparecen aunque la
-    // página lleve horas abierta (las sin día se ven hasta que cleanup les pone uno). cleanup() hace el cambio en el archivo.
-    function live(all) { return all.filter(function (l) { return !l.day || l.day >= R.logicalDay(); }); }
-    function loadAll(force) {
-      if (cache && !force) return Promise.resolve(cache);
+    function loadDoc(force) {
+      if (cache !== undefined && !force) return Promise.resolve(cache);
       if (pending && !force) return pending;
-      var p = store.readJson(PATH, null).then(function (doc) {
-        cache = ensure(doc).filter(valid); pending = null; return cache;
-      }, function (e) { pending = null; throw e; });
+      var p = store.readJson(PATH, null).then(function (doc) { cache = ensure(doc); pending = null; return cache; }, function (e) { pending = null; throw e; });
       pending = p;
       return p;
     }
-    function loadRaw(force) { return loadAll(force).then(live); }
+    // La lista que ve la aplicación: la de hoy (de un día pasado no se ve; cleanup() hace el cambio en el archivo).
+    function current(doc, entries) {
+      var m = R.migrateTodos(doc, entries, R.logicalDay());
+      return m.list && m.list.day >= R.logicalDay() ? m.list : null;
+    }
+    // Lee, cambia y escribe la lista. `change(list, st)` recibe la lista de hoy (o null) y devuelve { list, result }.
     function mutate(message, change) {
       var result;
       return rpg.state().then(function (st) {
         return store.updateJson(PATH, function (doc) {
-          var list = ensure(doc).slice();
-          result = change(list, st);
-          return { version: 1, lists: list };
+          var cur = current(ensure(doc), st.entries);
+          var out = change(cur ? JSON.parse(JSON.stringify(cur)) : null, st);
+          result = out.result;
+          return { version: 2, list: out.list };
         }, { fallback: null, message: message });
-      }).then(function (written) { cache = written.lists.filter(valid); return result; });
+      }).then(function (written) { cache = written; return result; });
     }
-    function find(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return i; throw invalid('Esa lista ya no existe.'); }
-    function isDone(entries, id) { return entries.some(function (e) { return e.key === 'todo:' + id; }); }
-    function doneTasks(entries, id) { var out = {}; entries.forEach(function (e) { var m = /^todo:(tl_[0-9a-f]{8}):(tk_[0-9a-f]{8})$/.exec(e.key); if (m && m[1] === id) out[m[2]] = true; }); return out; }
-    // Si todas las tareas están hechas, da la recompensa de la lista (una sola vez, por su clave).
+    function need(list) { if (!list) throw invalid('Hoy todavía no hay tareas.'); return list; }
+    function findTask(list, taskId) { for (var i = 0; i < list.tasks.length; i++) if (list.tasks[i].id === taskId) return i; throw invalid('Esa tarea ya no existe.'); }
+    function isDone(entries, key) { return entries.some(function (e) { return e.key === key; }); }
+    // Si todas las tareas están hechas y hay al menos 3, da el bonus de la lista (una sola vez, por su clave).
     function finishIfDone(l, events) {
       return rpg.state().then(function (st) {
         var v = R.todoView(l, st.entries);
-        if (v.completed || !v.allDone) return events;
-        return rpg.addEntry({ kind: 'quest', key: 'todo:' + l.id, quest: l.id, label: l.name, xp: R.sizeXp(l.size), shares: l.shares }).then(function (res) {
-          if (!res.duplicate) events.push({ type: 'todo', label: l.name, xp: R.sizeXp(l.size) });
+        if (v.completed || !v.allDone || !v.eligible) return events;
+        return rpg.addEntry({ kind: 'quest', key: 'todo:' + l.id, quest: l.id, label: 'Lista del día completa', xp: R.TODO_BONUS_XP, day: l.day }).then(function (res) {
+          if (!res.duplicate) events.push({ type: 'todo', label: 'Lista del día', xp: R.TODO_BONUS_XP });
           return events;
         });
       });
     }
+    function today() { return Promise.all([loadDoc(), rpg.state()]).then(function (r) { return { list: current(r[0], r[1].entries), st: r[1] }; }); }
 
     var api = {
+      // { list: vista o null, lists: [vista] (para quien aún lee varias) }
       state: function (force) {
-        return Promise.all([loadRaw(force), rpg.state()]).then(function (r) {
-          return { lists: r[0].map(function (l) { return R.todoView(l, r[1].entries); }) };
+        return Promise.all([loadDoc(force), rpg.state()]).then(function (r) {
+          var l = current(r[0], r[1].entries), v = l ? R.todoView(l, r[1].entries) : null;
+          return { list: v, lists: v ? [v] : [], usedXp: v ? v.usedXp : R.taskXpOn(r[1].entries, R.logicalDay()), capXp: R.TASK_XP_PER_DAY };
         });
       },
-      create: function (input) {
-        return Promise.resolve().then(function () {
-          return mutate('Crea una lista de tareas', function (list, st) {
-            if (list.length >= R.TODO_LIMITS.lists) throw invalid('Ya tienes el máximo de listas.');
-            var l = R.sanitizeTodo(input, st.structure, null); list.push(l); return l;
-          });
+      // Añade una tarea al final (crea la lista de hoy si no la hay). Acepta addTask(task) o addTask(idLista, task).
+      addTask: function (a, b) {
+        var task = typeof a === 'string' ? b : a;
+        return mutate('Añade una tarea', function (list) {
+          list = list || newList(R.logicalDay(), [], []);
+          if (list.tasks.length >= R.TODO_LIMITS.tasks) throw invalid('La lista ya tiene el máximo de tareas.');
+          var t = cleanTask(task || {});
+          if (!t) throw invalid('Escribe la tarea.');
+          list.tasks.push(t);
+          return { list: list, result: t };
         });
       },
-      // Edita una lista sin completar. Las tareas ya marcadas no se pueden quitar (desmárcalas primero).
-      update: function (id, input) {
-        return Promise.resolve().then(function () {
-          return mutate('Edita una lista de tareas', function (list, st) {
-            var i = find(list, id);
-            if (isDone(st.entries, id)) throw invalid('Una lista completada no se puede cambiar.');
-            var l = R.sanitizeTodo(input, st.structure, list[i]), done = doneTasks(st.entries, id);
-            list[i].tasks.forEach(function (old) {
-              if (done[old.id] && !l.tasks.some(function (t) { return t.id === old.id; })) throw invalid('«' + old.text + '» está marcada: desmárcala antes de quitarla.');
-            });
-            list[i] = l; return l;
-          });
+      // Cambia el texto o el tamaño de una tarea sin marcar.
+      updateTask: function (taskId, input) {
+        return mutate('Edita una tarea', function (list, st) {
+          need(list);
+          var i = findTask(list, taskId);
+          if (isDone(st.entries, 'todo:' + list.id + ':' + taskId)) throw invalid('Esa tarea ya está marcada: desmárcala para cambiarla.');
+          var t = cleanTask(Object.assign({}, list.tasks[i], input || {}, { id: taskId }));
+          if (!t) throw invalid('Escribe la tarea.');
+          list.tasks[i] = t;
+          return { list: list, result: t };
         });
       },
-      // Añade una tarea al final (desde la propia tarjeta).
-      addTask: function (id, task) {
-        return Promise.resolve().then(function () {
-          return mutate('Añade una tarea', function (list, st) {
-            var i = find(list, id);
-            if (isDone(st.entries, id)) throw invalid('Esta lista ya está completada.');
-            if (list[i].tasks.length >= R.TODO_LIMITS.tasks) throw invalid('Esta lista ya tiene el máximo de tareas.');
-            var t = cleanTask(task || {});
-            if (!t) throw invalid('Escribe la tarea.');
-            list[i] = Object.assign({}, list[i], { tasks: list[i].tasks.concat([t]) });
-            return t;
-          });
+      // Sube (−1) o baja (+1) una tarea en la lista.
+      moveTask: function (taskId, dir) {
+        return mutate('Reordena las tareas', function (list) {
+          need(list);
+          var i = findTask(list, taskId), j = i + (dir < 0 ? -1 : 1);
+          if (j < 0 || j >= list.tasks.length) return { list: list, result: false };
+          var tmp = list.tasks[i]; list.tasks[i] = list.tasks[j]; list.tasks[j] = tmp;
+          return { list: list, result: true };
         });
       },
       // Quita una tarea sin marcar (las marcadas, primero se desmarcan). Puede completar la lista si las demás ya estaban hechas.
-      removeTask: function (id, taskId) {
-        return Promise.resolve().then(function () {
-          return mutate('Quita una tarea', function (list, st) {
-            var i = find(list, id);
-            if (isDone(st.entries, id)) throw invalid('Esta lista ya está completada.');
-            if (doneTasks(st.entries, id)[taskId]) throw invalid('Esa tarea está marcada: desmárcala antes de quitarla.');
-            list[i] = Object.assign({}, list[i], { tasks: list[i].tasks.filter(function (t) { return t.id !== taskId; }) });
-            return list[i];
-          }).then(function (l) { return finishIfDone(l, []); });
-        });
+      removeTask: function (a, b) {
+        var taskId = b === undefined ? a : b, id = null;
+        return mutate('Quita una tarea', function (list, st) {
+          need(list); id = list.id;
+          var i = findTask(list, taskId);
+          if (isDone(st.entries, 'todo:' + list.id + ':' + taskId)) throw invalid('Esa tarea está marcada: desmárcala antes de quitarla.');
+          list.tasks.splice(i, 1);
+          return { list: list, result: list };
+        }).then(function (l) { return finishIfDone(l, []); });
       },
-      // Elimina la lista (completada o no). La XP que ya dio se queda.
-      remove: function (id) {
-        return Promise.resolve().then(function () {
-          return mutate('Elimina una lista de tareas', function (list) { var i = find(list, id), l = list[i]; list.splice(i, 1); return l; });
-        });
-      },
-      // Marca una tarea: da su XP (una sola vez) y, si era la última, la recompensa de la lista. Devuelve los eventos.
+      // Marca una tarea: da su XP (una sola vez; con el tope del día, lo que quede o 0) y, si era la última, el bonus.
       completeTask: function (id, taskId) {
-        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
-          var l = r[0].filter(function (x) { return x.id === id; })[0];
-          if (!l) throw invalid('Esa lista ya no existe.');
+        return today().then(function (r) {
+          var l = need(r.list);
+          if (id && id !== l.id) throw invalid('Esa lista ya no existe.');
           var t = l.tasks.filter(function (x) { return x.id === taskId; })[0];
           if (!t) throw invalid('Esa tarea ya no existe.');
-          if (isDone(r[1].entries, id)) throw invalid('Esta lista ya está completada.');
-          return rpg.addEntry({ kind: 'quest', key: 'todo:' + id + ':' + taskId, quest: id, label: t.text, xp: R.taskXp(t.size), shares: l.shares })
-            .then(function () { return finishIfDone(l, []); });
+          var left = Math.max(0, R.TASK_XP_PER_DAY - R.taskXpOn(r.st.entries, l.day)), xp = Math.min(R.taskXp(t.size), left);
+          var entry = { kind: 'quest', key: 'todo:' + l.id + ':' + taskId, quest: l.id, label: t.text, xp: xp, day: l.day };   // solo nivel general
+          if (!xp) entry.capped = true;
+          return rpg.addEntry(entry).then(function () { return finishIfDone(l, []); });
         });
       },
-      // Limpieza de las 3:00: cada lista de otro día se borra y sus tareas pendientes pasan a una lista nueva de hoy
-      // (mismo nombre, recompensa y reparto; las tareas conservan su id). Las listas sin día se fechan hoy.
-      // Solo escribe si hay algo que hacer. Devuelve cuántas listas se han pasado a hoy.
+      // Limpieza de las 3:00: la lista de otro día se cambia por una nueva de hoy con lo pendiente (mismo reparto; las tareas
+      // conservan su id). Las versiones antiguas del archivo se pasan a la lista única. Solo escribe si hay algo que hacer.
+      // Devuelve cuántas tareas se han pasado a hoy.
       cleanup: function () {
-        return loadAll().then(function (all) {
-          if (!all.some(stale)) return 0;
+        return Promise.all([loadDoc(), rpg.state()]).then(function (r) {
+          var doc = r[0], m = R.migrateTodos(doc, r[1].entries, R.logicalDay());
+          var stale = m.list && m.list.day < R.logicalDay();
+          if (!m.migrated && !stale) return 0;
           var carried = 0;
-          return mutate('Limpia las tareas de días pasados', function (list, st) {
-            var today = R.logicalDay();
-            for (var i = list.length - 1; i >= 0; i--) {
-              var l = list[i];
-              if (!valid(l) || !stale(l)) continue;
-              if (!l.day) { list[i] = Object.assign({}, l, { day: today }); continue; }
-              var done = doneTasks(st.entries, l.id), left = isDone(st.entries, l.id) ? [] : l.tasks.filter(function (t) { return !done[t.id]; });
-              list.splice(i, 1);
-              if (left.length) { list.push({ id: newId('tl_'), name: l.name, size: l.size, shares: l.shares, tasks: left, day: today, carriedFrom: l.day, createdAt: new Date().toISOString() }); carried++; }
+          return store.updateJson(PATH, function (d) {
+            var mm = R.migrateTodos(ensure(d), r[1].entries, R.logicalDay()), l = mm.list;
+            if (l && l.day < R.logicalDay()) {
+              var have = doneKeys(r[1].entries), left = have['todo:' + l.id] ? [] : l.tasks.filter(function (t) { return !have['todo:' + l.id + ':' + t.id]; });
+              carried = left.length;
+              l = left.length ? newList(R.logicalDay(), l.shares, left, l.day) : null;
             }
-          }).then(function () { return carried; });
+            return { version: 2, list: l };
+          }, { fallback: null, message: m.migrated ? 'Junta las listas de tareas en la lista del día' : 'Pasa las tareas pendientes a hoy' })
+            .then(function (written) { cache = written; return carried; });
         });
       },
-      // Da la recompensa a las listas que tengan todas sus tareas hechas y aún no la tengan. Idempotente. Devuelve eventos.
+      // Da el bonus si la lista ya cumple (por ejemplo, tras quitar la última pendiente). Idempotente. Devuelve eventos.
       sync: function () {
-        return loadRaw().then(function (lists) {
-          return lists.reduce(function (chain, l) { return chain.then(function (ev) { return finishIfDone(l, ev); }); }, Promise.resolve([]));
-        });
+        return today().then(function (r) { return r.list ? finishIfDone(r.list, []) : []; });
       },
       // Tareas elegidas en las entradas de una página del diario (block.tasks = [{ list, task, text }]): al guardar la página
-      // se marcan en su lista, una sola vez (la clave es la de la tarea). Las que ya estaban hechas, o cuya lista ya no
-      // existe o está completada, se ignoran. (Quitar una tarea de la entrada la desmarca al guardar, con confirmación:
-      // ver R.diaryRemovals.) Devuelve { logged, events }.
+      // se marcan, una sola vez (la clave es la de la tarea). Las que ya estaban hechas o ya no existen se ignoran.
+      // (Quitar una tarea de la entrada la desmarca al guardar, con confirmación: ver R.diaryRemovals.) Devuelve { logged, events }.
       completeFromBlocks: function (blocks) {
         var out = { logged: [], events: [] };
-        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
-          var have = {}; r[1].entries.forEach(function (e) { have[e.key] = true; });
-          var todo = [];
+        return today().then(function (r) {
+          var l = r.list; if (!l) return null;
+          var have = doneKeys(r.st.entries), todo = [];
           (blocks || []).forEach(function (b) {
             (b.tasks || []).forEach(function (ref) {
-              var l = r[0].filter(function (x) { return x.id === ref.list; })[0], t = l && l.tasks.filter(function (x) { return x.id === ref.task; })[0];
-              if (!t || have['todo:' + l.id] || have['todo:' + l.id + ':' + t.id]) return;
-              have['todo:' + l.id + ':' + t.id] = true;
-              todo.push({ l: l, t: t });
+              var t = ref.list === l.id && l.tasks.filter(function (x) { return x.id === ref.task; })[0];
+              var key = 'todo:' + l.id + ':' + ref.task;
+              if (!t || have[key]) return;
+              have[key] = true; todo.push(t);
             });
           });
-          return todo.reduce(function (p, x) {
+          return todo.reduce(function (p, t) {
             return p.then(function () {
-              return api.completeTask(x.l.id, x.t.id).then(function (ev) {
-                out.logged.push({ key: 'todo:' + x.l.id + ':' + x.t.id, label: x.t.text, xp: R.taskXp(x.t.size) });
-                out.events = out.events.concat(ev);
+              return api.completeTask(l.id, t.id).then(function (ev) {
+                return rpg.entries().then(function (all) {
+                  var e = all.filter(function (x) { return x.key === 'todo:' + l.id + ':' + t.id; })[0];
+                  out.logged.push({ key: 'todo:' + l.id + ':' + t.id, label: t.text, xp: e ? e.xp : 0 });
+                  out.events = out.events.concat(ev);
+                });
               }, function () { /* la lista cambió entretanto: se ignora */ });
             });
           }, Promise.resolve());
         }).then(function () { return out; });
       },
-      // Desmarca una tarea: su XP deja de contar. Con la lista completada, todo queda fijo.
+      // Desmarca una tarea: su XP deja de contar. Con la lista completada, lo marcado queda fijo.
       uncompleteTask: function (id, taskId) {
-        return Promise.all([loadRaw(), rpg.state()]).then(function (r) {
-          var l = r[0].filter(function (x) { return x.id === id; })[0];
-          if (!l) throw invalid('Esa lista ya no existe.');
-          if (isDone(r[1].entries, id)) throw invalid('Esta lista ya está completada: sus tareas no se pueden desmarcar.');
-          var key = 'todo:' + id + ':' + taskId;
-          if (!r[1].entries.some(function (e) { return e.key === key; })) return [];
+        return today().then(function (r) {
+          var l = r.list;
+          if (!l || (id && id !== l.id)) throw invalid('Esa lista ya no existe.');
+          if (isDone(r.st.entries, 'todo:' + l.id)) throw invalid('La lista de hoy ya está completada: sus tareas marcadas quedan fijas.');
+          var key = 'todo:' + l.id + ':' + taskId;
+          if (!isDone(r.st.entries, key)) return [];
           return rpg.removeEntry(key).then(function () { return []; });
         });
       }

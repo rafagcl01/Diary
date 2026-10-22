@@ -10,30 +10,43 @@
   function bar(f, label) { return U.bar(f, label); }
 
   // ---- Piezas de HTML ----
-  // «Estado actual · hoy»: misiones diarias, tareas, actividades de hoy y el siguiente título. Lo que aún no ha cargado no sale.
+  // «Estado actual · hoy»: como mucho 3 chips, solo de lo que pide algo, por orden: sombra sin purificar, misiones diarias
+  // pendientes, XP descansada, tareas pendientes y escribir hoy. Lo demás (lo hecho, actividades de hoy, atributo dormido…)
+  // va en «Ver todo». Lo que aún no ha cargado no sale. El siguiente título vive en «Tu camino».
+  var STATE_MAX = 3;
   function stateHtml(st, today) {
-    var g = st.computed.general, chips = [], d0 = R.today();
-    var acts = st.entries.filter(function (e) { return e.kind === 'activity' && e.day === d0; }).length;
+    var d0 = R.today(), todo = [], rest = [];
+    function chip(cls, html) { return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + html + '</li>'; }
+    // Sombras de hoy (y de anoche, si sigue sin purificar)
+    var sh = shadowsToday(today), open = sh.filter(function (x) { return !x.purified; });
+    if (open.length) todo.push(chip('chip-shadow', '<i class="sh-dot" aria-hidden="true"></i><b>' + open.map(function (x) { return esc(x.name); }).join(', ') + '</b>&nbsp;· sin purificar'));
+    else if (sh.length) rest.push(chip('chip-shadow ok', '<i class="sh-dot" aria-hidden="true"></i><b>' + sh.map(function (x) { return esc(x.name); }).join(', ') + '</b>&nbsp;· ' + (sh.length === 1 ? 'purificada' : 'purificadas')));
     if (today && today.daily && today.daily.missions.length) {
-      var dd = today.daily.missions.filter(function (m) { return m.done; }).length;
-      chips.push('Misiones diarias <b>' + dd + ' de ' + today.daily.missions.length + '</b>' + (today.daily.complete ? ' ✓' : ''));
+      var dd = today.daily.missions.filter(function (m) { return m.done; }).length, html = 'Misiones diarias <b>' + dd + ' de ' + today.daily.missions.length + '</b>';
+      (today.daily.complete ? rest : todo).push(chip('', html + (today.daily.complete ? ' ✓' : '')));
     }
-    if (today && today.todos) {
-      var tasks = [].concat.apply([], today.todos.lists.map(function (l) { return l.tasks; }));
-      if (tasks.length) chips.push('Tareas <b>' + tasks.filter(function (t) { return t.done; }).length + ' de ' + tasks.length + '</b>');
+    var rs = R.restState ? R.restState(st.entries, d0) : null;
+    if (rs) todo.push(chip('chip-rest', '<span class="rest-moon" aria-hidden="true">☾</span>+' + R.RESTED.xp + ' extra en tus <b>' + rs.left + '</b> próximas actividades' +
+      (rs.state === 'active' ? ' · hasta ' + (rs.until === d0 ? 'esta noche' : 'mañana') : '')));
+    if (today && today.todos && today.todos.list && today.todos.list.tasks.length) {
+      var l = today.todos.list, html2 = 'Tareas <b>' + l.doneCount + ' de ' + l.tasks.length + '</b>';
+      (l.allDone ? rest : todo).push(chip('', html2 + (l.allDone ? ' ✓' : '')));
     }
-    chips.push('Actividades hoy <b>' + acts + '</b>');
-    // Sombras de hoy (y de anoche, si sigue sin purificar): una cápsula con el cuadrito desdoblado.
-    var sh = shadowsToday(today), shChip = '';
-    if (sh.length) {
-      var open = sh.filter(function (x) { return !x.purified; });
-      shChip = '<li class="chip-shadow' + (open.length ? '' : ' ok') + '"><i class="sh-dot" aria-hidden="true"></i>Sombras: <b>' + sh.map(function (x) { return esc(x.name); }).join(', ') + '</b>&nbsp;· ' +
-        (open.length ? 'sin purificar' : (sh.length === 1 ? 'purificada' : 'purificadas')) + '</li>';
-    }
-    var nt = R.nextTitle(g.level);
-    if (nt) chips.push('Siguiente título: <b>' + esc(nt.name) + '</b> · nivel ' + nt.level);
-    return '<div class="char-state" aria-label="Estado actual"><p class="char-state-h">Estado actual · hoy</p><ul class="char-chips">' +
-      chips.map(function (c) { return '<li>' + c + '</li>'; }).join('') + shChip + '</ul></div>';
+    if (R.diaryXpKey && !st.entries.some(function (e) { return e.key === R.diaryXpKey(d0); })) todo.push(chip('', '<a href="#/diario/hoy">Escribe hoy</a> · +' + R.DIARY_XP + ' XP'));
+    rest.push(chip('', 'Actividades hoy <b>' + st.entries.filter(function (e) { return e.kind === 'activity' && e.day === d0; }).length + '</b>'));
+    var sleepy = R.dormantMain ? R.dormantMain(st.structure, st.entries, d0) : null;
+    if (sleepy) rest.push(chip('chip-sleep', '<span aria-hidden="true">zZ</span> Dormido: <b>' + esc(sleepy.name) + '</b>'));
+    var shown = todo.slice(0, STATE_MAX), more = todo.slice(STATE_MAX).concat(rest);
+    return '<div class="char-state" aria-label="Estado actual"><p class="char-state-h">Estado actual · hoy</p>' +
+      (shown.length ? '<ul class="char-chips">' + shown.join('') + '</ul>' : '<p class="char-calm">Nada pendiente por hoy ✦</p>') +
+      (more.length ? '<details class="char-more"><summary>Ver todo (' + more.length + ')</summary><ul class="char-chips quiet">' + more.join('') + '</ul></details>' : '') + '</div>';
+  }
+  // Rasgos conseguidos junto al título: los 3 más recientes; el resto en «Ver rasgos».
+  function traitsOf(st, today) { return R.traitsState ? R.traitsState(st.entries, today && today.shadows, R.today()) : []; }
+  function traitsHtml(st, today) {
+    var got = traitsOf(st, today).filter(function (t) { return t.earned; }).sort(function (a, b) { return a.earnedOn < b.earnedOn ? 1 : -1; });
+    return '<div class="char-traits">' + got.slice(0, 3).map(function (t) { return '<span class="trait">' + icon(t.icon) + esc(R.named(t, st.profile.form)) + '</span>'; }).join('') +
+      '<button type="button" class="trait-link" data-act="traits" aria-haspopup="dialog">' + (got.length ? 'Ver rasgos' : 'Rasgos') + '</button></div>';
   }
   // Apariciones de hoy, más las de ayer que siguen sin purificar (las que mantienen el glitch).
   function shadowsToday(today) {
@@ -46,17 +59,31 @@
     return out;
   }
 
+  function num(n) { return Number(n).toLocaleString('es-ES'); }
+  // Nivel con toda tu XP: «Nivel 2 · 70 / 218 XP». La barra se llena dentro del nivel (de 60 a 218) y debajo se ven sus extremos.
+  function levelHtml(g) {
+    // En el nivel máximo, la barra va hacia la siguiente estrella de las constelaciones (una cada 3.000 XP).
+    if (g.max) {
+      return '<p class="char-level"><strong>Nivel ' + g.level + '</strong> <span class="soft">· máximo · ' + num(g.total) + ' XP</span></p>' +
+        bar(g.fraction, 'Constelaciones: ' + g.stars + ' estrellas; ' + g.into + ' de ' + g.need + ' XP para la siguiente') +
+        '<p class="lv-ends" aria-hidden="true"><span>✦ ' + g.stars + (g.stars === 1 ? ' estrella' : ' estrellas') + '</span><span>Siguiente: ' + num(g.next) + ' XP</span></p>';
+    }
+    return '<p class="char-level"><strong>Nivel ' + g.level + '</strong> <span class="soft">· ' + num(g.total) + ' / ' + num(g.next) + ' XP</span></p>' +
+      bar(g.fraction, 'Nivel ' + g.level + ': ' + g.total + ' de ' + g.next + ' XP para el nivel ' + (g.level + 1)) +
+      '<p class="lv-ends" aria-hidden="true"><span>Nivel ' + g.level + ' · ' + num(g.start) + '</span><span>Nivel ' + (g.level + 1) + ' · ' + num(g.next) + '</span></p>';
+  }
   function heroHtml(st, today) {
-    var g = st.computed.general, p = st.profile, fr = R.frameFor(g.level), title = R.currentTitle(p.title, g.level);
+    var g = st.computed.general, p = st.profile, title = R.currentTitle(p.title, g.level);
+    // Fondo elegido (si ya está conseguido; si no, el papel de siempre).
+    var bg = p.background && p.background !== 'papel' && R.backgroundsFor(g.level).some(function (b) { return b.id === p.background; }) ? p.background : null;
     return '<section class="card paper sheet char-hero has-edit" aria-labelledby="char-name">' +
-      V.avatar(p, g.level, { size: 'large', aura: today && today.shadows ? today.shadows.aura : null }) +
+      (bg ? '<span class="hero-bg" data-bg="' + esc(bg) + '" aria-hidden="true"></span>' : '') +
+      V.avatar(p, g.level, { size: 'large', aura: today && today.shadows ? today.shadows.aura : null, stars: g.stars }) +
       '<div class="char-id"><h2 id="char-name">' + esc(p.name || 'Tu personaje') + '</h2>' +
-        '<p class="char-title"><span class="sr">Título: </span>' + esc(title.name) + '</p>' +
-        '<p class="char-level"><strong>Nivel ' + g.level + '</strong> <span class="soft">· ' + g.into + ' / ' + g.need + ' XP · ' + g.total + ' en total</span></p>' +
-        bar(g.fraction, 'Nivel ' + g.level + ': ' + g.into + ' de ' + g.need + ' XP') +
-        '<p class="char-frame-name"><span class="frame-tag">' + esc(fr.frame.name) + '</span>' +
-          (fr.next ? '<span class="soft">Siguiente marco: ' + esc(fr.next.name) + ', en el nivel ' + fr.next.level + '</span>' : '<span class="soft">Tienes el último marco.</span>') + '</p>' +
+        '<p class="char-title"><span class="sr">Título: </span>' + esc(R.named(title, p.form)) + '</p>' + traitsHtml(st, today) +
+        levelHtml(g) +
         '</div>' + stateHtml(st, today) +
+      '<button type="button" class="char-road" data-act="road" aria-haspopup="dialog">✦ Tu camino</button>' +
       App.ui.editLink('#/ajustes/personaje', 'Editar personaje') +   // aparece al pasar el ratón; lleva a Configuración
       '<a class="menu-only" href="#/ajustes/personaje" data-menu-label="Cambiar título">Cambiar título</a>' +   // solo en el menú «⋯» (táctil)
     '</section>';
@@ -65,13 +92,13 @@
   function mainInfo(m) {
     var n = m.subs.filter(function (s) { return !s.archived; }).length;
     return '<span class="sub-ic">' + icon(m.icon) + '</span><div class="info-body"><h3>' + esc(m.name) + ' <span class="sub-lv">Nv ' + m.level + '</span></h3>' +
-      '<p class="soft">' + esc(m.description) + '</p><p class="soft">Media de ' + n + ' subcategorías · ' + Math.round(m.fraction * 100) + '% hacia el nivel ' + (m.level + 1) + '</p></div>';
+      '<p class="soft">' + esc(m.description) + '</p><p class="soft">' + num(m.xp) + ' / ' + num(m.xp - m.into + m.need) + ' XP, la suma de sus ' + m.subs.length + ' subcategorías · ' + Math.round(m.fraction * 100) + '% hacia el nivel ' + (m.level + 1) + '</p></div>';
   }
   function subInfo(s) {
     return '<span class="sub-ic">' + icon(s.icon) + '</span><div class="info-body"><h3>' + esc(s.name) + ' <span class="sub-lv">Nv ' + s.level + '</span></h3>' +
       (s.description ? '<p class="soft">' + esc(s.description) + '</p>' : '') +
-      bar(s.fraction, s.name + ' nivel ' + s.level + ': ' + s.into + ' de ' + s.need + ' XP') +
-      '<p class="soft">' + s.into + ' / ' + s.need + ' XP · ' + s.xp + ' en total</p>' +
+      bar(s.fraction, s.name + ' nivel ' + s.level + ': ' + s.xp + ' de ' + (s.xp - s.into + s.need) + ' XP para el nivel ' + (s.level + 1)) +
+      '<p class="soft">' + num(s.xp) + ' / ' + num(s.xp - s.into + s.need) + ' XP</p>' +
       '<div class="sub-tools"><button type="button" class="mini" data-act="sub-hist" data-id="' + esc(s.id) + '">Historial</button><button type="button" class="mini" data-act="sub-edit" data-id="' + esc(s.id) + '" data-back="">Editar</button></div></div>';
   }
 
@@ -101,12 +128,15 @@
     return 0;
   }
 
-  function radarCard(c, nav, hist) {
+  function radarCard(c, nav, hist, sleepy) {
     if (nav.level === 'main') {
       var cmp = compareFor(hist, nav, c.mains.map(function (m) { return m.id; }), mainValue);
+      var items = c.mains.map(function (m) { return sleepy && m.id === sleepy.id ? Object.assign({}, m, { sleep: true }) : m; });
       return '<section class="card radar-card" aria-labelledby="radar-title"><div class="rc-head"><h2 id="radar-title">Tus atributos</h2>' + compareBar(nav) + '</div>' +
-        V.radar(c.mains, { selected: '', kind: 'main', animate: nav.anim, compare: cmp }) + compareLegend(nav, hist) +
-        '<div class="info" id="rd-info" aria-live="polite"><p class="soft">Pulsa un atributo para ver sus subcategorías.</p></div></section>';
+        V.radar(items, { selected: '', kind: 'main', animate: nav.anim, compare: cmp }) + compareLegend(nav, hist) +
+        '<div class="info' + (sleepy ? ' info-sleep' : '') + '" id="rd-info" aria-live="polite">' + (sleepy
+          ? '<p><b>' + esc(sleepy.name) + '</b> está dormido: es el que menos XP ha recibido estos 7 días. Una de tus misiones de hoy es suya, con el sello «Despierta». Pulsa un atributo para ver sus subcategorías.</p>'
+          : '<p class="soft">Pulsa un atributo para ver sus subcategorías.</p>') + '</div></section>';
     }
     var m = c.mains.filter(function (x) { return x.id === nav.main; })[0];
     var active = m.subs.filter(function (s) { return !s.archived; });
@@ -171,7 +201,7 @@
         if (nav.level === 'sub' && !c.mains.some(function (m) { return m.id === nav.main; })) nav = { level: 'main', main: null, sel: null, compare: nav.compare };
         if (histOf !== st) { hist = R.radarHistory(st.structure, st.entries); histOf = st; }   // solo cuando cambia el registro
         slots[0].innerHTML = heroHtml(st, today);
-        slots[1].innerHTML = radarCard(c, nav, hist);
+        slots[1].innerHTML = radarCard(c, nav, hist, R.dormantMain ? R.dormantMain(st.structure, st.entries, R.today()) : null);
         slots[2].innerHTML = '<p class="msg" id="rpg-msg" role="status" data-kind="ok">' + esc(note) + '</p>';   // avisos (vacío, no ocupa)
         nav.anim = false;
       }
@@ -187,10 +217,14 @@
           return repo.state().then(function (s) {
             st = s; paint();
             var after = s.computed.general.level;
-            if (after > before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + after });
-            R.TITLES.filter(function (t) { return t.level > before && t.level <= after; }).forEach(function (t) {
-              V.toast.show({ kind: 'title', title: '¡Título nuevo!', text: s.profile.title ? '«' + t.name + '» ya es tuyo. Puedes elegir cuál se ve en Configuración.' : 'Ahora eres «' + t.name + '».' });
-            });
+            // Subida de nivel: la pantalla breve (si está activada) o, si no, los avisos de siempre.
+            if (after > before && s.profile.levelUpScreen && V.levelUp) V.levelUp.show(s, before, after);
+            else {
+              if (after > before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + after });
+              R.TITLES.filter(function (t) { return t.level > before && t.level <= after; }).forEach(function (t) {
+                V.toast.show({ kind: 'title', title: '¡Título nuevo!', text: s.profile.title ? '«' + R.named(t, s.profile.form) + '» ya es tuyo. Puedes elegir cuál se ve en Configuración.' : 'Ahora eres «' + R.named(t, s.profile.form) + '».' });
+              });
+            }
             V.toast.events(events);
             return Promise.all(panels.map(function (p) { return p.reload(); }).concat([refreshToday()]));
           });
@@ -227,7 +261,7 @@
           (sub ? '<p class="soft">Cambiar el nombre no toca su experiencia ni su historial.</p>' : '') +
           '<label class="field"><span>Nombre</span><input id="sb-name" type="text" maxlength="' + R.LIMITS.name + '" autocomplete="off" value="' + esc(sub ? sub.name : '') + '"></label>' +
           '<label class="field"><span>Descripción</span><input id="sb-desc" type="text" maxlength="' + R.LIMITS.description + '" autocomplete="off" value="' + esc(sub ? sub.description : '') + '"></label>' +
-          U.symbolGrid('sb-icon', R.ICONS, sub ? sub.icon : 'star') + DMSG +
+          U.symbolGrid('sb-icon', sub ? sub.icon : 'star', !sub) + DMSG +
           '<div class="btn-row"><button type="button" class="btn" data-act="sub-save">Guardar</button><button type="button" class="btn secondary" data-act="' + (back ? 'sub-manage' : 'close') + '">Cancelar</button></div>');
       }
       function openMain() {
@@ -236,7 +270,7 @@
         openDialog('<h3 id="rpg-dtitle">Editar atributo</h3>' +
           '<label class="field"><span>Nombre</span><input id="sb-name" type="text" maxlength="' + R.LIMITS.name + '" autocomplete="off" value="' + esc(m.name) + '"></label>' +
           '<label class="field"><span>Descripción</span><input id="sb-desc" type="text" maxlength="' + R.LIMITS.description + '" autocomplete="off" value="' + esc(m.description) + '"></label>' +
-          U.symbolGrid('sb-icon', R.ICONS, m.icon) + DMSG +
+          U.symbolGrid('sb-icon', m.icon, false) + DMSG +
           '<div class="btn-row"><button type="button" class="btn" data-act="main-save">Guardar</button><button type="button" class="btn secondary" data-act="sub-manage">Cancelar</button></div>');
       }
       function openHistory(id) {
@@ -248,6 +282,66 @@
             var part = e.splits.filter(function (x) { return x.sub === id; })[0];
             return '<li><span>' + esc(e.label) + (e.kind === 'adjustment' ? ' <em>(ajuste)</em>' : '') + '</span><span class="soft">' + esc(U.fmtDay(e.day)) + '</span><strong>' + (part.xp > 0 ? '+' : '') + part.xp + ' XP</strong></li>';
           }).join('') + '</ul>' : '<p class="soft">Todavía sin historial.</p>') +
+          '<div class="btn-row"><button type="button" class="btn secondary" data-act="close">Cerrar</button></div>');
+      }
+      // «Tu camino»: lo próximo que consigues y cuánto falta; cada nivel con premio (marcos y títulos, de config.js) marcando
+      // lo conseguido y dónde estás; y cómo se gana XP (también de config.js). Si cambian los valores, esto cambia solo.
+      function openRoad() {
+        form = { mode: 'road' };
+        var g = st.computed.general, C = R.CONFIG, byLevel = {};
+        R.AVATAR_FRAMES.forEach(function (f) { (byLevel[f.level] = byLevel[f.level] || []).push({ kind: 'Marco', cls: 'f', name: f.name }); });
+        R.TITLES.forEach(function (t) { (byLevel[t.level] = byLevel[t.level] || []).push({ kind: 'Título', cls: 't', name: R.named(t, st.profile.form) }); });
+        R.BACKGROUNDS.forEach(function (b) { if (b.level > 1) (byLevel[b.level] = byLevel[b.level] || []).push({ kind: 'Fondo', cls: 'b', name: b.name }); });
+        var levels = Object.keys(byLevel).map(Number).sort(function (a, b) { return a - b; });
+        var next = levels.filter(function (l) { return l > g.level; })[0];
+        function items(l) { return byLevel[l].map(function (x) { return '<span class="rd-item"><span class="kind ' + x.cls + '">' + x.kind + '</span>' + esc(x.name) + '</span>'; }).join(''); }
+        var rows = [], hereDone = false;
+        levels.forEach(function (l) {
+          if (!hereDone && l > g.level) { rows.push(here()); hereDone = true; }
+          var got = l <= g.level;
+          rows.push('<li class="' + (got ? 'got' : '') + '"><span class="lvl">' + l + '</span><span class="what">' + items(l) + '</span><span class="xp">' + (got ? 'Conseguido' : num(R.xpForLevel(l)) + ' XP') + '</span></li>');
+        });
+        if (!hereDone) rows.push(here());
+        // Más allá del nivel máximo: las constelaciones.
+        var top = R.GENERAL_LEVEL.max, step = R.CONFIG.constellation.xp;
+        if (top) rows.push('<li class="' + (g.max ? 'got' : '') + '"><span class="lvl">✦</span><span class="what"><span class="rd-item"><span class="kind c">Constelaciones</span>' +
+          (g.max ? (g.stars ? 'Tienes ' + g.stars + (g.stars === 1 ? ' estrella' : ' estrellas') : 'Tu primera estrella, en ' + num(g.need - g.into) + ' XP') : 'Pasado el nivel ' + top + ', una estrella en el marco cada ' + num(step) + ' XP') +
+          '</span></span><span class="xp">' + (g.max ? 'Siguiente: ' + num(g.next) + ' XP' : num(R.xpForLevel(top) + step) + ' XP') + '</span></li>');
+        function here() { return '<li class="here" aria-current="step"><span class="lvl">' + g.level + '</span><span class="what"><b>Estás aquí</b></span><span class="xp">' + num(g.total) + ' XP</span></li>'; }
+        var T = C.tasks, A = C.activity, D = C.daily, B = C.bosses;
+        var sizes = function (list) { return list.map(function (z) { return z.xp; }).join(' / '); };
+        var table = [
+          ['Escribir en el diario', String(C.diary.xp), String(C.diary.xp)],
+          ['Actividades', A.xp + ' cada una', String(A.xp * A.perDay)],
+          ['Tareas', sizes(T.sizes), String(T.perDay)],
+          ['Lista del día completa (' + T.listMin + ' tareas o más)', String(T.listBonus), String(T.listBonus)],
+          ['Misiones diarias', sizes(R.DAILY_SIZES) + ', +' + D.bonus + ' las tres', String(Math.max.apply(null, R.DAILY_SIZES.map(function (z) { return z.xp; })) * 3 + D.bonus)],
+          ['Misiones semanales', sizes(R.QUEST_SIZES), '—'],
+          ['Jefes', B.stepXp + ' por paso; ' + sizes(B.tiers), '—']
+        ];
+        openDialog('<h3 id="rpg-dtitle">Tu camino</h3>' +
+          (next ? '<div class="road-next"><span class="road-star" aria-hidden="true">✦</span><p>Lo próximo: <b>' + byLevel[next].map(function (x) { return x.kind.toLowerCase() + ' ' + esc(x.name); }).join(' y ') + '</b> en el nivel ' + next + '.</p>' +
+            '<p>Te faltan <b>' + num(R.xpForLevel(next) - g.total) + ' XP</b> (llevas ' + num(g.total) + ' de ' + num(R.xpForLevel(next)) + ').</p></div>'
+            : '<div class="road-next"><span class="road-star" aria-hidden="true">✦</span><p>Ya tienes <b>todos los marcos y títulos</b>.</p></div>') +
+          '<ol class="road">' + rows.join('') + '</ol>' +
+          '<h4 class="road-h">Cómo se gana XP</h4><div class="road-tbl"><table><thead><tr><th>Fuente</th><th>XP</th><th>Tope al día</th></tr></thead><tbody>' +
+            table.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+          '<div class="btn-row"><button type="button" class="btn secondary" data-act="close">Cerrar</button></div>');
+        dlg().scrollTop = 0;   // al abrir se enfoca «Cerrar» (abajo): que se vea desde el principio
+      }
+      // Rasgos: los conseguidos (con su día) y los que faltan, con lo que piden y cómo vas (últimos 30 días).
+      function openTraits() {
+        form = { mode: 'traits' };
+        var list = traitsOf(st, today);
+        openDialog('<h3 id="rpg-dtitle">Tus rasgos</h3>' +
+          '<p class="soft">Salen solos de lo que haces. Una vez conseguido, un rasgo es tuyo para siempre. Solo son decoración: no dan XP.</p>' +
+          '<ul class="trait-grid">' + list.map(function (t) {
+            // Los secretos no dicen nada hasta conseguirlos.
+            if (t.secret && !t.earned) return '<li class="tg locked tg-secret"><span class="tg-ic" aria-hidden="true">?</span><b>???</b><p>Un rasgo secreto. Se descubre solo.</p></li>';
+            return '<li class="tg' + (t.earned ? '' : ' locked') + (t.secret ? ' tg-found' : '') + '"><span class="tg-ic">' + icon(t.icon) + '</span><b>' + esc(R.named(t, st.profile.form)) + '</b><p>' + esc(t.desc) + '</p>' +
+              (t.earned ? '<span class="tg-when">Conseguido el ' + esc(U.fmtDay(t.earnedOn)) + '</span>'
+                : '<span class="tg-when">' + t.progress + ' de ' + t.target + (t.window ? ' (últimos ' + t.window + ' días)' : '') + U.bar(t.progress / t.target, R.named(t, st.profile.form) + ': ' + t.progress + ' de ' + t.target) + '</span>') + '</li>';
+          }).join('') + '</ul>' +
           '<div class="btn-row"><button type="button" class="btn secondary" data-act="close">Cerrar</button></div>');
       }
       function checkedValue(name) { var el = root.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : undefined; }
@@ -271,6 +365,8 @@
         if (act === 'back') { var was = nav.main; nav = { level: 'main', main: null, sel: null, anim: true, compare: nav.compare }; paint(); return focusSel('.rd-label[data-main="' + was + '"]'); }
         if (act === 'cmp') { nav.compare = t.getAttribute('data-mode') === 'rings' ? 'rings' : 'month'; paint(); return focusSel('[data-act="cmp"][data-mode="' + nav.compare + '"]'); }
         if (act === 'close') return closeDialog();
+        if (act === 'traits') return openTraits();
+        if (act === 'road') return openRoad();
         if (act === 'sub-manage') return openManage();
         if (act === 'sub-new') return openSub(null, true);
         if (act === 'main-edit') return openMain();
@@ -300,6 +396,13 @@
 
       repo.state().then(function (s) {
         st = s; paint();
+        // Aviso único (en este navegador) del cambio de curva de octubre de 2026: tu nivel se recalcula, nunca baja.
+        try {
+          if (localStorage.getItem('diario-rpg.curve') !== '3') {
+            localStorage.setItem('diario-rpg.curve', '3');
+            if (s.entries.length) V.toast.show({ kind: 'level', title: 'Nueva curva de niveles', text: 'Con tu misma XP, ahora estás en el nivel ' + s.computed.general.level + ' (el máximo es el 30).' });
+          }
+        } catch (e) { /* sin almacenamiento: no pasa nada, solo no sale el aviso */ }
         var bossPanel = null;
         var ctx = { rpg: repo, acts: R.activities(), weekly: R.weekly(), bosses: R.bosses(), todos: R.todos(), daily: R.daily(), shadows: R.shadows(), afterChange: afterChange,
           onShadows: refreshToday,   // apuntar o deshacer una sombra cambia el glitch del avatar y «Estado actual»

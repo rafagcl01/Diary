@@ -210,6 +210,7 @@
       // Apunta que apareció (una vez por día). Devuelve { duplicate }.
       appear: function (id, day, from) {
         day = isDay(day) ? day : R.logicalDay();
+        if (day > R.today()) return Promise.reject(invalid('Ese día todavía no ha llegado.'));
         return mutate('Apunta una sombra', function (data) {
           var s = find(data, id);
           if (s.archived) throw invalid('Esa sombra está archivada.');

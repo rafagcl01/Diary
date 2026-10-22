@@ -1,5 +1,5 @@
 // Panel «Misiones semanales» de la ficha. Cada una es «solo esta semana» (se borra el lunes a las 3:00) o «se repite
-// cada semana» (vuelve a empezar cada lunes). Las ligadas a una actividad se completan solas.
+// cada semana» (vuelve a empezar cada lunes). Las ligadas a actividades (una o varias) se completan solas. Como mucho 5.
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util, K = V.pickers;
 
@@ -7,8 +7,8 @@
     var pct = Math.min(1, m.count / m.target);
     var body;
     if (m.mode === 'activity') {
-      body = '<p class="wk-line">' + esc(actNames[m.activity] || 'Actividad') + ' · <strong>' + Math.min(m.count, m.target) + ' de ' + m.target + '</strong> esta semana</p>' + U.bar(pct, m.name + ': ' + Math.min(m.count, m.target) + ' de ' + m.target) +
-        (m.done ? '' : '<p class="soft wk-note">Se completa sola al registrar la actividad.</p>');
+      body = '<p class="wk-line">' + R.weeklyActivities(m).map(function (a) { return esc(actNames[a] || 'Actividad'); }).join(' o ') + ' · <strong>' + Math.min(m.count, m.target) + ' de ' + m.target + '</strong> esta semana</p>' + U.bar(pct, m.name + ': ' + Math.min(m.count, m.target) + ' de ' + m.target) +
+        (m.done ? '' : '<p class="soft wk-note">Se completa sola al registrar ' + (R.weeklyActivities(m).length > 1 ? 'alguna de estas actividades (cuenta una por actividad y día).' : 'la actividad (cuenta una por día).') + '</p>');
     } else {
       body = '<ul class="wk-checks" aria-label="Casillas de ' + esc(m.name) + '">' + m.checks.map(function (c, i) {
         return '<li><label><input type="checkbox" data-check="' + i + '" data-id="' + esc(m.id) + '"' + (c ? ' checked' : '') + (m.done ? ' disabled' : '') + '><span>' + (m.target === 1 ? esc(m.description || 'Completada esta semana') : 'Casilla ' + (i + 1)) + '</span></label></li>';
@@ -38,7 +38,7 @@
       var live = state.missions;
       $('#wk-range').textContent = 'Del ' + U.fmtDay(state.range.from) + ' al ' + U.fmtDay(state.range.to);
       body.innerHTML = live.length ? '<ul class="wk-list">' + live.map(function (m) { return card(m, names(), actNames()); }).join('') + '</ul>' :
-        '<p class="soft">Aún no tienes misiones semanales. Crea una, por ejemplo «Ir al gimnasio 3 veces».</p>';
+        App.creature('Aún no tienes misiones semanales. Crea una, por ejemplo «Ir al gimnasio 3 veces».');
     }
     // Antes de pintar, se borran las archivadas del sistema anterior (si las hay).
     function reload() {
@@ -61,14 +61,15 @@
     function pickHtml() { return K.html(K.groups(st.structure, false), names(), form.shares, 'pct'); }
     function actPicker() {
       if (form.mode !== 'activity') return '';
-      return '<ul class="emo-caps pk-caps" aria-label="Actividad que cuenta">' + actList.filter(function (a) { return !a.archived; }).map(function (a) {
-        return '<li><button type="button" class="emo-cap" data-wact="' + esc(a.id) + '" aria-pressed="' + (form.activity === a.id) + '">' + icon(a.icon) + '<span>' + esc(a.name) + '</span></button></li>';
-      }).join('') + '</ul>';
+      return '<p class="soft">Elige una o varias: cualquiera de ellas cuenta (por ejemplo, «Hacer ejercicio» con el gimnasio y correr).</p>' +
+        '<ul class="emo-caps pk-caps" aria-label="Actividades que cuentan">' + actList.filter(function (a) { return !a.archived || form.activities.indexOf(a.id) >= 0; }).map(function (a) {
+          return '<li><button type="button" class="emo-cap" data-wact="' + esc(a.id) + '" aria-pressed="' + (form.activities.indexOf(a.id) >= 0) + '">' + icon(a.icon) + '<span>' + esc(a.name) + '</span></button></li>';
+        }).join('') + '</ul>';
     }
     function targetLabel() { return form.mode === 'activity' ? '¿Cuántas veces a la semana?' : '¿Cuántas casillas? (1 = un solo check)'; }
 
     function openForm(m) {
-      form = { id: m ? m.id : null, size: m ? m.size : 'normal', mode: m ? m.mode : 'activity', activity: m ? m.activity : null, shares: {}, repeat: m ? m.repeat !== false : false };
+      form = { id: m ? m.id : null, size: m ? m.size : 'normal', mode: m ? m.mode : 'activity', activities: m ? R.weeklyActivities(m).slice() : [], shares: {}, repeat: m ? m.repeat !== false : false };
       if (m) m.shares.forEach(function (s) { form.shares[s.sub] = s.pct; });
       dlg().innerHTML = '<h3 id="wk-dtitle">' + (m ? 'Editar misión semanal' : 'Nueva misión semanal') + '</h3>' +
         '<label class="field"><span>Nombre</span><input id="wf-name" type="text" maxlength="' + R.WEEKLY_LIMITS.name + '" autocomplete="off" value="' + esc(m ? m.name : '') + '"></label>' +
@@ -78,7 +79,7 @@
           '<li><button type="button" class="emo-cap" data-repeat="1" aria-pressed="' + form.repeat + '"><span>Repetir cada semana</span></button></li></ul>' +
           '<p class="soft">«Solo esta semana» se borra el lunes a las 3:00. La XP que haya dado se queda.</p></fieldset>' +
         '<fieldset class="symbols"><legend>¿Cómo se completa?</legend><ul class="emo-caps" aria-label="Modo">' +
-          '<li><button type="button" class="emo-cap" data-mode="activity" aria-pressed="' + (form.mode === 'activity') + '"><span>Haciendo una actividad varias veces (se completa sola)</span></button></li>' +
+          '<li><button type="button" class="emo-cap" data-mode="activity" aria-pressed="' + (form.mode === 'activity') + '"><span>Haciendo actividades varias veces (se completa sola)</span></button></li>' +
           '<li><button type="button" class="emo-cap" data-mode="checks" aria-pressed="' + (form.mode === 'checks') + '"><span>Casillas que marco yo</span></button></li></ul>' +
           '<div id="wf-act">' + actPicker() + '</div>' +
           '<div class="field"><span id="wf-tl">' + targetLabel() + '</span>' + App.ui.stepper({ id: 'wf-target', value: m ? m.target : 3, min: 1, max: R.WEEKLY_LIMITS.target, attrs: 'aria-labelledby="wf-tl"' }) + '</div></fieldset>' +
@@ -99,10 +100,17 @@
       if (t.getAttribute('data-pk') && form) { K.toggle(form.shares, t.getAttribute('data-pk'), 'pct'); $('#wf-pick').innerHTML = pickHtml(); return; }
       if (t.getAttribute('data-size') && form) { form.size = t.getAttribute('data-size'); return setPressed('[data-size]', 'data-size', form.size); }
       if (t.getAttribute('data-mode') && form) { form.mode = t.getAttribute('data-mode'); setPressed('[data-mode]', 'data-mode', form.mode); $('#wf-act').innerHTML = actPicker(); $('#wf-tl').textContent = targetLabel(); return; }
-      if (t.getAttribute('data-wact') && form) { form.activity = t.getAttribute('data-wact'); return setPressed('[data-wact]', 'data-wact', form.activity); }
+      if (t.getAttribute('data-wact') && form) {
+        var wa = t.getAttribute('data-wact'), wi = form.activities.indexOf(wa);
+        if (wi >= 0) form.activities.splice(wi, 1); else form.activities.push(wa);
+        t.setAttribute('aria-pressed', String(wi < 0)); return;
+      }
       var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
       if (act === 'close') return dlg().close();
-      if (act === 'new') return openForm(null);
+      if (act === 'new') {
+        if (state.missions.length >= R.WEEKLY_LIMITS.count) return say('Ya tienes ' + R.WEEKLY_LIMITS.count + ' misiones semanales activas, el máximo. Elimina una para crear otra.');
+        return openForm(null);
+      }
       if (act === 'edit') return openForm(state.missions.filter(function (m) { return m.id === id; })[0]);
       if (act === 'del') { $('#wk-actions').innerHTML = askHtml(); var y = $('[data-act="del-yes"]'); if (y && y.focus) y.focus(); return; }
       if (act === 'del-no') { $('#wk-actions').innerHTML = actionsHtml(); return; }
@@ -113,7 +121,7 @@
           .catch(function (e) { dmsg(e.message); $('#wk-actions').innerHTML = actionsHtml(); }).then(function () { busy = false; });
       }
       if (act === 'save') {
-        var data = { name: $('#wf-name').value, description: $('#wf-desc').value, size: form.size, shares: K.toList(form.shares, 'pct'), mode: form.mode, activity: form.activity, target: Number($('#wf-target').value), repeat: form.repeat };
+        var data = { name: $('#wf-name').value, description: $('#wf-desc').value, size: form.size, shares: K.toList(form.shares, 'pct'), mode: form.mode, activities: form.activities, target: Number($('#wf-target').value), repeat: form.repeat };
         var p = form.id ? weekly.update(form.id, data) : weekly.create(data);
         return p.then(function () { return ctx.afterChange(); }).then(function () { dlg().close(); }).catch(function (e) { dmsg(e.message); });
       }

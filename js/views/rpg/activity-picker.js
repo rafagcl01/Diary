@@ -53,7 +53,6 @@
       var box = $('#ap-tasks'); if (!box) return;
       var q = R.fold(query), seen = {}, items = [];
       lists.forEach(function (l) {
-        if (l.completed) return;
         l.tasks.forEach(function (t) {
           var k = l.id + ':' + t.id;
           if (t.done && !taskStaged(k)) return;
@@ -66,7 +65,7 @@
         var k = it.list + ':' + it.task;
         return '<li><button type="button" class="emo-cap act-cap ap-task" data-ap-task="' + esc(k) + '" data-text="' + esc(it.text) + '" aria-pressed="' + taskStaged(k) + '"' +
           (it.from ? ' title="De la lista «' + esc(it.from) + '»"' : '') + '>' + icon('check') + '<span>' + esc(it.text) + (it.xp ? ' <small>· +' + it.xp + '</small>' : '') + '</span></button></li>';
-      }).join('') : '<li class="soft">' + (q ? 'Ninguna tarea con ese nombre.' : 'No tienes tareas pendientes hoy. Se crean en Personaje → Tareas.') + '</li>';
+      }).join('') : '<li class="soft">' + (q ? 'Ninguna tarea con ese nombre.' : 'No tienes tareas pendientes hoy. Se añaden en Personaje → Tareas.') + '</li>';
     }
     // Sombras activas, más las ya elegidas en la entrada (aunque estén archivadas). Si no hay ninguna, se explica dónde se crean.
     function paintShadows() {
@@ -112,7 +111,7 @@
       $('#ap-form').innerHTML = '<h4>' + (a ? 'Editar actividad' : 'Nueva actividad') + '</h4>' +
         (a ? '<p class="soft">Lo ya registrado no cambia: cada apunte guarda sus propios puntos.</p>' : '') +
         '<label class="field"><span>Nombre</span><input id="ap-name" type="text" maxlength="' + R.ACTIVITY_LIMITS.name + '" autocomplete="off" value="' + esc(a ? a.name : '') + '" placeholder="Por ejemplo, Patinar"></label>' +
-        U.symbolGrid('ap-icon', R.ICONS, a ? a.icon : 'star') +
+        U.symbolGrid('ap-icon', a ? a.icon : 'star', !a) +
         (once ? '<label class="checkline"><input type="checkbox" id="ap-keep" checked><span>Guardar para repetirla otras veces</span></label>' : '') +
         '<fieldset class="shares"><legend>Reparte exactamente ' + R.ACTIVITY_XP + ' puntos</legend><div id="ap-pick">' + pickHtml() + '</div></fieldset>' +
         '<p class="msg" id="ap-fmsg" role="status" data-kind="error"></p>' +

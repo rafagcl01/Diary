@@ -127,7 +127,7 @@
               '<label class="btn secondary" for="cs-photo">' + (form.photo ? 'Cambiar foto' : 'Elegir foto') + '</label></div>' +
               '<small class="soft">Se recorta cuadrada y se reduce a ' + R.AVATAR_PHOTO.px + ' px en tu navegador. Se guarda en tu repositorio de datos (rpg/profile.json), sin cifrar como todo lo demás.</small>';
           }
-          var grid = U.symbolGrid('cs-symbol', R.AVATARS, form.avatar);
+          var grid = U.symbolGrid('cs-symbol', form.avatar, false, 'Símbolo');
           if (form.mode === 'url') {
             return '<label class="field"><span>Enlace a la imagen o GIF</span><input id="cs-url" type="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace de la imagen" value="' + esc(form.url) + '">' +
               '<small>' + U.imageLinkHelp() + ' Si un día no carga, se ve el símbolo de abajo.</small></label>' + grid;
@@ -138,12 +138,24 @@
         // Títulos: «El más alto» (sin elegir) y los conseguidos; los que faltan se ven, apagados, con su nivel.
         function titlesHtml() {
           var top = R.currentTitle(null, level);
-          return '<li><button type="button" class="emo-cap" data-cs-title="" aria-pressed="' + !form.title + '"><span>El más alto (' + esc(top.name) + ')</span></button></li>' +
+          return '<li><button type="button" class="emo-cap" data-cs-title="" aria-pressed="' + !form.title + '"><span>El más alto (' + esc(R.named(top, form.textForm)) + ')</span></button></li>' +
             R.TITLES.map(function (t) {
               var got = level >= t.level;
               return '<li><button type="button" class="emo-cap"' + (got ? ' data-cs-title="' + esc(t.id) + '" aria-pressed="' + (form.title === t.id) + '"' : ' disabled aria-disabled="true"') + '>' +
-                '<span>' + esc(t.name) + (got ? '' : ' · nivel ' + t.level) + '</span></button></li>';
+                '<span>' + esc(R.named(t, form.textForm)) + (got ? '' : ' · nivel ' + t.level) + '</span></button></li>';
             }).join('');
+        }
+        // Forma de los textos (títulos y rasgos), fondo de la ficha (los que faltan, apagados con su nivel) y pantalla al subir de nivel.
+        var FORMS = [['f', 'Femenina'], ['m', 'Masculina'], ['n', 'Neutra']];
+        function formsHtml() {
+          return FORMS.map(function (x) { return '<li><button type="button" class="emo-cap" data-cs-form="' + x[0] + '" aria-pressed="' + (form.textForm === x[0]) + '"><span>' + x[1] + '</span></button></li>'; }).join('');
+        }
+        function bgsHtml() {
+          return R.BACKGROUNDS.map(function (b) {
+            var got = level >= b.level;
+            return '<button type="button" class="cs-bg" data-cs-bg="' + esc(b.id) + '" aria-pressed="' + (form.background === b.id) + '"' + (got ? '' : ' disabled aria-disabled="true"') + '>' +
+              '<span class="cs-bg-sw" data-bg="' + esc(b.id) + '" aria-hidden="true"></span>' + esc(b.name) + '<small>' + (b.level > 1 ? 'Nivel ' + b.level : 'Desde el principio') + '</small></button>';
+          }).join('');
         }
         function paintMode() { $('#cs-mode').innerHTML = modeHtml(); }
         function say(t, kind) { var m = $('#cs-msg'); m.textContent = t || ''; m.setAttribute('data-kind', kind || 'info'); }
@@ -155,6 +167,10 @@
             '<label class="field"><span>Nombre del personaje</span><input id="cs-name" type="text" maxlength="' + R.LIMITS.name + '" autocomplete="off" value="' + esc(form.name) + '"></label>' +
             '<div class="field"><span>Título</span><ul class="emo-caps cs-modes" aria-label="Título" id="cs-titles">' + titlesHtml() + '</ul>' +
               '<small>Los títulos se consiguen subiendo de nivel. «El más alto» cambia solo al conseguir uno nuevo.</small></div>' +
+            '<div class="field"><span>Forma de los textos</span><ul class="emo-caps cs-modes" aria-label="Forma de los textos" id="cs-forms">' + formsHtml() + '</ul>' +
+              '<small>Para títulos y rasgos: «' + esc(R.named(R.currentTitle(form.title, level), form.textForm)) + '».</small></div>' +
+            '<div class="field"><span>Fondo de la ficha</span><div class="cs-bgs" id="cs-bgs">' + bgsHtml() + '</div></div>' +
+            '<label class="checkline"><input type="checkbox" id="cs-lvlup"' + (form.levelUpScreen ? ' checked' : '') + '><span>Pantalla al subir de nivel</span></label>' +
             '<div class="field"><span>Avatar</span><ul class="emo-caps cs-modes" aria-label="Tipo de avatar">' + modes + '</ul></div>' +
             '<div id="cs-mode">' + modeHtml() + '</div>' +
             '<p class="msg" id="cs-msg" role="status" data-kind="info"></p>' +
@@ -165,7 +181,8 @@
           var p = st.profile, img = p.image;
           level = st.computed.general.level;
           form = { name: p.name, avatar: p.avatar, mode: img ? (img.kind === 'photo' ? 'photo' : 'url') : 'symbol', photo: img && img.kind === 'photo' ? img.data : '', url: img && img.kind === 'url' ? img.url : '',
-            title: p.title && R.titlesFor(level).some(function (t) { return t.id === p.title; }) ? p.title : null };
+            title: p.title && R.titlesFor(level).some(function (t) { return t.id === p.title; }) ? p.title : null, textForm: p.form,
+            background: R.backgroundsFor(level).some(function (b) { return b.id === p.background; }) ? p.background : 'papel', levelUpScreen: p.levelUpScreen };
           paint();
         }).catch(function (err) {
           body.innerHTML = '<p class="msg" data-kind="error">No se pudo cargar tu personaje. ' + esc((err && err.message) || '') + '</p>';
@@ -173,9 +190,11 @@
 
         body.addEventListener('error', V.avatarFallback, true);   // GIF que no carga: la vista previa enseña el símbolo
         body.addEventListener('click', function (e) {
-          var t = e.target && e.target.closest ? e.target.closest('[data-cs-mode],[data-cs-title],#cs-save') : null;
+          var t = e.target && e.target.closest ? e.target.closest('[data-cs-mode],[data-cs-title],[data-cs-form],[data-cs-bg],#cs-save') : null;
           if (!t || !form) return;
           if (t.hasAttribute('data-cs-title')) { form.title = t.getAttribute('data-cs-title') || null; $('#cs-titles').innerHTML = titlesHtml(); return; }
+          if (t.hasAttribute('data-cs-form')) { form.textForm = t.getAttribute('data-cs-form'); paint(); return; }
+          if (t.hasAttribute('data-cs-bg')) { form.background = t.getAttribute('data-cs-bg'); $('#cs-bgs').innerHTML = bgsHtml(); return; }
           if (t.id !== 'cs-save') {
             form.mode = t.getAttribute('data-cs-mode');
             Array.prototype.forEach.call(body.querySelectorAll('[data-cs-mode]'), function (b) { b.setAttribute('aria-pressed', String(b === t)); });
@@ -186,7 +205,7 @@
           if (form.mode === 'photo') { if (!form.photo) { say('Elige una foto primero.', 'error'); return; } img = { kind: 'photo', data: form.photo }; }
           if (form.mode === 'url') { if (!form.url.trim()) { say('Pega el enlace de la imagen o del GIF.', 'error'); return; } img = { kind: 'url', url: form.url.trim() }; }
           busy = true; t.disabled = true; say('Guardando…');
-          repo.saveProfile({ name: $('#cs-name').value, avatar: form.avatar, image: img, title: form.title })
+          repo.saveProfile({ name: $('#cs-name').value, avatar: form.avatar, image: img, title: form.title, form: form.textForm, background: form.background, levelUpScreen: form.levelUpScreen })
             .then(function () { say('Guardado. Ya se ve en tu ficha de Personaje.', 'ok'); })
             .catch(function (err) { say((err && err.message) || 'No se pudo guardar.', 'error'); })
             .then(function () { busy = false; t.disabled = false; });
@@ -194,6 +213,7 @@
         body.addEventListener('change', function (e) {
           var t = e.target; if (!t || !form) return;
           if (t.name === 'cs-symbol') { form.avatar = t.value; paintPreview(); return; }
+          if (t.id === 'cs-lvlup') { form.levelUpScreen = t.checked; return; }
           if (t.id === 'cs-photo' && t.files && t.files[0]) {
             say('Preparando la foto…');
             App.shrinkPhoto(t.files[0], R.AVATAR_PHOTO.px, R.AVATAR_PHOTO.max).then(function (data) {

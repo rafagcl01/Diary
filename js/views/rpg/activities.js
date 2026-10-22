@@ -1,6 +1,7 @@
 // Panel «Actividades» de la ficha: registro rápido (el día y «Registrar actividad», que abre la ventana con todas,
 // ver activity-picker.js) y debajo las 2 últimas, también las apuntadas desde el diario, cada una con el icono y el nombre
-// de su atributo. Sin scroll: el resto, en «Ver historial». Todas dan 5 XP. Quitar una pide confirmar (y quita su XP).
+// de su atributo. Sin scroll: el resto, en «Ver historial». Todas dan 5 XP, pero solo las 10 primeras de cada día; las demás
+// se registran con 0 XP y lo dice con buen tono. Se pueden apuntar hoy o ayer. Quitar una pide confirmar (y quita su XP).
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews, U = V.util;
   var RECENT = 2;
@@ -13,8 +14,8 @@
   V.activitiesPanel = function (host, ctx) {
     var acts = ctx.acts, rpg = ctx.rpg;
     host.innerHTML = '<div class="col-head"><h2>Actividades</h2></div>' +
-      '<p class="soft col-lead">Todas dan ' + R.ACTIVITY_XP + ' XP. También puedes apuntarlas en una entrada del diario.</p>' +
-      '<div class="act-top"><label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" max="' + R.today() + '"></label>' +
+      '<p class="soft col-lead">Cada una da ' + R.ACTIVITY_XP + ' XP (las ' + R.ACTIVITY_PER_DAY + ' primeras del día). También puedes apuntarlas en una entrada del diario.</p>' +
+      '<div class="act-top"><label class="field inline act-day"><span>Día</span><input id="act-day" type="date" value="' + R.today() + '" min="' + R.shiftDay(R.today(), -R.CONFIG.activity.daysBack) + '" max="' + R.today() + '"></label>' +
       '<button type="button" class="act-add" data-act="add" aria-haspopup="dialog">' + icon('pencil') + '<span>Registrar actividad</span></button></div>' +
       '<p class="msg" id="act-msg" role="status" data-kind="ok"></p>' +
       '<h3 class="act-recent-h">Últimas registradas</h3><div id="act-body"></div>' +
@@ -41,18 +42,28 @@
         .sort(function (a, b) { return a.day !== b.day ? (a.day < b.day ? 1 : -1) : ((a.at || '') < (b.at || '') ? 1 : -1); });
     }
     // Quitar una actividad quita su XP: antes se pregunta en la misma fila, diciendo cuánta.
+    function restedOf(e) { return all.filter(function (x) { return x.key === 'rested:' + e.key; })[0] || null; }
     function row(e) {
-      var ask = asking === e.key, m = mainOf(e);
+      var ask = asking === e.key, m = mainOf(e), extra = restedOf(e), xpAll = e.xp + (extra ? extra.xp : 0);
       return '<li data-menu-host' + (ask ? ' data-asking="true"' : '') + '><span class="act-ai" aria-hidden="true">' + icon(m ? m.icon : 'star') + '</span><span>' + esc(e.label) +
         (R.isDiaryKey(e.key) ? ' <span class="act-from" title="Apuntada en el diario">Diario</span>' : '') +
-        '<small>' + (m ? '<b class="act-main">' + esc(m.name) + '</b>' : '') + esc(U.fmtDay(e.day)) + '</small></span><span class="act-end"><span class="act-xp">+' + e.xp + ' XP</span>' +
+        '<small>' + (m ? '<b class="act-main">' + esc(m.name) + '</b>' : '') + esc(U.fmtDay(e.day)) + '</small></span><span class="act-end"><span class="act-xp"' + (e.capped ? ' title="Ya tenías las ' + R.ACTIVITY_PER_DAY + ' actividades con XP de ese día: cuenta para tus misiones"' : '') + '>+' + e.xp + ' XP' + (extra ? '<span class="act-rested">+' + extra.xp + ' descansada</span>' : '') + '</span>' +
         (ask ? '' : '<button type="button" class="act-del" data-act="del" data-key="' + esc(e.key) + '" data-menu-label="Quitar (−' + e.xp + ' XP)" aria-label="Quitar:' + esc(e.label) + ', ' + esc(U.fmtDay(e.day)) + '">×</button>') + '</span>' +
-        (ask ? App.ui.askRow('¿Quitar <b>' + esc(e.label) + '</b>? Se quitan sus ' + App.ui.xpText(e.xp) + (R.isDiaryKey(e.key) ? ' y sale de su entrada del diario.' : '.'),
+        (ask ? App.ui.askRow('¿Quitar <b>' + esc(e.label) + '</b>?' + (xpAll ? ' Se quitan sus ' + App.ui.xpText(xpAll) : '') + (R.isDiaryKey(e.key) ? (xpAll ? ' y' : '') + ' sale de su entrada del diario.' : (xpAll ? '.' : '')),
           'data-act="del-yes" data-key="' + esc(e.key) + '"', 'data-act="del-no"') : '') + '</li>';
+    }
+    // XP descansada (ver rpg/growth.js): una línea encima de las últimas mientras quede.
+    function restHtml() {
+      var s = R.restState ? R.restState(all, R.today()) : null;
+      if (!s) return '';
+      var pips = ''; for (var i = 0; i < R.RESTED.count; i++) pips += '<i' + (i < s.left ? ' class="full"' : '') + '></i>';
+      return '<div class="act-rest"><span class="act-pips" aria-hidden="true">' + pips + '</span><p>' + (s.state === 'pending'
+        ? 'Has descansado ' + s.days + ' días. Tus ' + s.left + ' próximas actividades dan <b>+' + R.RESTED.xp + ' extra</b>.'
+        : 'Bienvenida de vuelta. ' + (s.left === 1 ? 'Tu próxima actividad da' : 'Tus ' + s.left + ' próximas actividades dan') + ' <b>+' + R.RESTED.xp + ' extra</b> (hasta ' + (s.until === R.today() ? 'esta noche' : 'mañana') + ').') + '</p></div>';
     }
     function paintRecent() {
       var last = done().slice(0, RECENT);
-      body.innerHTML = last.length ? '<ul class="act-recent">' + last.map(row).join('') + '</ul>' : '<p class="soft">Todavía no has registrado ninguna.</p>';
+      body.innerHTML = restHtml() + (last.length ? '<ul class="act-recent">' + last.map(row).join('') + '</ul>' : '<p class="soft">Todavía no has registrado ninguna.</p>');
     }
     function paintHistory() {
       var list = done(), xp = list.reduce(function (t, e) { return t + e.xp; }, 0), groups = [], last = null;
@@ -78,25 +89,33 @@
     function logMany(ids) {
       var d = day(), saved = [];
       return ids.reduce(function (p, id) {
-        return p.then(function () { return acts.log(id, { req: R.newRequestId(), day: d }).then(function (r) { if (!r.duplicate) saved.push(r.entry); }); });
+        return p.then(function () { return acts.log(id, { req: R.newRequestId(), day: d }).then(function (r) { if (!r.duplicate) saved.push(r.entry); if (r.rested) saved.push(r.rested); }); });
       }, Promise.resolve()).then(function () { return finish(saved, d); }, function (e) {
         if (saved.length) finish(saved, d);   // lo que ya se guardó se queda; se avisa del resto
         throw e;
       });
     }
     function finish(saved, d) {
-      var xp = saved.reduce(function (t, e) { return t + e.xp; }, 0);
-      note(saved.length ? '+' + xp + ' XP · ' + saved.map(function (e) { return e.label; }).join(', ') : 'Esos registros ya estaban guardados.');
+      var xp = saved.reduce(function (t, e) { return t + e.xp; }, 0), capped = saved.filter(function (e) { return e.capped; }).length;
+      var names = saved.filter(function (e) { return e.kind !== 'rested'; }).map(function (e) { return e.label; }), rested = saved.filter(function (e) { return e.kind === 'rested'; }).length;
+      note(saved.length ? '+' + xp + ' XP · ' + names.join(', ') + (rested ? ' (con ' + rested * R.RESTED.xp + ' de XP descansada)' : '') +
+        (capped ? '. ' + (capped === 1 ? 'Una se ha registrado' : capped + ' se han registrado') + ' sin XP: ese día ya tenías las ' + R.ACTIVITY_PER_DAY + ' que la dan. ¡Cuentan igual para tus misiones!' : '')
+        : 'Esos registros ya estaban guardados.');
       return ctx.afterChange(d);
+    }
+    // XP que darían n actividades más en el día elegido (con el tope de 10 al día).
+    function xpFor(n) {
+      var left = Math.max(0, R.ACTIVITY_PER_DAY - R.activitiesWithXp(all, day()));
+      return Math.min(n, left) * R.ACTIVITY_XP;
     }
 
     var picker = V.activityPicker($('#act-dialog'), {
       acts: acts, rpg: rpg, allowOnce: true, requireOne: true,
-      acceptLabel: function (n, xp) { return n ? 'Registrar ' + n + ' · +' + xp + ' XP' : 'Registrar'; },
+      acceptLabel: function (n) { return n ? 'Registrar ' + n + ' · +' + xpFor(n) + ' XP' : 'Registrar'; },
       onAccept: logMany,
       onOnce: function (input) {
         var d = day();
-        return acts.logOnce({ name: input.name, points: input.points, req: R.newRequestId(), day: d }).then(function (r) { return finish(r.duplicate ? [] : [r.entry], d); });
+        return acts.logOnce({ name: input.name, points: input.points, req: R.newRequestId(), day: d }).then(function (r) { return finish(r.duplicate ? [] : [r.entry].concat(r.rested ? [r.rested] : []), d); });
       }
     });
 
@@ -111,10 +130,10 @@
       if (act === 'del-no') { asking = null; return paint(); }
       if (act === 'del-yes') {
         if (busy) return; busy = true;
-        var key = t.getAttribute('data-key'), e0 = all.filter(function (x) { return x.key === key; })[0];
+        var key = t.getAttribute('data-key'), e0 = all.filter(function (x) { return x.key === key; })[0], x0 = e0 ? restedOf(e0) : null;
         return R.deleteActivityEntry(key).then(function () {
           asking = null;
-          note('Borrado: ' + (e0 ? e0.label + ' (−' + e0.xp + ' XP)' : 'la actividad') + (e0 && R.isDiaryKey(key) ? '. También se ha quitado de su entrada del diario.' : '.'));
+          note('Borrado: ' + (e0 ? e0.label + ' (−' + (e0.xp + (x0 ? x0.xp : 0)) + ' XP)' : 'la actividad') + (e0 && R.isDiaryKey(key) ? '. También se ha quitado de su entrada del diario.' : '.'));
           return ctx.afterChange();
         }).catch(function (e) {
           asking = null; paint();

@@ -1,11 +1,14 @@
 // Panel «Misiones diarias» de la ficha: tres tarjetas en fila con las misiones al azar de hoy (ver rpg/daily.js).
 // Cada una se marca con su casilla; el dado la cambia por otra (tres cambios al día). Se renuevan a las 3:00.
+// La del atributo dormido lleva el sello «Despierta».
 (function (App) {
   var R = App.rpg, esc = App.escapeHtml, icon = App.icon, V = App.rpgViews;
 
   function card(m, s) {
     var fixed = s.complete;   // con las tres hechas, quedan fijas
-    return '<li class="dl-card" data-done="' + m.done + '">' +
+    // La del atributo dormido lleva el sello «Despierta» (misma XP que las demás).
+    return '<li class="dl-card' + (m.wake ? ' dl-wake' : '') + '" data-done="' + m.done + '">' +
+      (m.wake ? '<span class="dl-seal" title="Despierta a tu atributo dormido">Despierta</span>' : '') +
       (m.done || !s.rerollsLeft ? '' : '<button type="button" class="dl-reroll" data-act="reroll" data-id="' + esc(m.id) + '" aria-label="Cambiar «' + esc(m.name) + '» por otra misión" title="Cambiar por otra">' + icon('dice') + '</button>') +
       '<span class="dl-ic" aria-hidden="true">' + icon(m.icon) + '</span>' +
       '<span class="dl-sub">' + esc(m.main) + (m.subName ? ' · ' + esc(m.subName) : '') + '</span>' +

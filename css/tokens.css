@@ -1,6 +1,7 @@
 /* Sistema de diseño "Corazón Remendado": pastel goth / creepy cute.
    Todo color, tipografía, radio y sombra sale de aquí. */
 :root {
+  color-scheme: light;   /* controles nativos (fecha, barras de desplazamiento) a juego con el tema */
   /* Paleta base */
   --pink-pastel: #F3C6DA;
   --pink-dust: #DFA1BD;
@@ -48,7 +49,13 @@
   /* Forma */
   --r-card: 18px;
   --r-ctl: 12px;
+  /* La sombra solo para lo que flota (diálogos, menús, avisos). Los paneles en reposo se separan con un borde susurrado. */
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 22px rgba(56, 32, 47, 0.08);
+  --panel-edge: rgba(56, 32, 47, 0.08);
+  /* La puntada: el único lenguaje de líneas (separadores, marcos cosidos, cabeceras de hoja).
+     Se escribe «var(--stitch-w) dashed var(--stitch-color)»; el color se redefine en el papel y en las escenas oscuras. */
+  --stitch-w: 1.5px;
+  --stitch-color: color-mix(in srgb, #A52E69 34%, transparent);
   --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .22 0 0 0 0 .13 0 0 0 0 .18 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
   --sidebar-w: 272px;
@@ -58,17 +65,21 @@
 /* Tema oscuro: automático según el sistema, salvo que se fuerce el claro */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #1B141E; --surface: #271D2B; --surface-2: #31253A;
     --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
     --accent: #E57AA9; --on-accent: #19131B;
     --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    --panel-edge: rgba(255, 255, 255, 0.08); --stitch-color: color-mix(in srgb, #E57AA9 38%, transparent);
     --ch-line: #E57AA9; --ch-1: #D2588F; --ch-2: #9076D8; --ch-3: #279C91; --ch-4: #C08626; --ch-5: #6683DB; --ch-6: #B4568F; --ch-other: #8A7D88; --ch-grid: rgba(255, 255, 255, 0.09);
   }
 }
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #1B141E; --surface: #271D2B; --surface-2: #31253A;
   --ink: #F8EAF1; --ink-soft: #C3AEBB; --edge: rgba(255, 255, 255, 0.14);
   --accent: #E57AA9; --on-accent: #19131B;
   --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  --panel-edge: rgba(255, 255, 255, 0.08); --stitch-color: color-mix(in srgb, #E57AA9 38%, transparent);
   --ch-line: #E57AA9; --ch-1: #D2588F; --ch-2: #9076D8; --ch-3: #279C91; --ch-4: #C08626; --ch-5: #6683DB; --ch-6: #B4568F; --ch-other: #8A7D88; --ch-grid: rgba(255, 255, 255, 0.09);
 }

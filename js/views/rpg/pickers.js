@@ -64,10 +64,8 @@
     return 'Ese enlace no vale todavía: tiene que ser https y llevar directo a la imagen, de ' + esc(App.rpg.IMAGE_SITES) + '.';
   };
   U.levelNote = function (before, after) { return after > before ? ' · ¡Subes al nivel ' + after + '!' : ''; };
-  U.symbolGrid = function (name, list, current) {
-    var icon = App.icon;
-    return '<fieldset class="symbols"><legend>Icono</legend><div class="symbol-grid">' + list.map(function (id) {
-      return '<label class="symbol"><input type="radio" name="' + name + '" value="' + id + '"' + (id === current ? ' checked' : '') + '><span class="symbol-box">' + icon(id) + '</span><span class="sr">' + esc(id) + '</span></label>';
-    }).join('') + '</div></fieldset>';
+  // La caja de símbolos de siempre (App.ui.symbolPicker). `open`: abierta (al crear algo nuevo); al editar, cerrada.
+  U.symbolGrid = function (name, current, open, legend) {
+    return App.ui.symbolPicker({ name: name, value: current, open: !!open, legend: legend });
   };
 })(window.App = window.App || {});

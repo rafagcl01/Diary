@@ -38,6 +38,47 @@
   ui.editButton = function (attrs, label) {
     return '<button type="button" class="edit-fab" ' + attrs + ' data-menu-label="Editar" aria-label="' + esc(label) + '" title="Editar">' + icon('pencil') + '</button>';
   };
+
+  // ---- La caja de símbolos: la misma en toda la aplicación (galería única: App.SYMBOL_GROUPS en icons.js) ----
+  // o: { name (de los radio), value, open (al crear algo nuevo: abierta), legend, extra: [{ id, label, html }] (opciones
+  //      antes de la galería, p. ej. «La inicial del nombre») }.
+  // Cerrada es una línea con el símbolo elegido y «Cambiar»; al pulsarla se abre la caja con todos, por temas. Por dentro
+  // son radio con `name`, así que cada pantalla lee la elección como siempre (input[name=…]:checked o su «change»).
+  ui.symbolPicker = function (o) {
+    var value = o.value == null ? '' : o.value, extra = o.extra || [];
+    function cell(id, label, inner) {
+      return '<label class="symbol" title="' + esc(label) + '"><input type="radio" name="' + esc(o.name) + '" value="' + esc(id) + '"' + (id === value ? ' checked' : '') + ' data-sym-label="' + esc(label) + '">' +
+        '<span class="symbol-box">' + inner + '</span><span class="sr">' + esc(label) + '</span></label>';
+    }
+    var cur = extra.filter(function (x) { return x.id === value; })[0];
+    var curHtml = cur ? cur.html : (App.isSymbol(value) ? icon(value) : ''), curLabel = cur ? cur.label : (App.symbolLabel(value) || 'Elige uno');
+    return '<fieldset class="symbols sym-picker"><legend>' + esc(o.legend || 'Icono') + '</legend>' +
+      '<button type="button" class="sym-toggle" aria-expanded="' + !!o.open + '"><span class="sym-now" aria-hidden="true">' + curHtml + '</span>' +
+        '<span class="sym-name">' + esc(curLabel) + '</span><span class="sym-change">' + (o.open ? 'Cerrar' : 'Cambiar') + '</span></button>' +
+      '<div class="sym-box"' + (o.open ? '' : ' hidden') + '>' +
+        (extra.length ? '<div class="symbol-grid">' + extra.map(function (x) { return cell(x.id, x.label, x.html); }).join('') + '</div>' : '') +
+        App.SYMBOL_GROUPS.map(function (g) {
+          return '<p class="sym-group">' + esc(g.label) + '</p><div class="symbol-grid">' + g.items.map(function (x) { return cell(x[0], x[1], icon(x[0])); }).join('') + '</div>';
+        }).join('') + '</div></fieldset>';
+  };
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    // Abrir y cerrar la caja.
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('.sym-toggle') : null;
+      if (!b) return;
+      var box = b.parentNode.querySelector('.sym-box'), open = box.hidden;
+      box.hidden = !open; b.setAttribute('aria-expanded', String(open));
+      var ch = b.querySelector('.sym-change'); if (ch) ch.textContent = open ? 'Cerrar' : 'Cambiar';
+    });
+    // Al elegir uno, la línea de arriba lo enseña.
+    document.addEventListener('change', function (e) {
+      var t = e.target; if (!t || !t.closest || t.type !== 'radio') return;
+      var picker = t.closest('.sym-picker'); if (!picker) return;
+      var now = picker.querySelector('.sym-now'), name = picker.querySelector('.sym-name'), box = t.closest('.symbol') && t.closest('.symbol').querySelector('.symbol-box');
+      if (now && box) now.innerHTML = box.innerHTML;
+      if (name) name.textContent = t.getAttribute('data-sym-label') || '';
+    });
+  }
   // ---- Confirmación en la misma fila (antes de quitar algo que dio XP) ----
   // questionHtml es HTML de confianza (escapa antes lo que venga del usuario). yesAttrs / noAttrs: atributos de cada botón.
   ui.askRow = function (questionHtml, yesAttrs, noAttrs, yesLabel) {

@@ -22,16 +22,19 @@
       root.innerHTML = shell(day, '<div class="skeleton" style="margin: 14px 0"></div><div class="skeleton" style="width: 70%"></div>');
 
       function paint(entry, list, byId, peopleById, actsById) {
+        // Un solo botón principal. Favorita y Eliminar viven en el menú «⋯» (App.ui.enhanceMenus): lejos de un clic sin querer.
+        // Pasar la hoja (página anterior y siguiente) va dentro del papel, junto a la fecha.
+        var fav = entry.favorite ? 'Quitar de favoritas' : 'Marcar como favorita';
         root.innerHTML = '<div class="view day-page read-view">' +
-          H.pageNav(D.neighbors(list, day)) +
-          '<div class="btn-row page-actions">' +
+          '<div class="btn-row page-actions" data-menu-host>' +
             '<a class="btn" href="#/diario/' + esc(day) + '/editar/nuevo">Escribir una entrada</a>' +
-            '<a class="btn secondary" href="#/diario/' + esc(day) + '/editar">Editar la página</a>' +
-            '<button type="button" class="btn secondary" id="r-fav" aria-pressed="' + entry.favorite + '">' + (entry.favorite ? 'Quitar de favoritas' : 'Marcar como favorita') + '</button>' +
-            '<button type="button" class="btn secondary" id="r-del">Eliminar la página</button>' +
+            '<a class="btn quiet" href="#/diario/' + esc(day) + '/editar">Editar la página</a>' +
+            '<a class="btn quiet" href="#/diario">Volver al diario</a>' +
+            '<button type="button" class="menu-only" id="r-fav" aria-pressed="' + entry.favorite + '" data-menu-label="' + fav + '">' + fav + '</button>' +
+            '<button type="button" class="menu-only" id="r-del" data-menu-label="Eliminar la página…">Eliminar la página</button>' +
           '</div>' +
           '<p class="msg" id="r-msg" role="status" data-kind="info"></p>' +
-          H.sheet(entry, byId, peopleById, actsById) +
+          H.sheet(entry, byId, peopleById, actsById, { nav: D.neighbors(list, day) }) +
           '<dialog class="confirm" id="r-dialog" aria-labelledby="r-dialog-title">' +
             '<h3 id="r-dialog-title">¿Eliminar esta página?</h3>' +
             '<p>Se borran todas las entradas de este día de tu repositorio de datos. GitHub conserva el historial de cambios, pero la aplicación no podrá recuperarlas.</p>' +
@@ -49,12 +52,12 @@
             .then(function (updated) { return repo.list().then(function (l) { paint(updated, l, byId, peopleById, actsById); }); })
             .catch(function (err) { say(err.message, 'error'); });
         });
-        // Borrar la página quita también la XP de sus actividades y tareas (se dice cuánta antes de confirmar).
+        // Borrar la página quita también la XP de sus actividades, sus tareas y la de escribir ese día (se dice cuánta antes de confirmar).
         var R = App.rpg, removals = [];
         $('#r-del').addEventListener('click', function () {
           var info = $('#r-xp'); info.hidden = true; removals = [];
           $('#r-dialog').showModal();
-          if (R && R.diaryRemovals) R.diaryRemovals(entry.blocks, []).then(function (items) {
+          if (R && R.diaryRemovals) R.diaryRemovals(entry.blocks, null, day).then(function (items) {   // null: la página se borra
             removals = items;
             if (!items.length) return;
             var xp = items.reduce(function (t, it) { return t + it.xp; }, 0);

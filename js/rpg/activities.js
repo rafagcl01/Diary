@@ -75,6 +75,19 @@
   // Clave de una actividad apuntada en una entrada del diario (ver logBlocks). R.isDiaryKey reconoce sus apuntes.
   R.blockActivityReq = function (blockId, actId) { return 'blk:' + blockId + ':' + actId; };
   R.isDiaryKey = function (key) { return /^act:blk:/.test(String(key)); };
+  // Días en que se puede apuntar una actividad: hoy y los `daysBack` anteriores (config.js). Así no se rellenan días viejos.
+  R.activityDayAllowed = function (day) {
+    var today = R.today();
+    return typeof day === 'string' && day <= today && day >= R.shiftDay(today, -R.CONFIG.activity.daysBack);
+  };
+  // XP que daría una actividad más ese día: 5 si aún no hay 10 con XP; si no, 0 (se registra igual, con `capped`).
+  R.activityXpFor = function (entries, day, xp) {
+    return R.activitiesWithXp(entries, day) < R.ACTIVITY_PER_DAY ? xp : 0;
+  };
+  function withCap(entry, entries) {
+    var xp = R.activityXpFor(entries, entry.day || R.today(), entry.xp);
+    return xp ? entry : Object.assign({}, entry, { xp: 0, points: [], capped: true });
+  }
 
   App.createActivityRepo = function (store, rpg) {
     var cache = null;
@@ -100,6 +113,11 @@
           return R.activitiesToDoc(list);
         }, { fallback: null, message: message });
       }).then(function () { return load(true); }).then(function () { return result; });
+    }
+    // Tras guardar una actividad nueva: su XP descansada, si toca (ver rpg/growth.js). Va en `res.rested`.
+    function withRested(res) {
+      if (res.duplicate || !R.grantRested) return res;
+      return R.grantRested(rpg, res.entry).then(function (extra) { res.rested = extra; return res; });
     }
     function duplicate(list, name, exceptId) {
       var k = R.fold(name);
@@ -142,20 +160,24 @@
       // Registra una actividad puntual (que no se guarda para repetir). Cuenta XP como cualquiera, pero no cuenta para objetivos.
       logOnce: function (o) {
         return rpg.state().then(function (st) {
+          var day = o.day || R.today();
+          if (!R.activityDayAllowed(day)) throw invalid('Las actividades solo se pueden apuntar hoy o ayer.');
           var a = R.sanitizeActivity({ name: o.name, icon: 'star', points: o.points }, st.structure, { id: 'puntual' });
-          return rpg.addEntry({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: 'puntual', label: a.name, xp: R.activityXp(a), points: a.points, day: o.day });
+          return rpg.addEntry(withCap({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: 'puntual', label: a.name, xp: R.activityXp(a), points: a.points, day: day }, st.entries)).then(withRested);
         });
       },
 
-      // Registra una actividad hecha el día `o.day` (hoy por defecto). `o.req` es la clave de este toque: repetirlo no suma otra vez.
+      // Registra una actividad hecha el día `o.day` (hoy por defecto; también vale ayer). `o.req` es la clave de este toque:
+      // repetirlo no suma otra vez. A partir de la 11.ª del día se registra con 0 XP (ver R.activityXpFor).
       log: function (id, o) {
         o = o || {};
         return Promise.all([load(), rpg.state()]).then(function (r) {
-          var a = r[0].filter(function (x) { return x.id === id; })[0];
+          var a = r[0].filter(function (x) { return x.id === id; })[0], day = o.day || R.today();
           if (!a) throw invalid('Esa actividad ya no existe.');
           if (a.archived) throw invalid('Esa actividad está archivada.');
           if (R.activityXp(a) !== R.ACTIVITY_XP) throw invalid('Esta actividad no suma ' + R.ACTIVITY_XP + ' puntos: edítala para ajustarla.');
-          return rpg.addEntry({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: a.id, label: a.name, xp: R.activityXp(a), points: a.points, day: o.day });
+          if (!R.activityDayAllowed(day)) throw invalid('Las actividades solo se pueden apuntar hoy o ayer.');
+          return rpg.addEntry(withCap({ kind: 'activity', key: 'act:' + (o.req || R.newRequestId()), activity: a.id, label: a.name, xp: R.activityXp(a), points: a.points, day: day }, r[1].entries)).then(withRested);
         });
       },
 
@@ -174,10 +196,15 @@
               if (!have['act:' + req]) todo.push({ id: id, req: req });
             });
           });
+          // En una página de hace más de un día, las actividades nuevas se quedan en la página pero no se apuntan.
+          if (todo.length && !R.activityDayAllowed(day)) {
+            out.oldPage = true;
+            return null;
+          }
           // De una en una: el almacén ya escribe en orden y así un fallo no deja nada a medias.
           return todo.reduce(function (p, t) {
             return p.then(function () {
-              return self.log(t.id, { req: t.req, day: day }).then(function (r) { if (!r.duplicate) out.logged.push(r.entry); },
+              return self.log(t.id, { req: t.req, day: day }).then(function (r) { if (!r.duplicate) out.logged.push(r.entry); if (r.rested) out.logged.push(r.rested); },
                 function (e) { out.failed.push((e && e.message) || 'No se pudo registrar una actividad.'); });
             });
           }, Promise.resolve());
@@ -186,18 +213,35 @@
     };
   };
 
-  // Tras guardar una página del diario: registra sus actividades, marca en su lista las tareas elegidas en sus entradas
-  // y da las recompensas de misiones, jefes y listas que se cumplan.
+  // ---- Escribir en el diario da XP ----
+  // 10 XP (config.js) al guardar el primer bloque con texto del día, una sola vez por día y solo en la página de hoy o la
+  // de ayer (un día no has podido: la rellenas al siguiente y cuenta). Sin mínimo de palabras. Va solo al nivel general.
+  // Una vez ganada se queda fija: editar el texto no la toca; solo se quita si se borra la página.
+  R.blocksHaveText = function (blocks) { return (blocks || []).some(function (b) { return b && typeof b.text === 'string' && b.text.trim(); }); };
+  R.diaryDayCounts = function (day) { var t = R.today(); return day === t || day === R.shiftDay(t, -1) || day === R.logicalDay(); };
+  R.recordDiaryWriting = function (day, blocks) {
+    var rpg = R.repo();
+    if (!rpg || !R.diaryDayCounts(day) || !R.blocksHaveText(blocks)) return Promise.resolve(null);
+    return rpg.addEntry({ kind: 'diary', key: R.diaryXpKey(day), label: 'Escribir en el diario', xp: R.DIARY_XP, day: day })
+      .then(function (r) { return r.duplicate ? null : r.entry; });
+  };
+
+  // Tras guardar una página del diario: la XP de escribir, registra sus actividades, marca en su lista las tareas elegidas
+  // en sus entradas y da las recompensas de misiones, jefes y listas que se cumplan.
   // Devuelve { logged, failed, events, before, after } (niveles antes y después) o null si no hay datos conectados.
   R.recordDiaryActivities = function (day, blocks) {
     var acts = R.activities(), rpg = R.repo(), todos = R.todos ? R.todos() : null;
     if (!acts || !rpg) return Promise.resolve(null);
-    var before = 1, res = null;
+    var before = 1, res = null, wrote = null;
     return rpg.state().then(function (st) {
       before = st.computed.general.level;
+      return R.recordDiaryWriting(day, blocks);
+    }).then(function (w) {
+      wrote = w;
       return acts.logBlocks(day, blocks);
     }).then(function (r) {
       res = r; res.events = []; res.before = before; res.after = before;
+      if (wrote) res.logged.unshift(wrote);
       var hasTasks = (blocks || []).some(function (b) { return b.tasks && b.tasks.length; });
       return todos && hasTasks ? todos.completeFromBlocks(blocks) : { logged: [], events: [] };
     }).then(function (t) {
@@ -213,10 +257,14 @@
   // Al guardar (o borrar) una página del diario: qué XP se quitaría por lo que ya no está en sus entradas.
   // Compara las entradas guardadas (`before`) con las nuevas (`after`): una actividad que ya dio XP y ya no está en su
   // entrada se quita del registro; una tarea marcada que ya no está vuelve a estar pendiente (salvo con su lista completa,
-  // que queda fija). Devuelve [{ kind: 'act' | 'task', key, list, task, label, xp, n (número de entrada) }].
-  R.diaryRemovals = function (before, after) {
+  // que queda fija). La XP de escribir se queda fija una vez ganada: solo se quita si la página se BORRA (`after` = null,
+  // con `day`). Editar o quitar párrafos no la toca ni pregunta nada.
+  // Devuelve [{ kind: 'act' | 'task' | 'diary', key, list, task, label, xp, n (número de entrada) }].
+  R.diaryRemovals = function (before, after, day) {
     var rpg = R.repo();
     if (!rpg || !before || !before.length) return Promise.resolve([]);
+    var lostText = !!day && after === null;
+    after = after || [];
     var now = {}; (after || []).forEach(function (b) {
       (b.activities || []).forEach(function (a) { now['a:' + b.id + ':' + a] = true; });
       (b.tasks || []).forEach(function (r) { now['t:' + r.list + ':' + r.task] = true; });
@@ -227,7 +275,8 @@
       before.forEach(function (b, i) {
         (b.activities || []).forEach(function (a) {
           var key = 'act:' + R.blockActivityReq(b.id, a), e = byKey[key];
-          if (e && !now['a:' + b.id + ':' + a]) out.push({ kind: 'act', key: key, label: e.label, xp: e.xp, n: i + 1 });
+          var extra = byKey['rested:' + key];   // su XP descansada se va con ella
+          if (e && !now['a:' + b.id + ':' + a]) out.push({ kind: 'act', key: key, label: e.label, xp: e.xp + (extra ? extra.xp : 0), n: i + 1 });
         });
         (b.tasks || []).forEach(function (r) {
           var key = 'todo:' + r.list + ':' + r.task, e = byKey[key];
@@ -236,6 +285,8 @@
           out.push({ kind: 'task', key: key, list: r.list, task: r.task, label: e.label, xp: e.xp, n: i + 1 });
         });
       });
+      var w = lostText ? byKey[R.diaryXpKey(day)] : null;
+      if (w) out.push({ kind: 'diary', key: w.key, label: w.label, xp: w.xp, n: 0 });
       return out;
     });
   };
@@ -244,7 +295,7 @@
     var rpg = R.repo(), todos = R.todos ? R.todos() : null, res = { removed: [], failed: [] };
     return (items || []).reduce(function (p, it) {
       return p.then(function () {
-        var job = it.kind === 'act' ? rpg.removeEntry(it.key) : (todos ? todos.uncompleteTask(it.list, it.task) : Promise.resolve());
+        var job = it.kind === 'act' || it.kind === 'diary' ? rpg.removeEntry(it.key) : (todos ? todos.uncompleteTask(it.list, it.task) : Promise.resolve());
         return job.then(function () { res.removed.push(it); }, function (e) { res.failed.push((e && e.message) || 'No se pudo quitar «' + it.label + '».'); });
       });
     }, Promise.resolve()).then(function () { return res; });

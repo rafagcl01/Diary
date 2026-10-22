@@ -7,15 +7,22 @@ import { createFakeGithub } from './helpers/fake-github.js';
 
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const plain = (x) => JSON.parse(JSON.stringify(x));
-const FILES = ['icons', 'ui', 'components', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses', 'rpg/todos', 'rpg/daily', 'rpg/shadows', 'views/rpg/radar'];
+const FILES = ['icons', 'ui', 'components', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'rpg/config', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses', 'rpg/todos', 'rpg/daily', 'rpg/shadows', 'rpg/growth', 'views/rpg/radar'];
 function load(extra = {}) {
   const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, URL, ...extra });
   ctx.window = ctx;
   for (const f of FILES) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   return ctx.App;
 }
-function make(fake = createFakeGithub()) {
+// Muchas pruebas usan fechas fijas (semanas de octubre de 2026) y jefes que se derrotan al momento: por defecto se
+// permite apuntar actividades en cualquier día pasado y los jefes no esperan. Las pruebas de esas reglas usan
+// make(fake, { strict: true }), con los valores reales de config.js.
+function make(fake = createFakeGithub(), opts = {}) {
   const App = load({ fetch: fake.fetch });
+  if (!opts.strict) {
+    App.rpg.CONFIG.activity.daysBack = 100000;
+    App.rpg.CONFIG.bosses.tiers.forEach((t) => { t.days = 0; });
+  }
   const adapter = App.createGithubAdapter({ owner: 'ana', repo: 'diario-datos', branch: 'main', token: 'good', fetch: fake.fetch });
   const store = App.createStore(adapter);
   const repo = App.createRpgRepo(store);
@@ -25,33 +32,76 @@ function make(fake = createFakeGithub()) {
 const rejectsWith = (p, code) => assert.rejects(p, (e) => { assert.equal(e.code, code, e.message); return true; });
 const ledger = (fake, year = new Date().getFullYear()) => JSON.parse(fake.state.files.get(`rpg/ledger-${year}.json`));
 
-test('niveles: general 100+25·(n−1) y subcategorías 80+20·(n−1), con el sobrante conservado', () => {
+test('niveles: general round(55·n^1,2) hasta el 30 (luego, constelaciones); subcategorías ×0,2 y atributos ×0,3', () => {
   const { R } = make();
-  assert.deepEqual(plain(R.levelInfo(0)), { level: 1, into: 0, need: 100, fraction: 0, total: 0 });
-  assert.equal(R.levelInfo(99).level, 1);
-  const l2 = R.levelInfo(100); assert.equal(l2.level, 2); assert.equal(l2.need, 125);
-  const l3 = R.levelInfo(225 + 7); assert.equal(l3.level, 3); assert.equal(l3.into, 7); assert.equal(l3.need, 150);
-  assert.equal(R.levelInfo(80, R.SUB_LEVEL).level, 2); assert.equal(R.levelInfo(80, R.SUB_LEVEL).need, 100);
-  assert.equal(R.levelInfo(180, R.SUB_LEVEL).level, 3);
+  assert.deepEqual(plain(R.levelInfo(0)), { level: 1, max: false, stars: 0, into: 0, need: 55, fraction: 0, total: 0, start: 0, next: 55 });
+  const l70 = R.levelInfo(70); assert.equal(l70.level, 2); assert.equal(l70.start, 55); assert.equal(l70.next, 181, 'la ficha enseña «70 / 181 XP»');
+  assert.equal(R.xpForLevel(1), 0); assert.equal(R.xpForLevel(3), 181); assert.equal(R.xpForLevel(10), 3531); assert.equal(R.xpForLevel(30), 42801);
+  assert.equal(R.levelInfo(54).level, 1);
+  const l2 = R.levelInfo(55); assert.equal(l2.level, 2); assert.equal(l2.need, 126);
+  const l3 = R.levelInfo(181 + 7); assert.equal(l3.level, 3); assert.equal(l3.into, 7);
+  assert.equal(R.levelInfo(677).level, 5); assert.equal(R.levelInfo(3531).level, 10); assert.equal(R.levelInfo(3530).level, 9);
+  // Nivel máximo 30: lo de después suma una estrella cada 3.000 XP.
+  const top = R.levelInfo(42801 + 7000);
+  assert.equal(top.level, 30); assert.equal(top.max, true); assert.equal(top.stars, 2); assert.equal(top.into, 1000); assert.equal(top.need, 3000);
+  assert.equal(R.levelInfo(42800).max, false);
+  assert.equal(R.levelInfo(11, R.SUB_LEVEL).level, 2); assert.equal(R.levelInfo(36, R.SUB_LEVEL).level, 3); assert.equal(R.levelInfo(706, R.SUB_LEVEL).level, 10);
+  assert.equal(R.levelInfo(17, R.MAIN_LEVEL).level, 2);
+  const m10 = R.xpForLevel(10, R.MAIN_LEVEL);
+  assert.ok(m10 > 1000 && m10 < 1100, 'atributo: nivel 10 con unos 1.060 XP'); assert.equal(R.levelInfo(m10, R.MAIN_LEVEL).level, 10); assert.equal(R.levelInfo(m10 - 1, R.MAIN_LEVEL).level, 9);
+  assert.equal(R.levelInfo(99999999, R.SUB_LEVEL).max, false, 'las subcategorías y los atributos no tienen tope');
   assert.equal(R.levelInfo(-50).level, 1, 'nunca por debajo del nivel 1');
+  // Los valores salen de config.js: cambiarlos allí cambia la curva sin tocar la lógica.
+  R.CONFIG.levels.general.base = 100;
+  assert.equal(R.levelInfo(0).need, 100);
 });
 
-test('títulos: Muñeca inquieta desde el nivel 1, Muñeca susurrante en el 15 y Gran posesión en el 30', () => {
+test('atributos: su XP es la suma de sus subcategorías (también archivadas) y crear o archivar no les baja el nivel', () => {
   const { R } = make();
-  assert.deepEqual(plain(R.TITLES.map((t) => [t.name, t.level])), [['Muñeca inquieta', 1], ['Muñeca susurrante', 15], ['Gran posesión', 30]]);
+  const st = R.buildStructure(null), e = (sub, xp) => ({ key: 'k' + sub + xp, day: '2026-10-01', xp, splits: [{ sub, xp }] });
+  const entries = [e('fuerza', 300), e('salud', 200)];
+  const before = R.computeState(st, entries).mains.find((m) => m.id === 'vitalidad');
+  assert.equal(before.xp, 500); assert.equal(before.level, R.levelInfo(500, R.MAIN_LEVEL).level);
+  // Archivar «salud» y añadir una nueva no cambia nada.
+  const st2 = JSON.parse(JSON.stringify(st));
+  st2[0].subs.find((s) => s.id === 'salud').archived = true;
+  st2[0].subs.push({ id: 'nueva', name: 'Nueva', icon: 'star', description: '', archived: false, order: 9 });
+  const after = R.computeState(st2, entries).mains.find((m) => m.id === 'vitalidad');
+  assert.equal(after.xp, 500); assert.equal(after.level, before.level); assert.equal(after.value, before.value);
+});
+
+test('títulos: ocho, del 1 al 30, cada uno con su forma femenina, masculina y neutra', () => {
+  const { R } = make();
+  assert.deepEqual(plain(R.TITLES.map((t) => t.level)), [1, 3, 7, 12, 16, 22, 27, 30]);
+  assert.ok(R.TITLES.every((t) => t.names.f && t.names.m && t.names.n));
   assert.equal(R.currentTitle(null, 1).name, 'Muñeca inquieta');
-  assert.equal(R.currentTitle(null, 14).name, 'Muñeca inquieta');
-  assert.equal(R.currentTitle(null, 15).name, 'Muñeca susurrante', 'sin elegir: el más alto conseguido');
+  assert.equal(R.currentTitle(null, 6).name, 'Aprendiz de aguja');
+  assert.equal(R.currentTitle(null, 7).name, 'Muñeca susurrante', 'sin elegir: el más alto conseguido');
   assert.equal(R.currentTitle('muneca_inquieta', 31).name, 'Muñeca inquieta', 'el elegido, si ya es tuyo');
-  assert.equal(R.currentTitle('gran_posesion', 20).name, 'Muñeca susurrante', 'uno sin conseguir no se ve');
-  assert.equal(R.nextTitle(9).name, 'Muñeca susurrante'); assert.equal(R.nextTitle(30), null);
+  assert.equal(R.currentTitle('gran_posesion', 20).name, 'Guardiana del costurero', 'uno sin conseguir no se ve');
+  assert.equal(R.nextTitle(9).name, 'Hilandera de lunas'); assert.equal(R.nextTitle(30), null);
+  const t = R.TITLES.find((x) => x.id === 'reina_alfileres');
+  assert.deepEqual([R.named(t, 'f'), R.named(t, 'm'), R.named(t, 'n'), R.named(t, 'raro')], ['Reina de los alfileres', 'Rey de los alfileres', 'Monarca de los alfileres', 'Reina de los alfileres']);
+  assert.equal(R.named(R.TRAITS.find((x) => x.id === 'noctambula'), 'm'), 'Noctámbulo');
+});
+
+test('perfil: forma de los textos, fondo y pantalla de subida de nivel se guardan y se conservan al editar', async () => {
+  const { repo, fake } = make();
+  let p = (await repo.state()).profile;
+  assert.equal(p.form, 'f'); assert.equal(p.background, 'papel'); assert.equal(p.levelUpScreen, true);
+  await repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'n', background: 'cielo', levelUpScreen: false });
+  await repo.saveProfile({ name: 'Otra', avatar: 'cat' });
+  p = (await repo.state(true)).profile;
+  assert.equal(p.form, 'n'); assert.equal(p.background, 'cielo'); assert.equal(p.levelUpScreen, false);
+  await rejectsWith(repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'x' }), 'invalid');
+  await rejectsWith(repo.saveProfile({ name: 'Yo', avatar: 'moon', background: 'inventado' }), 'invalid');
+  assert.equal(JSON.parse(fake.state.files.get('rpg/profile.json')).form, 'n');
 });
 
 test('título elegido: se guarda en el perfil, solo si ya lo tienes, y editar el perfil no lo pierde', async () => {
   const { repo, fake } = make();
   await rejectsWith(repo.setTitle('muneca_susurrante'), 'invalid');   // nivel 1: aún no
-  await repo.addEntry({ kind: 'manual', key: 'manual:t1', label: 'Mucho', xp: 5000, day: '2026-10-01' });
-  await repo.addEntry({ kind: 'manual', key: 'manual:t2', label: 'Mucho más', xp: 5000, day: '2026-10-02' });
+  for (let i = 1; i <= 4; i++) await repo.addEntry({ kind: 'manual', key: 'manual:t' + i, label: 'Mucho', xp: 5000, day: '2026-10-0' + i });
   assert.ok((await repo.state()).computed.general.level >= 15);
   await repo.setTitle('muneca_inquieta');
   assert.equal(JSON.parse(fake.state.files.get('rpg/profile.json')).title, 'muneca_inquieta');
@@ -84,10 +134,11 @@ test('radar con evolución: hace 30 días y un estado por mes (hasta 12), solo c
 
 test('marcos del avatar: uno por tramo de nivel, con el siguiente', () => {
   const { R } = make();
-  assert.equal(R.frameFor(1).frame.id, 'puntada'); assert.equal(R.frameFor(1).next.id, 'encaje');
-  assert.equal(R.frameFor(4).frame.id, 'puntada'); assert.equal(R.frameFor(5).frame.id, 'encaje');
-  assert.equal(R.frameFor(19).frame.id, 'rosas'); assert.equal(R.frameFor(20).frame.id, 'alas');
-  assert.equal(R.frameFor(99).frame.id, 'corona'); assert.equal(R.frameFor(99).next, null);
+  assert.deepEqual(plain(R.AVATAR_FRAMES.map((f) => f.level)), [1, 2, 5, 9, 14, 18, 25, 30]);
+  assert.equal(R.frameFor(1).frame.id, 'puntada'); assert.equal(R.frameFor(1).next.id, 'hilo_suelto');
+  assert.equal(R.frameFor(4).frame.id, 'hilo_suelto'); assert.equal(R.frameFor(5).frame.id, 'encaje');
+  assert.equal(R.frameFor(17).frame.id, 'encaje_lunar'); assert.equal(R.frameFor(18).frame.id, 'lazo_ciruela');
+  assert.equal(R.frameFor(30).frame.id, 'corona_remendada'); assert.equal(R.frameFor(30).next, null);
   assert.equal(R.AVATAR_FRAMES[0].level, 1, 'el primero empieza en el nivel 1');
 });
 
@@ -113,9 +164,9 @@ test('avatar: marco según el nivel, imagen escapada y símbolo de respaldo para
   for (const f of [...FILES, 'views/rpg/pickers', 'views/rpg/avatar']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   const V = ctx.App.rpgViews;
   assert.match(V.avatar({ avatar: 'moon' }, 1), /data-frame="puntada"/);
-  assert.match(V.avatar({ avatar: 'moon' }, 36), /data-frame="corona"/);
+  assert.match(V.avatar({ avatar: 'moon' }, 30), /data-frame="corona_remendada"/);
   const gif = V.avatar({ avatar: 'cat', image: { kind: 'url', url: 'https://i.imgur.com/a.gif?x="><script>' } }, 12);
-  assert.ok(!/"><script>/.test(gif)); assert.match(gif, /data-symbol="cat"/); assert.match(gif, /data-frame="rosas"/);
+  assert.ok(!/"><script>/.test(gif)); assert.match(gif, /data-symbol="cat"/); assert.match(gif, /data-frame="puntada_doble"/);
   for (const fr of ctx.App.rpg.AVATAR_FRAMES) assert.match(V.frameSvg(fr.id), /<svg class="fr-deco"/, 'cada marco tiene su dibujo');
 });
 
@@ -164,18 +215,18 @@ test('reparto de XP: suma exacta, resto a la parte mayor, sin subcategorías sol
 
 test('apuntar actividad: se guarda en el registro, sube niveles y sobrevive a reabrir', async () => {
   const { repo, fake, App, R } = make();
-  const r = await repo.addEntry({ kind: 'manual', key: 'manual:abc1', label: 'Sesión de dibujo', xp: 60, shares: [{ sub: 'arte', pct: 100 }], day: '2026-03-05' });
+  const r = await repo.addEntry({ kind: 'manual', key: 'manual:abc1', label: 'Sesión de dibujo', xp: 10, shares: [{ sub: 'arte', pct: 100 }], day: '2026-03-05' });
   assert.equal(r.duplicate, false);
-  assert.equal(ledger(fake, 2026).entries[0].xp, 60);
+  assert.equal(ledger(fake, 2026).entries[0].xp, 10);
   const re = make(fake).repo; const st = await re.state();
-  assert.equal(st.computed.general.total, 60); assert.equal(st.computed.general.level, 1);
+  assert.equal(st.computed.general.total, 10); assert.equal(st.computed.general.level, 1);
   const arte = R.findSub(st.computed.mains.map((m) => ({ ...m })), 'arte').sub;
-  assert.equal(arte.xp, 60); assert.equal(arte.level, 1);
+  assert.equal(arte.xp, 10); assert.equal(arte.level, 1);
   await re.addEntry({ kind: 'manual', key: 'manual:abc2', label: 'Modelado 3D', xp: 30, shares: [{ sub: 'arte', pct: 100 }], day: '2026-03-06' });
   const st2 = await re.state(true);
-  assert.equal(st2.computed.general.total, 90);
+  assert.equal(st2.computed.general.total, 40); assert.equal(st2.computed.general.level, 1);
   const arte2 = st2.computed.mains.find((m) => m.id === 'creatividad').subs.find((s) => s.id === 'arte');
-  assert.equal(arte2.level, 2, '90 XP ≥ 80 → nivel 2 de la subcategoría'); assert.equal(arte2.into, 10);
+  assert.equal(arte2.level, 3, '40 XP ≥ 36 → nivel 3 de la subcategoría'); assert.equal(arte2.into, 4);
 });
 
 test('idempotencia: la misma clave no se cuenta dos veces (reintento, doble clic, otro dispositivo)', async () => {
@@ -272,7 +323,7 @@ test('radar: el valor de un atributo es la media de sus subcategorías y la XP n
   assert.ok(last > 0.5);
 });
 
-test('el diario no da ni quita XP por texto, ánimo o emociones: solo por las actividades y tareas que elijas en una entrada', () => {
+test('el diario nunca da XP por el ánimo o las emociones: solo por escribir (vía rpg/activities.js) y por las actividades y tareas de sus entradas', () => {
   const src = ['diary/entries', 'diary/repository', 'diary/emotions', 'diary/people'].map((f) => read(`js/${f}.js`)).join('\n');
   assert.equal(/App\.rpg|addEntry\(/.test(src), false);
   const editor = read('js/views/diary/editor.js');
@@ -319,7 +370,7 @@ test('radar SVG: estrella de siete puntas {7/3}, polígono relleno, siete puntas
   assert.equal((subs.match(/role="button"/g) || []).length, 3, 'tres subcategorías de Espíritu');
   assert.match(subs, /data-sub="brujeria"/); assert.match(subs, /rd-label on magic/); assert.doesNotMatch(subs, /class="rd-star"/, 'con 3 ejes no hay diagonales');
   for (const n of ['Vitalidad', 'Espíritu', 'Vínculos', 'Aventura', 'Creatividad', 'Inteligencia', 'Yo futuro']) assert.ok(html.includes(n), n);
-  assert.match(html, /Vitalidad, nivel 1/);
+  assert.match(html, /Vitalidad, nivel 3/, '90 XP en Fuerza: Vitalidad suma 90 con la curva ×0,3');
 });
 
 test('el nombre del personaje se escapa y los datos dañados no se pisan', async () => {
@@ -383,10 +434,13 @@ test('diario: quitar una actividad o una tarea de su entrada quita su XP al guar
   const fake = createFakeGithub();
   const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, URL, setTimeout, clearTimeout, fetch: fake.fetch, localStorage: { getItem: () => null, setItem() {}, removeItem() {} } });
   ctx.window = ctx; ctx.document = { documentElement: { dataset: {}, removeAttribute() {} } };
-  for (const f of ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'diary/entries', 'diary/repository', 'diary/drafts', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses', 'rpg/todos']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
+  for (const f of ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'diary/entries', 'diary/repository', 'diary/drafts', 'rpg/config', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses', 'rpg/todos']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   const App = ctx.App, R = App.rpg;
+  R.CONFIG.activity.daysBack = 100000;   // fechas fijas de octubre de 2026
   await App.connection.connect({ repo: 'ana/diario-datos', token: 'good', fetch: fake.fetch });
-  const todos = R.todos(), l = await todos.create({ name: 'Hoy', size: 'normal', shares: [], tasks: [{ text: 'Llamar' }, { text: 'Sábanas', size: 'pequena' }, { text: 'Otra (queda pendiente: la lista no se completa)' }] });
+  const todos = R.todos();
+  for (const t of [{ text: 'Llamar' }, { text: 'Sábanas', size: 'pequena' }, { text: 'Otra (queda pendiente: la lista no se completa)' }]) await todos.addTask(t);
+  const l = (await todos.state()).list;
   const ref = (t) => ({ list: l.id, task: t.id, text: t.text });
   const before = [
     { id: 'b_00000001', activities: ['gimnasio', 'leer-libro'], tasks: [ref(l.tasks[0])] },
@@ -416,8 +470,9 @@ test('borrar una actividad apuntada en el diario la quita también de su entrada
   const fake = createFakeGithub();
   const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, URL, setTimeout, clearTimeout, fetch: fake.fetch, localStorage: { getItem: () => null, setItem() {}, removeItem() {} } });
   ctx.window = ctx; ctx.document = { documentElement: { dataset: {}, removeAttribute() {} } };
-  for (const f of ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'diary/entries', 'diary/repository', 'diary/drafts', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
+  for (const f of ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'diary/entries', 'diary/repository', 'diary/drafts', 'rpg/config', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
   const App = ctx.App, R = App.rpg;
+  R.CONFIG.activity.daysBack = 100000;   // fechas fijas de octubre de 2026
   await App.connection.connect({ repo: 'ana/diario-datos', token: 'good', fetch: fake.fetch });
   const day = '2026-10-12', diary = App.diary.repo();
   await diary.save({ day, title: '', blocks: [{ id: 'b_00000001', text: 'Gimnasio y lectura', activities: ['gimnasio', 'leer-libro'] }, { id: 'b_00000002', text: '', activities: ['gimnasio'] }] });
@@ -469,11 +524,11 @@ test('semanal: una visita borrada no cuenta; y la semana siguiente empieza de ce
   const a = await acts.log('gimnasio', { req: 'a', day: MON }); await acts.log('gimnasio', { req: 'b', day: '2026-10-13' });
   await repo.removeEntry(a.entry.key);
   assert.equal((await weekly.sync([WEEK])).length, 0, 'borrada: 1 de 2');
-  const next = await weekly.state(true, '2026-W43'); assert.equal(next.missions[0].count, 0); assert.equal(next.missions[0].done, false);
+  const other = await weekly.state(true, '2026-W41'); assert.equal(other.missions[0].count, 0); assert.equal(other.missions[0].done, false);
   await acts.log('gimnasio', { req: 'c', day: '2026-10-14' });
   assert.equal((await weekly.sync([WEEK])).length, 1);
-  await acts.log('gimnasio', { req: 'd', day: '2026-10-20' }); await acts.log('gimnasio', { req: 'e', day: '2026-10-21' });
-  assert.equal((await weekly.sync(['2026-W43'])).length, 1, 'otra semana, otra recompensa');
+  await acts.log('gimnasio', { req: 'd', day: '2026-10-06' }); await acts.log('gimnasio', { req: 'e', day: '2026-10-07' });
+  assert.equal((await weekly.sync(['2026-W41'])).length, 1, 'otra semana, otra recompensa');
 });
 
 test('semanal con checks: al marcar la última se completa; completada queda bloqueada', async () => {
@@ -493,7 +548,7 @@ test('semanal con checks: al marcar la última se completa; completada queda blo
 test('semanales: editar no vuelve a premiar; eliminar la quita sin tocar la XP ganada; validación', async () => {
   const { weekly, acts, repo, fake } = make();
   const m = await weekly.create(gymMission);
-  await acts.log('gimnasio', { req: 'a', day: MON }); await acts.log('gimnasio', { req: 'b', day: MON }); await acts.log('gimnasio', { req: 'c', day: MON });
+  await acts.log('gimnasio', { req: 'a', day: MON }); await acts.log('gimnasio', { req: 'b', day: '2026-10-13' }); await acts.log('gimnasio', { req: 'c', day: '2026-10-14' });
   await weekly.sync([WEEK]);
   await weekly.update(m.id, { ...gymMission, name: 'Gym x3', size: 'dificil' });
   assert.equal((await weekly.sync([WEEK])).length, 0, 'editar no vuelve a premiar');
@@ -572,50 +627,70 @@ test('rendimiento: marcar o desmarcar un paso solo lee y escribe el registro de 
   assert.equal(st.computed.general.total, 5, 'la caché queda al día: el año pasado sigue y el paso ya no cuenta');
 });
 
-test('tareas: cada tarea da su XP según su tamaño, la lista completa da su recompensa una vez, y desmarcar resta solo la tarea', async () => {
+test('tareas: una sola lista del día; cada tarea da su XP; +20 al completarla (con 3 o más); desmarcar resta solo la tarea', async () => {
   const { todos, repo, R } = make();
-  const l = await todos.create({ name: 'Entrevista', size: 'dificil', shares: [{ sub: 'carrera', pct: 100 }], tasks: [{ text: 'Portfolio', size: 'grande' }, { text: 'Ropa', size: 'pequena' }, { text: '' }] });
-  assert.equal(l.tasks.length, 2, 'las tareas vacías se descartan');
-  await todos.addTask(l.id, { text: 'Leer sobre la empresa' });   // Normal por defecto
-  let s = (await todos.state()).lists[0];
-  assert.deepEqual(plain(s.tasks.map((t) => t.xp)), [10, 2, 5]);
+  assert.equal((await todos.state()).list, null, 'sin tareas todavía no hay lista');
+  await todos.addTask({ text: 'Portfolio', size: 'grande' }); await todos.addTask({ text: 'Ropa', size: 'pequena' });
+  await rejectsWith(todos.addTask({ text: '  ' }), 'invalid');
+  await todos.addTask({ text: 'Leer sobre la empresa' });   // Normal por defecto
+  assert.equal(todos.setShares, undefined, 'las tareas ya no tienen reparto');
+  let s = (await todos.state()).list;
+  assert.equal((await todos.state()).lists.length, 1, 'una sola lista');
+  assert.equal(s.day, R.logicalDay()); assert.deepEqual(plain(s.tasks.map((t) => t.xp)), [10, 2, 5]);
   const total = async () => (await repo.state()).computed.general.total;
   const [a, b, c] = s.tasks;
-  assert.deepEqual(plain(await todos.completeTask(l.id, a.id)), []); assert.equal(await total(), 10);
-  await todos.completeTask(l.id, b.id);
-  await todos.uncompleteTask(l.id, b.id); assert.equal(await total(), 10, 'desmarcar quita solo esa tarea');
-  await todos.completeTask(l.id, b.id); await todos.completeTask(l.id, b.id);
+  assert.deepEqual(plain(await todos.completeTask(s.id, a.id)), []); assert.equal(await total(), 10);
+  await todos.completeTask(s.id, b.id);
+  await todos.uncompleteTask(s.id, b.id); assert.equal(await total(), 10, 'desmarcar quita solo esa tarea');
+  await todos.completeTask(s.id, b.id); await todos.completeTask(s.id, b.id);
   assert.equal(await total(), 12, 'marcar dos veces no cuenta dos veces');
-  const ev = await todos.completeTask(l.id, c.id);
-  assert.deepEqual(plain(ev), [{ type: 'todo', label: 'Entrevista', xp: 60 }]);
-  assert.equal(await total(), 10 + 2 + 5 + 60);
-  assert.equal((await repo.state()).computed.mains.find((m) => m.id === 'yo_futuro').subs.find((x) => x.id === 'carrera').xp, 77, 'todo va al reparto de la lista');
-  assert.equal((await todos.sync()).length, 0, 'la recompensa no se da dos veces');
-  s = (await todos.state()).lists[0]; assert.equal(s.completed, true); assert.equal(s.rewardXp, 60);
-  await rejectsWith(todos.uncompleteTask(l.id, a.id), 'invalid');
-  await rejectsWith(todos.addTask(l.id, { text: 'Otra' }), 'invalid');
-  await rejectsWith(todos.update(l.id, { name: 'X', size: 'normal', tasks: [] }), 'invalid');
-  await todos.remove(l.id);
-  assert.equal((await todos.state()).lists.length, 0); assert.equal(await total(), 77, 'eliminar la lista no quita la XP');
-  assert.ok(R.isTodoTaskKey('todo:' + l.id + ':' + a.id)); assert.ok(!R.isTodoTaskKey('todo:' + l.id));
+  const ev = await todos.completeTask(s.id, c.id);
+  assert.deepEqual(plain(ev), [{ type: 'todo', label: 'Lista del día', xp: 20 }]);
+  assert.equal(await total(), 10 + 2 + 5 + 20);
+  assert.ok((await repo.state()).computed.mains.every((m) => m.subs.every((x) => x.xp === 0)), 'toda la XP de tareas va solo al nivel general');
+  assert.equal((await todos.sync()).length, 0, 'el bonus no se da dos veces');
+  s = (await todos.state()).list; assert.equal(s.completed, true); assert.equal(s.rewardXp, 20);
+  await rejectsWith(todos.uncompleteTask(s.id, a.id), 'invalid');
+  // Completada, se pueden seguir añadiendo y marcando tareas (sin otro bonus).
+  const d = await todos.addTask({ text: 'Mandar el correo' });
+  assert.deepEqual(plain(await todos.completeTask(s.id, d.id)), []);
+  assert.equal(await total(), 37 + 5);
+  assert.ok(R.isTodoTaskKey('todo:' + s.id + ':' + a.id)); assert.ok(!R.isTodoTaskKey('todo:' + s.id));
 });
 
-test('tareas: no se quita una tarea marcada; quitar la última pendiente completa la lista; validación', async () => {
+test('tareas: tope de 40 XP al día; la que lo cruza da lo que queda y las siguientes se marcan con 0 XP', async () => {
+  const { todos, repo, fake } = make();
+  for (const t of ['A', 'B', 'C']) await todos.addTask({ text: t, size: 'grande' });
+  await todos.addTask({ text: 'D', size: 'normal' }); await todos.addTask({ text: 'E', size: 'grande' }); await todos.addTask({ text: 'F', size: 'pequena' });
+  let l = (await todos.state()).list;
+  for (const t of l.tasks.slice(0, 4)) await todos.completeTask(l.id, t.id);   // 10 + 10 + 10 + 5 = 35
+  l = (await todos.state()).list;
+  assert.equal(l.usedXp, 35); assert.equal(l.tasks[4].xp, 5, 'a la grande solo le quedan 5'); assert.equal(l.tasks[4].capped, true);
+  await todos.completeTask(l.id, l.tasks[4].id);
+  const ev = await todos.completeTask(l.id, l.tasks[5].id);
+  const entries = ledger(fake, Number(l.day.slice(0, 4))).entries;
+  assert.deepEqual(plain(entries.filter((e) => e.key.startsWith('todo:' + l.id + ':')).map((e) => e.xp)), [10, 10, 10, 5, 5, 0]);
+  assert.equal(entries.find((e) => e.label === 'F').capped, true);
+  assert.deepEqual(plain(ev), [{ type: 'todo', label: 'Lista del día', xp: 20 }], 'el bonus va aparte del tope');
+  assert.equal((await repo.state()).computed.general.total, 40 + 20);
+});
+
+test('tareas: editar, reordenar y quitar; no se tocan las marcadas; con menos de 3 tareas no hay bonus', async () => {
   const { todos, repo } = make();
-  const l = await todos.create({ name: 'Mudanza', size: 'normal', shares: [], tasks: [{ text: 'Cajas' }, { text: 'Llaves' }] });
-  const [a, b] = l.tasks;
-  await todos.completeTask(l.id, a.id);
-  await rejectsWith(todos.removeTask(l.id, a.id), 'invalid');
-  await rejectsWith(todos.update(l.id, { name: 'Mudanza', size: 'normal', tasks: [{ id: b.id, text: 'Llaves' }] }), 'invalid');
-  const ev = await todos.removeTask(l.id, b.id);
-  assert.deepEqual(plain(ev), [{ type: 'todo', label: 'Mudanza', xp: 30 }]);
-  assert.equal((await repo.state()).computed.general.total, 5 + 30);
-  const empty = await todos.create({ name: 'Vacía', size: 'normal', shares: [] });
-  assert.equal((await todos.sync()).length, 0, 'una lista sin tareas no se completa');
-  assert.equal((await todos.state()).lists.find((x) => x.id === empty.id).completed, false);
-  await rejectsWith(todos.create({ name: ' ', size: 'normal' }), 'invalid');
-  await rejectsWith(todos.create({ name: 'X', size: 'gigante' }), 'invalid');
-  await rejectsWith(todos.create({ name: 'X', size: 'normal', shares: [{ sub: 'arte', pct: 40 }] }), 'invalid');
+  const a = await todos.addTask({ text: 'Cajas' }), b = await todos.addTask({ text: 'Llaves' });
+  const id = (await todos.state()).list.id;
+  await todos.completeTask(id, a.id);
+  await rejectsWith(todos.removeTask(a.id), 'invalid');
+  await rejectsWith(todos.updateTask(a.id, { text: 'Otra' }), 'invalid');
+  await todos.updateTask(b.id, { text: 'Llaves del trastero', size: 'grande' });
+  await todos.moveTask(b.id, -1);
+  let l = (await todos.state()).list;
+  assert.deepEqual(plain(l.tasks.map((t) => [t.text, t.size])), [['Llaves del trastero', 'grande'], ['Cajas', 'normal']]);
+  assert.equal(await todos.moveTask(b.id, -1), false, 'la primera no sube más');
+  const ev = await todos.removeTask(b.id);
+  assert.deepEqual(plain(ev), [], 'todas hechas, pero solo 1 tarea: sin bonus');
+  l = (await todos.state()).list; assert.equal(l.allDone, true); assert.equal(l.eligible, false); assert.equal(l.completed, false);
+  assert.equal((await repo.state()).computed.general.total, 5);
 });
 
 test('día de uso: cambia a las 3:00, no a medianoche', () => {
@@ -626,35 +701,56 @@ test('día de uso: cambia a las 3:00, no a medianoche', () => {
   assert.equal(R.currentWeek(new Date(2026, 9, 19, 3, 0)), '2026-W43');
 });
 
-test('tareas: a las 3:00 lo hecho se borra y lo pendiente pasa a una lista de hoy; la XP se queda', async () => {
+test('tareas: a las 3:00 lo hecho se borra y lo pendiente pasa a la lista de hoy; la XP se queda', async () => {
   const fake = createFakeGithub();
   const { todos, repo, R } = make(fake);
-  const a = await todos.create({ name: 'Recados', size: 'normal', shares: [{ sub: 'objetivos', pct: 100 }], tasks: [{ text: 'Banco' }, { text: 'Correos', size: 'grande' }] });
-  const b = await todos.create({ name: 'Hecha', size: 'pequena', shares: [], tasks: [{ text: 'Una' }] });
+  await todos.addTask({ text: 'Banco' }); await todos.addTask({ text: 'Correos', size: 'grande' });
+  const a = (await todos.state()).list;
   await todos.completeTask(a.id, a.tasks[0].id);
-  await todos.completeTask(b.id, b.tasks[0].id);   // completa la lista entera
   const before = (await repo.state()).computed.general.total;
-  // Pasa la noche: se fechan como de ayer en el archivo.
+  // Pasa la noche: se fecha como de ayer en el archivo.
   const doc = JSON.parse(fake.state.files.get('rpg/todos.json'));
-  doc.lists.forEach((l) => { l.day = '2020-01-01'; });
+  doc.list.day = '2020-01-01';
   fake.state.files.set('rpg/todos.json', JSON.stringify(doc));
   const again = make(fake);
-  assert.equal((await again.todos.state()).lists.length, 0, 'las de ayer ya no se ven');
-  assert.equal(await again.todos.cleanup(), 1, 'solo una lista tenía pendientes');
-  const lists = (await again.todos.state()).lists;
-  assert.equal(lists.length, 1);
-  assert.equal(lists[0].name, 'Recados'); assert.notEqual(lists[0].id, a.id);
-  assert.deepEqual(plain(lists[0].tasks.map((t) => [t.text, t.size, t.done])), [['Correos', 'grande', false]]);
-  assert.equal(lists[0].day, R.logicalDay()); assert.equal(lists[0].xp, 30);
+  assert.equal((await again.todos.state()).list, null, 'la de ayer ya no se ve');
+  assert.equal(await again.todos.cleanup(), 1, 'una tarea pendiente');
+  const l = (await again.todos.state()).list;
+  assert.notEqual(l.id, a.id);
+  assert.deepEqual(plain(l.tasks.map((t) => [t.text, t.size, t.done])), [['Correos', 'grande', false]]);
+  assert.equal(l.day, R.logicalDay());
   assert.equal((await again.repo.state()).computed.general.total, before, 'la XP ganada ayer se queda');
   assert.equal(await again.todos.cleanup(), 0, 'sin nada que limpiar no escribe');
-  // Una lista de antes de este cambio (sin día) se fecha hoy y no se borra.
-  const d2 = JSON.parse(fake.state.files.get('rpg/todos.json'));
-  d2.lists.push({ id: 'tl_0000000a', name: 'Antigua', size: 'normal', shares: [], tasks: [{ id: 'tk_0000000a', text: 'x', size: 'normal' }] });
-  fake.state.files.set('rpg/todos.json', JSON.stringify(d2));
-  const third = make(fake);
-  await third.todos.cleanup();
-  assert.ok((await third.todos.state()).lists.some((l) => l.name === 'Antigua' && l.day === R.logicalDay()));
+});
+
+test('tareas: las varias listas de antes se juntan en la lista de hoy; lo hecho se queda en el historial con su XP', async () => {
+  const fake = createFakeGithub();
+  const { repo, R } = make(fake);
+  const today = R.logicalDay(), S = [{ sub: 'carrera', pct: 100 }];
+  const tk = (n) => 'tk_0000000' + n;
+  fake.state.files.set('rpg/todos.json', JSON.stringify({ version: 1, lists: [
+    { id: 'tl_00000001', name: 'Hoy', size: 'normal', shares: S, day: today, tasks: [{ id: tk(1), text: 'Hecha hoy', size: 'normal' }, { id: tk(2), text: 'Pendiente hoy', size: 'normal' }] },
+    { id: 'tl_00000002', name: 'Vieja', size: 'epica', shares: S, day: '2020-01-01', tasks: [{ id: tk(3), text: 'Hecha antes', size: 'grande' }, { id: tk(4), text: 'Pendiente vieja', size: 'pequena' }] },
+    { id: 'tl_00000003', name: 'Completada', size: 'normal', shares: S, day: today, tasks: [{ id: tk(5), text: 'Fija', size: 'normal' }] }] }));
+  await repo.addEntry({ kind: 'quest', key: 'todo:tl_00000001:' + tk(1), label: 'Hecha hoy', xp: 5, day: today });
+  await repo.addEntry({ kind: 'quest', key: 'todo:tl_00000002:' + tk(3), label: 'Hecha antes', xp: 10, day: '2026-01-02' });
+  await repo.addEntry({ kind: 'quest', key: 'todo:tl_00000003', label: 'Completada', xp: 30, day: today });
+  const total = (await repo.state(true)).computed.general.total;
+  const again = make(fake);
+  let l = (await again.todos.state()).list;   // ya se ve junta antes de escribir nada
+  assert.equal(l.id, 'tl_00000001', 'la de hoy conserva su id (y lo que tenía hecho)');
+  assert.deepEqual(plain(l.tasks.map((t) => [t.text, t.done])), [['Hecha hoy', true], ['Pendiente hoy', false], ['Pendiente vieja', false]]);
+  assert.deepEqual(plain(l.shares), S);
+  await again.todos.cleanup();
+  const doc = JSON.parse(fake.state.files.get('rpg/todos.json'));
+  assert.equal(doc.version, 2); assert.equal(doc.lists, undefined); assert.equal(doc.list.tasks.length, 3);
+  assert.equal((await again.repo.state(true)).computed.general.total, total, 'lo ganado se queda');
+  // Aunque el archivo antiguo traiga reparto, marcar una tarea da su XP solo al nivel general.
+  await again.todos.completeTask(l.id, tk(2));
+  const st = await again.repo.state(true);
+  assert.equal(st.computed.general.total, total + 5);
+  assert.equal(st.computed.mains.find((m) => m.id === 'yo_futuro').subs.find((x) => x.id === 'carrera').xp, 0, 'el reparto antiguo se ignora');
+  assert.equal(doc.notice, undefined, 'sin avisos de reparto');
 });
 
 test('misiones: «solo esta semana» se borra al pasar la semana; «repetir» y las de antes siguen', async () => {
@@ -682,16 +778,17 @@ test('misiones: «solo esta semana» se borra al pasar la semana; «repetir» y 
 
 test('tareas desde el diario: al guardar la página se marcan en su lista, una vez; quitarlas de la entrada no las desmarca', async () => {
   const { todos, repo } = make();
-  const l = await todos.create({ name: 'Hoy', size: 'normal', shares: [], tasks: [{ text: 'Llamar a la abuela' }, { text: 'Sábanas', size: 'pequena' }] });
-  const [t1, t2] = l.tasks;
+  await todos.addTask({ text: 'Llamar a la abuela' }); await todos.addTask({ text: 'Sábanas', size: 'pequena' }); await todos.addTask({ text: 'Regar' });
+  const l = (await todos.state()).list;
+  const [t1, t2, t3] = l.tasks;
   const blocks = [{ id: 'b_00000001', tasks: [{ list: l.id, task: t1.id, text: 'Llamar a la abuela' }] }];
   const r1 = await todos.completeFromBlocks(blocks);
   assert.deepEqual(plain(r1.logged.map((e) => [e.label, e.xp])), [['Llamar a la abuela', 5]]);
   assert.equal((await todos.completeFromBlocks(blocks)).logged.length, 0, 'volver a guardar no suma');
-  const r2 = await todos.completeFromBlocks([{ id: 'b_00000002', tasks: [{ list: l.id, task: t2.id, text: 'Sábanas' }, { list: 'tl_ffffffff', task: 'tk_ffffffff', text: 'De otra lista' }] }]);
-  assert.equal(r2.logged.length, 1, 'una tarea de una lista que ya no existe se ignora');
-  assert.deepEqual(plain(r2.events), [{ type: 'todo', label: 'Hoy', xp: 30 }], 'era la última: la lista se completa');
-  assert.equal((await repo.state()).computed.general.total, 5 + 2 + 30);
+  const r2 = await todos.completeFromBlocks([{ id: 'b_00000002', tasks: [{ list: l.id, task: t2.id, text: 'Sábanas' }, { list: l.id, task: t3.id, text: 'Regar' }, { list: 'tl_ffffffff', task: 'tk_ffffffff', text: 'De otra lista' }] }]);
+  assert.equal(r2.logged.length, 2, 'una tarea de una lista que ya no existe se ignora');
+  assert.deepEqual(plain(r2.events), [{ type: 'todo', label: 'Lista del día', xp: 20 }], 'era la última: la lista se completa');
+  assert.equal((await repo.state()).computed.general.total, 5 + 2 + 5 + 20);
   await todos.completeFromBlocks([{ id: 'b_00000001', tasks: [] }]);
   assert.equal((await todos.state()).lists[0].tasks[0].done, true, 'quitarla de la entrada no la desmarca');
 });
@@ -1006,4 +1103,298 @@ test('sombras: el archivo se lee con tolerancia y uno dañado no se toca', async
   assert.equal(data.shadows.length, 1); assert.equal(data.appearances.length, 1);
   fake.state.files.set('rpg/shadows.json', JSON.stringify({ shadows: 'roto' }));
   await rejectsWith(shadows.state(true), 'invalid');
+});
+
+// ---- Rebalanceo: diario, topes, días, misiones y jefes ----
+function connected(strict) {
+  const fake = createFakeGithub();
+  const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, URL, setTimeout, clearTimeout, fetch: fake.fetch, localStorage: { getItem: () => null, setItem() {}, removeItem() {} } });
+  ctx.window = ctx; ctx.document = { documentElement: { dataset: {}, removeAttribute() {} } };
+  for (const f of ['icons', 'ui', 'storage/errors', 'storage/github-adapter', 'storage/store', 'storage/connection', 'diary/entries', 'diary/repository', 'diary/drafts', 'rpg/config', 'rpg/model', 'rpg/repository', 'rpg/activities', 'rpg/weekly', 'rpg/bosses', 'rpg/todos', 'rpg/growth']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
+  if (!strict) ctx.App.rpg.CONFIG.activity.daysBack = 100000;
+  return { App: ctx.App, R: ctx.App.rpg, fake };
+}
+
+test('escribir en el diario: 10 XP una vez al día, solo la página de hoy, solo al nivel general; fijos salvo si se borra la página', async () => {
+  const { App, R, fake } = connected();
+  await App.connection.connect({ repo: 'ana/diario-datos', token: 'good', fetch: fake.fetch });
+  const today = R.today(), text = [{ id: 'b_00000001', text: 'Hoy ha sido raro' }];
+  assert.equal(await R.recordDiaryWriting(today, [{ id: 'b_00000001', text: '   ', mood: 'bien' }]), null, 'sin texto (solo ánimo) no da nada');
+  const e = await R.recordDiaryWriting(today, text);
+  assert.equal(e.xp, 10); assert.equal(e.kind, 'diary'); assert.equal(e.key, 'diary:' + today); assert.deepEqual(plain(e.splits), [], 'solo al nivel general');
+  assert.equal(await R.recordDiaryWriting(today, [{ id: 'b_00000002', text: 'Otro bloque' }]), null, 'una sola vez al día');
+  assert.equal(await R.recordDiaryWriting('2026-01-05', text), null, 'una página de otro día no da XP');
+  const res = await R.recordDiaryActivities(today, text);
+  assert.equal(res.logged.length, 0, 'volver a guardar no suma');
+  assert.equal((await R.repo().state(true)).computed.general.total, 10);
+  // Una vez ganados, se quedan fijos: editar o quitar el texto no los toca ni pregunta. Solo borrar la página los quita.
+  assert.equal((await R.diaryRemovals(text, [{ id: 'b_00000001', text: '', mood: 'bien' }], today)).length, 0, 'quitar el texto no quita nada');
+  assert.equal((await R.diaryRemovals(text, [{ id: 'b_00000001', text: 'cambiado' }], today)).length, 0, 'cambiar el texto no quita nada');
+  const items = await R.diaryRemovals(text, null, today);   // la página se borra
+  assert.deepEqual(plain(items.map((it) => [it.kind, it.xp])), [['diary', 10]]);
+  await R.applyDiaryRemovals(items);
+  assert.equal((await R.repo().state(true)).computed.general.total, 0);
+  assert.equal((await R.recordDiaryWriting(today, text)).xp, 10, 'escribir otra vez lo da otra vez (una sola)');
+  assert.throws(() => R.sanitizeEntry({ kind: 'diary', key: 'diary:' + today, label: 'x', xp: 50 }, R.buildStructure(null)), /diario/);
+});
+
+test('actividades: solo las 10 primeras del día dan XP; las siguientes se registran con 0 XP y cuentan para las misiones', async () => {
+  const { acts, repo, weekly, R } = make();
+  const day = '2026-10-14';
+  const m = await weekly.create({ name: 'Leer', size: 'normal', shares: [], mode: 'activity', activities: ['leer-libro'], target: 1 });
+  const ids = ['gimnasio', 'cardio', 'comer-bien', 'dormir-bien', 'skincare', 'arreglarme', 'estudiar', 'leer-comic', 'tarot', 'meditar'];
+  for (const [i, id] of ids.entries()) await acts.log(id, { req: 'r' + i, day });
+  const extra = await acts.log('leer-libro', { req: 'r11', day });
+  assert.equal(extra.entry.xp, 0); assert.equal(extra.entry.capped, true); assert.deepEqual(plain(extra.entry.splits), []);
+  assert.equal((await repo.state(true)).computed.general.total, 50, 'como mucho 50 XP de actividades al día');
+  assert.equal((await acts.log('gimnasio', { req: 'r12', day: '2026-10-15' })).entry.xp, 5, 'otro día, otro cupo');
+  const s = await weekly.state(true, '2026-W42');
+  assert.equal(s.missions.find((x) => x.id === m.id).count, 1, 'la de 0 XP cuenta para la misión');
+  assert.throws(() => R.sanitizeEntry({ kind: 'manual', key: 'manual:z', label: 'x', xp: 0, capped: true }, R.buildStructure(null)), /entero distinto de 0/);
+});
+
+test('actividades: solo se pueden apuntar hoy o ayer', async () => {
+  const { acts, R } = make(createFakeGithub(), { strict: true });
+  const today = R.today();
+  assert.equal((await acts.log('gimnasio', { req: 'a', day: today })).entry.xp, 5);
+  assert.equal((await acts.log('gimnasio', { req: 'b', day: R.shiftDay(today, -1) })).entry.xp, 5);
+  await rejectsWith(acts.log('gimnasio', { req: 'c', day: R.shiftDay(today, -2) }), 'invalid');
+  await rejectsWith(acts.log('gimnasio', { req: 'd', day: R.shiftDay(today, 1) }), 'invalid');
+  await rejectsWith(acts.logOnce({ name: 'Patinar', points: [{ sub: 'resistencia', xp: 5 }], req: 'e', day: R.shiftDay(today, -3) }), 'invalid');
+  const old = await acts.logBlocks(R.shiftDay(today, -5), [{ id: 'b_00000001', activities: ['gimnasio'] }]);
+  assert.equal(old.logged.length, 0); assert.equal(old.oldPage, true, 'una página vieja se queda como está, sin XP');
+});
+
+test('«haz N veces»: una por actividad y día; una semanal puede valer con varias actividades', async () => {
+  const { acts, weekly, R } = make();
+  const m = await weekly.create({ name: 'Hacer ejercicio', size: 'normal', shares: [], mode: 'activity', activities: ['gimnasio', 'cardio'], target: 3 });
+  assert.deepEqual(plain(m.activities), ['gimnasio', 'cardio']);
+  await acts.log('gimnasio', { req: 'a', day: MON }); await acts.log('gimnasio', { req: 'b', day: MON }); await acts.log('gimnasio', { req: 'c', day: MON });
+  let v = (await weekly.state(true, WEEK)).missions[0];
+  assert.equal(v.count, 1, 'tres veces el mismo día cuentan una');
+  await acts.log('cardio', { req: 'd', day: MON });
+  v = (await weekly.state(true, WEEK)).missions[0];
+  assert.equal(v.count, 2, 'otra actividad el mismo día sí cuenta');
+  await acts.log('cardio', { req: 'e', day: '2026-10-15' });
+  assert.equal((await weekly.sync([WEEK])).length, 1, 'gimnasio + correr + correr otro día = 3');
+  // Las misiones de antes (con una sola `activity`) siguen funcionando.
+  assert.deepEqual(plain(R.weeklyActivities({ activity: 'gimnasio' })), ['gimnasio']);
+  await rejectsWith(weekly.create({ name: 'X', size: 'normal', shares: [], mode: 'activity', activities: [], target: 2 }), 'invalid');
+});
+
+test('misiones semanales: como mucho 5 activas a la vez', async () => {
+  const { weekly } = make();
+  const mk = (i) => weekly.create({ name: 'M' + i, size: 'pequena', shares: [], mode: 'checks', target: 1 });
+  for (let i = 0; i < 5; i++) await mk(i);
+  await rejectsWith(mk(5), 'invalid');
+  const s = await weekly.state(true);
+  await weekly.remove(s.missions[0].id);
+  assert.equal((await mk(6)).name, 'M6', 'al quitar una, se puede crear otra');
+});
+
+test('jefes: su premio grande se cobra a partir de 7 / 14 / 30 días desde que lo creas; los pasos dan sus 5 XP al momento', async () => {
+  const fake = createFakeGithub();
+  const { bosses, repo, R } = make(fake, { strict: true });
+  assert.deepEqual(plain(R.BOSS_TIERS.map((t) => [t.id, t.xp, t.days])), [['jefe', 250, 7], ['mayor', 400, 14], ['final', 600, 30]]);
+  const b = await bosses.create({ name: 'Meta grande', tier: 'jefe', shares: [], steps: [{ text: 'Paso único' }] });
+  const ev = await bosses.completeStep(b.id, b.steps[0].id);
+  assert.deepEqual(plain(ev.map((e) => e.type)), ['step'], 'sin derrota todavía');
+  let v = (await bosses.state(true)).bosses[0];
+  assert.equal(v.allDone, true); assert.equal(v.defeated, false); assert.equal(v.unlocked, false);
+  assert.equal(v.unlockDay, R.shiftDay(R.today(), 7));
+  assert.equal((await repo.state(true)).computed.general.total, 5);
+  // Pasan los días (se fecha la creación 7 días antes): la siguiente comprobación da la derrota.
+  const doc = JSON.parse(fake.state.files.get('rpg/bosses.json'));
+  doc.bosses[0].createdAt = R.shiftDay(R.today(), -7) + 'T10:00:00.000Z';
+  fake.state.files.set('rpg/bosses.json', JSON.stringify(doc));
+  const again = make(fake, { strict: true });
+  const ev2 = await again.bosses.sync();
+  assert.deepEqual(plain(ev2.map((e) => [e.type, e.xp])), [['boss', 250]]);
+  assert.equal((await again.repo.state(true)).computed.general.total, 255);
+});
+
+// ---- Fase 4: XP descansada, atributo dormido y rasgos ----
+const ent = (day, extra = {}) => ({ key: 'k:' + day + ':' + Math.random(), kind: 'activity', activity: 'gimnasio', day, xp: 5, splits: [{ sub: 'fuerza', xp: 5 }], ...extra });
+
+test('XP descansada: tras 3 días o más sin apuntar, al volver (ese día y el siguiente) las 3 primeras actividades dan +5', () => {
+  const { R } = make();
+  assert.equal(R.restState([], '2026-10-07'), null, 'sin historial no hay descanso');
+  assert.equal(R.restState([ent('2026-10-06'), ent('2026-10-07')], '2026-10-07'), null, 'la primera racha no viene de descansar');
+  assert.deepEqual(plain(R.restState([ent('2026-10-02')], '2026-10-06')), { state: 'pending', days: 3, left: 3 }, '3 días vacíos: lo próximo lo activa');
+  assert.equal(R.restState([ent('2026-10-03')], '2026-10-06'), null, 'con 2 días vacíos, no');
+  const back = [ent('2026-10-01'), ent('2026-10-02'), ent('2026-10-07')];
+  assert.deepEqual(plain(R.restState(back, '2026-10-07')), { state: 'active', start: '2026-10-07', until: '2026-10-08', days: 4, left: 3 });
+  assert.equal(R.restState(back, '2026-10-08').left, 3, 'también el día siguiente');
+  assert.equal(R.restState(back, '2026-10-09'), null, 'pasadas las 48 h, ya no');
+  const used = back.concat([1, 2, 3].map((i) => ({ key: 'rested:x' + i, kind: 'rested', day: '2026-10-07', xp: 5 })));
+  assert.equal(R.restState(used, '2026-10-07'), null, 'ya usadas las 3');
+});
+
+test('XP descansada: se apunta aparte, no gasta el cupo de 10 y se va con su actividad', async () => {
+  const { acts, repo, R } = make();
+  const today = R.today();
+  await acts.log('gimnasio', { req: 'old', day: R.shiftDay(today, -5) });
+  const got = [];
+  for (const id of ['gimnasio', 'cardio', 'meditar', 'tarot']) got.push(await acts.log(id, { req: 'n' + id, day: today }));
+  assert.deepEqual(plain(got.map((r) => !!r.rested)), [true, true, true, false], 'solo las 3 primeras');
+  assert.equal(got[0].rested.kind, 'rested'); assert.equal(got[0].rested.key, 'rested:' + got[0].entry.key);
+  assert.deepEqual(plain(got[0].rested.splits), plain(got[0].entry.splits), 'a las mismas subcategorías');
+  assert.equal((await repo.state(true)).computed.general.total, 5 + 4 * 5 + 3 * 5);
+  assert.equal(R.activitiesWithXp((await repo.state()).entries, today), 4, 'el extra no cuenta como actividad');
+  await repo.removeEntry(got[0].entry.key);
+  assert.equal((await repo.state(true)).computed.general.total, 5 + 3 * 5 + 2 * 5, 'borrar la actividad quita también su extra');
+});
+
+test('atributo dormido: el que menos XP ha recibido estos 7 días; una misión diaria es suya con el sello «Despierta»', async () => {
+  const { R, repo, daily } = make();
+  const st = R.buildStructure(null), today = R.today();
+  assert.equal(R.dormantMain(st, [], today), null, 'sin XP esta semana, ninguno');
+  const subs = ['fuerza', 'conocimiento', 'amistad', 'arte', 'logica', 'finanzas'];   // de todos menos Aventura
+  const week = subs.map((s, i) => ent(R.shiftDay(today, -i), { splits: [{ sub: s, xp: 5 }] }));
+  assert.equal(R.dormantMain(st, week.concat([ent(R.shiftDay(today, -9), { splits: [{ sub: 'valentia', xp: 50 }] })]), today).id, 'aventura', 'lo de hace más de 7 días no cuenta');
+  for (const [i, s] of subs.entries()) await repo.addEntry({ kind: 'manual', key: 'manual:w' + i, label: 'x', xp: 5, shares: [{ sub: s, pct: 100 }], day: today });
+  const d = await daily.state();
+  const wake = d.missions.filter((m) => m.wake);
+  assert.equal(wake.length, 1); assert.equal(R.findSub(st, wake[0].sub).main.id, 'aventura');
+  assert.equal(wake[0].xp, R.sizeXp(wake[0].size), 'misma XP que las demás');
+  const swapped = await daily.reroll(wake[0].id);
+  assert.equal(swapped.wake, true); assert.equal(R.findSub(st, swapped.sub).main.id, 'aventura', 'el dado la cambia por otra del mismo atributo');
+});
+
+test('rasgos: salen del historial (horas, días, variedad, rituales, sombras) y, conseguidos, son para siempre', () => {
+  const { R } = make();
+  const at = (day, h) => { const [y, m, dd] = day.split('-').map(Number); return new Date(y, m - 1, dd, h, 0).toISOString(); };
+  const days = (n, from = '2026-09-01') => Array.from({ length: n }, (_, i) => R.shiftDay(from, i));
+  const by = (list) => Object.fromEntries(R.traitsState(list, null, '2026-12-31').map((t) => [t.id, t]));
+  // Noctámbula: 10 actividades entre las 22:00 y las 3:00 en 30 días (la 1:00 también cuenta).
+  const night = days(10).map((d, i) => ent(d, { at: at(d, i % 2 ? 1 : 23) }));
+  let t = by(night);
+  assert.equal(t.noctambula.earned, true); assert.equal(t.noctambula.earnedOn, '2026-09-10');
+  assert.equal(by(night.slice(0, 9)).noctambula.earned, false);
+  const spread = days(10).map((d, i) => ent(R.shiftDay('2026-09-01', i * 4), { at: at(d, 23) }));   // 10 en 37 días
+  assert.equal(by(spread).noctambula.earned, false, 'tienen que caber en 30 días');
+  // Para siempre: dos meses después, sin nada nuevo, sigue conseguido; el progreso de ahora vuelve a 0.
+  t = R.traitsState(night, null, '2026-12-31').find((x) => x.id === 'noctambula');
+  assert.equal(t.earned, true); assert.equal(t.progress, 0);
+  // Exploradora: 10 actividades distintas; Hilo firme: 20 días distintos.
+  const ids = ['gimnasio', 'cardio', 'comer-bien', 'dormir-bien', 'skincare', 'arreglarme', 'estudiar', 'leer-libro', 'leer-comic', 'tarot'];
+  assert.equal(by(ids.map((a, i) => ent(R.shiftDay('2026-09-01', i), { activity: a, at: at('2026-09-01', 12) }))).exploradora.earned, true);
+  assert.equal(by(ids.map((a, i) => ent(R.shiftDay('2026-09-01', i), { activity: 'gimnasio', at: at('2026-09-01', 12) }))).exploradora.earned, false, 'la misma no vale');
+  assert.equal(by(days(20).map((d) => ent(d, { at: at(d, 12) }))).hilo_firme.earned, true);
+  const firm = R.traitsState(days(19).map((d) => ent(d, { at: at(d, 12) })), null, '2026-09-25').find((x) => x.id === 'hilo_firme');
+  assert.equal(firm.earned, false); assert.equal(firm.progress, 19, 'progreso: lo de los últimos 30 días');
+  // Bruja del alba: 5 rituales antes de las 9:00 (en total, sin ventana).
+  const rituals = [0, 40, 80, 120, 160].map((n) => { const d = R.shiftDay('2026-01-01', n); return ent(d, { activity: 'tarot', splits: [{ sub: 'brujeria', xp: 5 }], at: at(d, 7) }); });
+  assert.equal(by(rituals).bruja_alba.earned, true);
+  // Corazón remendado: 5 sombras purificadas.
+  const sh = { id: 'sh_0000000a', name: 'Insomnio', icon: 'moon', counters: ['dormir-bien'], archived: false };
+  const apps = days(5).map((d) => ({ shadow: sh.id, day: d }));
+  const counter = days(5).map((d) => ent(d, { activity: 'dormir-bien', at: at(d, 12) }));
+  const cr = R.traitsState(counter, { all: [sh], appearances: apps }, '2026-12-31').find((x) => x.id === 'corazon_remendado');
+  assert.equal(cr.earned, true);
+  assert.equal(R.traitsState(counter, null, '2026-12-31').find((x) => x.id === 'corazon_remendado').earned, false, 'sin sombras, no');
+});
+
+test('rasgos secretos: Luna llena, Hilo de vuelta y Criatura de medianoche', () => {
+  const { R } = make();
+  const at = (day, h, m = 0) => { const [y, mo, d] = day.split('-').map(Number); return new Date(y, mo - 1, d, h, m).toISOString(); };
+  const by = (list) => Object.fromEntries(R.traitsState(list, null, '2026-12-31').map((x) => [x.id, x]));
+  assert.deepEqual(plain(R.TRAITS.filter((x) => x.secret).map((x) => x.id)), ['luna_llena', 'hilo_de_vuelta', 'criatura_medianoche']);
+  // Luna llena: el mismo día, diario + las tres diarias + la lista completa.
+  const d = '2026-10-05', base = [{ key: 'diary:' + d, kind: 'diary', day: d, xp: 10, at: at(d, 12) }, { key: 'daily:' + d, kind: 'quest', day: d, xp: 15, at: at(d, 12) }];
+  assert.equal(by(base).luna_llena.earned, false, 'falta la lista');
+  const full = by(base.concat([{ key: 'todo:tl_0000000a', kind: 'quest', day: d, xp: 20, at: at(d, 12) }]));
+  assert.equal(full.luna_llena.earned, true); assert.equal(full.luna_llena.earnedOn, d);
+  // Hilo de vuelta: algo apuntado tras 14 días sin nada.
+  const e = (day, h = 12, m = 0) => ent(day, { at: at(day, h, m) });
+  assert.equal(by([e('2026-09-01'), e('2026-09-15')]).hilo_de_vuelta.earned, false, '13 días vacíos: aún no');
+  assert.equal(by([e('2026-09-01'), e('2026-09-16')]).hilo_de_vuelta.earnedOn, '2026-09-16');
+  // Criatura de medianoche: entre las 0:00 y las 0:05.
+  assert.equal(by([e('2026-09-01', 0, 4)]).criatura_medianoche.earned, true);
+  assert.equal(by([e('2026-09-01', 0, 5), e('2026-09-02', 23, 59)]).criatura_medianoche.earned, false);
+});
+
+test('jefes: con todos los pasos hechos antes de tiempo queda «Derrotado» con el botín lacrado; sus pasos y su edición, fijos', async () => {
+  const { bosses, R } = make(createFakeGithub(), { strict: true });
+  const b = await bosses.create({ name: 'Meta', tier: 'mayor', shares: [], steps: [{ text: 'Uno' }] });
+  let v = (await bosses.state(true)).bosses[0];
+  assert.equal(v.sealed, false, 'con pasos pendientes, todavía no');
+  await bosses.completeStep(b.id, b.steps[0].id);
+  v = (await bosses.state(true)).bosses[0];
+  assert.equal(v.sealed, true); assert.equal(v.defeated, false); assert.equal(v.daysLeft, 14);
+  await rejectsWith(bosses.uncompleteStep(b.id, b.steps[0].id), 'invalid');
+  await rejectsWith(bosses.update(b.id, { name: 'Otra', tier: 'jefe', shares: [], steps: [{ text: 'Uno' }] }), 'invalid');
+});
+
+test('subida de nivel: premios entre dos niveles (marcos, títulos y fondos) y estrellas de la constelación en el marco', () => {
+  const ctx = vm.createContext({ btoa, atob, crypto: globalThis.crypto, URL });
+  ctx.window = ctx;
+  for (const f of [...FILES, 'views/rpg/pickers', 'views/rpg/avatar', 'views/rpg/levelup']) vm.runInContext(read(`js/${f}.js`), ctx, { filename: f });
+  const V = ctx.App.rpgViews;
+  assert.deepEqual(plain(V.levelUp.rewards(8, 10, 'f').map((x) => [x.kind, x.name])), [['Marco nuevo', 'Puntada doble'], ['Fondo nuevo', 'Acolchado ciruela']]);
+  assert.deepEqual(plain(V.levelUp.rewards(6, 7, 'm').map((x) => x.name)), ['Muñeco susurrante']);
+  assert.equal(V.levelUp.rewards(10, 11, 'f').length, 0);
+  assert.equal(V.starsSvg(0), '');
+  assert.equal((V.starsSvg(5).match(/class="fr-star"/g) || []).length, 5);
+  const many = V.starsSvg(15);
+  assert.equal((many.match(/class="fr-star"/g) || []).length, 12, 'como mucho 12 se ven'); assert.match(many, /✦ 15/);
+  assert.match(V.avatar({ avatar: 'moon' }, 30, { stars: 2 }), /2 estrellas en su constelación/);
+  for (const fr of ctx.App.rpg.AVATAR_FRAMES) assert.ok(!/NaN/.test(V.frameSvg(fr.id)), fr.id + ' sin números rotos');
+});
+
+test('copia de seguridad: exportar e importar en un repositorio vacío conserva todo el personaje', async () => {
+  const fake = createFakeGithub();
+  const { repo, acts, todos, shadows, store, R } = make(fake);
+  await repo.saveProfile({ name: 'Yo', avatar: 'moon', form: 'n', background: 'papel' });
+  await acts.log('gimnasio', { req: 'a', day: '2026-10-12' });
+  await todos.addTask({ text: 'Regar' });
+  const s = await shadows.create({ name: 'Insomnio', icon: 'moon', counters: ['dormir-bien'] });
+  await shadows.appear(s.id, '2026-10-12');
+  const bundle = await store.exportBundle();
+  for (const p of ['rpg/profile.json', 'rpg/todos.json', 'rpg/shadows.json']) assert.ok(bundle.files[p], 'la copia incluye ' + p);
+  assert.ok(Object.keys(bundle.files).some((p) => /^rpg\/ledger-\d{4}\.json$/.test(p)), 'y el registro de XP');
+  // A un repositorio de prueba vacío.
+  const other = make();
+  await other.store.applyImport(JSON.parse(JSON.stringify(bundle)), { overwrite: false });
+  const a = await repo.state(true), b = await other.repo.state(true);
+  assert.equal(b.computed.general.total, a.computed.general.total); assert.equal(b.profile.form, 'n');
+  assert.equal((await other.shadows.state(true)).appearances.length, 1);
+  assert.equal((await other.todos.state(true)).list.tasks[0].text, 'Regar');
+});
+
+test('diario: la página de ayer también da sus 10 XP (una vez); la de anteayer, no', async () => {
+  const { App, R, fake } = connected();
+  await App.connection.connect({ repo: 'ana/diario-datos', token: 'good', fetch: fake.fetch });
+  const text = [{ id: 'b_00000001', text: 'Ayer no pude escribir' }], yesterday = R.shiftDay(R.today(), -1);
+  assert.equal((await R.recordDiaryWriting(yesterday, text)).xp, 10);
+  assert.equal(await R.recordDiaryWriting(yesterday, text), null, 'una sola vez por día');
+  assert.equal(await R.recordDiaryWriting(R.shiftDay(R.today(), -2), text), null);
+});
+
+test('sombras: se pueden apuntar y quitar en días pasados (desde la tira), pero no en el futuro', async () => {
+  const { shadows, R } = make();
+  const s = await shadows.create({ name: 'Rumiar', icon: 'spark', counters: ['tarot'] });
+  const d = R.shiftDay(R.logicalDay(), -5);
+  await shadows.appear(s.id, d, 'ficha');
+  let v = (await shadows.state(true)).shadows[0];
+  assert.equal(v.strip.find((x) => x.day === d).state, 'ap');
+  await shadows.unappear(s.id, d);
+  v = (await shadows.state(true)).shadows[0];
+  assert.equal(v.strip.find((x) => x.day === d).state, 'none');
+  await rejectsWith(shadows.appear(s.id, R.shiftDay(R.today(), 1)), 'invalid');
+});
+
+test('símbolos: una sola galería para todo, con lo que ya había, y una sola caja', () => {
+  const { App, R } = make();
+  const before = ['heart', 'dumbbell', 'leaf', 'bolt', 'moon', 'mirror', 'star', 'book', 'key', 'tarot', 'spark', 'eye', 'people', 'butterfly', 'rose', 'locket', 'bow', 'compass', 'sun', 'candle', 'umbrella', 'pencil', 'film', 'ghost', 'skull', 'cat', 'cross', 'cherry', 'cloud', 'drop', 'crown', 'flower', 'mended', 'globe', 'speech', 'coin', 'briefcase', 'flag'];
+  for (const id of before) assert.ok(App.isSymbol(id), id + ' sigue valiendo');
+  assert.equal(R.ICONS, App.SYMBOL_IDS); assert.equal(R.AVATARS, App.SYMBOL_IDS, 'atributos, actividades, sombras y avatar: la misma galería');
+  assert.equal(new Set(App.SYMBOL_IDS).size, App.SYMBOL_IDS.length, 'sin repetidos');
+  assert.ok(App.SYMBOLS.every((s) => s.label));
+  const html = App.ui.symbolPicker({ name: 'x', value: 'moon' });
+  assert.equal((html.match(/type="radio"/g) || []).length, App.SYMBOL_IDS.length);
+  assert.match(html, /value="moon" checked/); assert.match(html, /class="sym-box" hidden/, 'al editar, cerrada');
+  assert.doesNotMatch(App.ui.symbolPicker({ name: 'x', value: 'moon', open: true }), /class="sym-box" hidden/, 'al crear, abierta');
+  const withInitial = App.ui.symbolPicker({ name: 'p', value: '', extra: [{ id: '', label: 'La inicial del nombre', html: 'Aa' }] });
+  assert.match(withInitial, /value="" checked/);
 });

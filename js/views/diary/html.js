@@ -56,12 +56,23 @@
 
   // Cabecera de la página, DENTRO de la hoja: la fecha y el título (o solo la fecha) y el porcentaje de ánimo.
   // El h1 es el título si lo hay; si no, la fecha.
-  function sheetHead(day, title, pctHtml) {
+  // `turn` (opcional): las flechas para pasar la hoja, encima de la fecha.
+  function sheetHead(day, title, pctHtml, turn) {
     var long = esc(D.formatLong(day));
     var titles = title
       ? '<p class="date-line">' + long + '</p><h1 id="page-title" class="day-title" tabindex="-1">' + esc(title) + '</h1>'
       : '<h1 id="page-title" class="date-h1" tabindex="-1">' + long + '</h1>';
-    return '<header class="sheet-head"><div class="sheet-titles">' + titles + '</div><div class="pct-slot" id="pct-slot">' + (pctHtml || '') + '</div></header>';
+    return '<header class="sheet-head"><div class="sheet-titles">' + (turn || '') + titles + '</div><div class="pct-slot" id="pct-slot">' + (pctHtml || '') + '</div></header>';
+  }
+  // Pasar la hoja, como en un libro: al día anterior y al siguiente que tengan página. Sin página, la flecha queda apagada.
+  function pageTurn(nb) {
+    function arrow(d, name, dir) {
+      var ic = icon(dir < 0 ? 'chev-l' : 'chev-r');
+      if (!d) return '<span class="turn-off" aria-hidden="true">' + ic + '</span>';
+      return '<a href="#/diario/' + esc(d) + '" aria-label="' + name + ': ' + esc(D.formatLong(d)) + '" title="' + esc(D.formatLong(d)) + '">' + ic + '</a>';
+    }
+    return '<nav class="sheet-turn" aria-label="Pasar la hoja">' + arrow(nb.prev, 'Página anterior', -1) +
+      '<small aria-hidden="true">pasar la hoja</small>' + arrow(nb.next, 'Página siguiente', 1) + '</nav>';
   }
 
   App.diaryHtml = {
@@ -143,7 +154,8 @@
     // texto, su estado, sus emociones, sus personas, sus actividades y sus etiquetas. `byId` es el mapa de emociones,
     // `peopleById` el de personas y `actsById` el de actividades (pueden faltar). Las personas son enlaces a su ficha;
     // los controles de vínculo solo existen en el editor.
-    sheet: function (entry, byId, peopleById, actsById) {
+    // `opts.nav` ({ prev, next }, opcional): pone las flechas de pasar la hoja en la cabecera.
+    sheet: function (entry, byId, peopleById, actsById, opts) {
       var blocks = entry.blocks.map(function (b) {
         var meta = (b.mood ? moodTag(b.mood) : '') + emotionList(b.emotions, byId, 'Emociones de la entrada') +
           (App.peopleHtml ? App.peopleHtml.personChips(b.people, peopleById, 'Personas de la entrada') : '') +
@@ -153,20 +165,10 @@
       var pct = D.dayMood(entry).percent;
       return '<article class="card paper sheet" aria-label="Página del día"' + (App.sheetDeco ? App.sheetDeco.attr(pct) : '') + '>' +
         (App.sheetDeco ? App.sheetDeco.markup(pct) : '') +
-        sheetHead(entry.day, entry.title, percentHtml(entry, false)) +
+        sheetHead(entry.day, entry.title, percentHtml(entry, false), opts && opts.nav ? pageTurn(opts.nav) : '') +
         (blocks || '<p class="soft">Esta página solo tiene título.</p>') + '</article>';
     },
 
-    // Pasar la página: día anterior y siguiente con página
-    pageNav: function (nb) {
-      function link(day, label) {
-        if (!day) return '<span class="btn secondary" aria-disabled="true">' + label + '</span>';
-        return '<a class="btn secondary" href="#/diario/' + esc(day) + '" title="' + esc(D.formatLong(day)) + '">' + label + '</a>';
-      }
-      return '<nav class="page-nav" aria-label="Pasar de página">' +
-        link(nb.prev, icon('chev-l') + 'Página anterior') +
-        '<a class="btn secondary" href="#/diario">Volver al diario</a>' +
-        link(nb.next, 'Página siguiente' + icon('chev-r')) + '</nav>';
-    }
+    pageTurn: pageTurn
   };
 })(window.App = window.App || {});

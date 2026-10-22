@@ -27,7 +27,7 @@
     }).join('');
   }
 
-  // items: [{ id, name, level, fraction, value, magic? }].
+  // items: [{ id, name, level, fraction, value, magic?, sleep? }] (sleep: el atributo dormido, ver rpg/growth.js).
   // o: { selected, kind: 'main' | 'sub', animate, compare: { mode: 'month' | 'rings', shapes: [[valor por eje], …] } }
   // `compare` dibuja formas de antes con la misma escala: «month» = un contorno punteado (hace 30 días);
   // «rings» = anillos de crecimiento, uno por mes, más claros cuanto más antiguos.
@@ -52,11 +52,11 @@
       var anchor = Math.abs(c) < 0.2 ? 'middle' : c > 0 ? 'start' : 'end';
       var dy = s < -0.5 ? -8 : s > 0.5 ? 14 : 0;
       var pct = Math.round(m.fraction * 100);
-      var text = m.name + ', nivel ' + m.level + ', ' + pct + ' por ciento hacia el siguiente';
-      return '<g style="--i:' + i + '" class="rd-label' + (m.id === sel ? ' on' : '') + (m.magic ? ' magic' : '') + '" data-' + kind + '="' + esc(m.id) + '" role="button" tabindex="0" aria-pressed="' + (m.id === sel) + '" aria-label="' + esc(text) + '">' +
+      var text = m.name + ', nivel ' + m.level + ', ' + pct + ' por ciento hacia el siguiente' + (m.sleep ? '. Dormido: es el que menos XP ha recibido esta semana' : '');
+      return '<g style="--i:' + i + '" class="rd-label' + (m.id === sel ? ' on' : '') + (m.magic ? ' magic' : '') + (m.sleep ? ' sleep' : '') + '" data-' + kind + '="' + esc(m.id) + '" role="button" tabindex="0" aria-pressed="' + (m.id === sel) + '" aria-label="' + esc(text) + '">' +
         '<title>' + esc(text) + '</title>' +
         '<rect class="rd-hit" x="' + (anchor === 'end' ? x - 98 : anchor === 'middle' ? x - 50 : x - 4) + '" y="' + (y + dy - 22) + '" width="102" height="42" rx="12"/>' +
-        '<text class="rd-name" x="' + x.toFixed(1) + '" y="' + (y + dy - 3).toFixed(1) + '" text-anchor="' + anchor + '">' + (m.magic ? '✦ ' : '') + esc(m.name) + '</text>' +
+        '<text class="rd-name" x="' + x.toFixed(1) + '" y="' + (y + dy - 3).toFixed(1) + '" text-anchor="' + anchor + '">' + (m.magic ? '✦ ' : '') + esc(m.name) + (m.sleep ? '<tspan class="rd-zz" dx="4">zZ</tspan>' : '') + '</text>' +
         '<text class="rd-lv" x="' + x.toFixed(1) + '" y="' + (y + dy + 15).toFixed(1) + '" text-anchor="' + anchor + '">Nv ' + m.level + ' · ' + pct + '%</text></g>';
     }).join('');
     var summary = items.map(function (m) { return m.name + ' nivel ' + m.level; }).join(', ');

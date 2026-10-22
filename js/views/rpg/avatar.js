@@ -33,8 +33,34 @@
       [[76, 12], [100, 7], [124, 12]].map(function (p) { return '<circle class="fr-gem" cx="' + p[0] + '" cy="' + p[1] + '" r="3.2"/>'; }).join('');
   }
 
+  function cross(x, y, s) { return '<path class="fr-x" d="M' + n(x - s) + ' ' + n(y - s) + 'l' + 2 * s + ' ' + 2 * s + 'M' + n(x + s) + ' ' + n(y - s) + 'l' + (-2 * s) + ' ' + 2 * s + '"/>'; }
+  function ring(count, r, fn) { return around(count, function (a, i) { return fn(C + r * Math.cos(a - Math.PI / 2), C + r * Math.sin(a - Math.PI / 2), a, i); }); }
+
+  // Marcos del 1 al 30 (dibujos provisionales). Los de antes (rosas, alas, corona) se conservan por si se recuperan.
   var FRAMES = {
     puntada: function () { return circle(72, 'class="fr-line"') + circle(79, 'class="fr-stitch"'); },
+    hilo_suelto: function () { return '<path class="fr-stitch" d="M100 23a77 77 0 1 1-54 22"/><path class="fr-thread" d="M46 45c-12-14-6-30 8-30 12 0 10 14-2 16"/><path class="fr-needle" d="M51 31l18-14"/>'; },
+    puntada_doble: function () { return circle(72, 'class="fr-stitch"') + circle(84, 'class="fr-stitch lav"') + ring(12, 78, function (x, y) { return cross(x, y, 3.2); }); },
+    encaje_lunar: function () {
+      return ring(24, 82, function (x, y) { return '<circle class="fr-lace" cx="' + n(x) + '" cy="' + n(y) + '" r="6"/>'; }) + circle(73, 'class="fr-line lav"') +
+        ring(4, 94, function (x, y) { return '<circle class="fr-moon" cx="' + n(x) + '" cy="' + n(y) + '" r="7"/><circle class="fr-moon-cut" cx="' + n(x + 3) + '" cy="' + n(y - 2) + '" r="6"/>'; });
+    },
+    lazo_ciruela: function () {
+      return circle(73, 'class="fr-line"') + circle(80, 'class="fr-stitch"') +
+        '<path class="fr-bow" d="M100 178c-14-12-34-14-36-4-2 9 18 12 36 4z"/><path class="fr-bow" d="M100 178c14-12 34-14 36-4 2 9-18 12-36 4z"/>' +
+        '<path class="fr-bow" d="M96 180l-10 18 8-2 4 6 4-20zM104 180l10 18-8-2-4 6-4-20z"/><circle class="fr-bow" cx="100" cy="178" r="5"/>';
+    },
+    espinas_terciopelo: function () {
+      return circle(77, 'class="fr-velvet"') + around(20, function (a) {
+        var d = 0.07, r1 = 81, r2 = 91;
+        return '<path class="fr-thorn" d="M' + n(C + r1 * Math.cos(a - d)) + ' ' + n(C + r1 * Math.sin(a - d)) + 'L' + n(C + r2 * Math.cos(a)) + ' ' + n(C + r2 * Math.sin(a)) + 'L' + n(C + r1 * Math.cos(a + d)) + ' ' + n(C + r1 * Math.sin(a + d)) + 'Z"/>';
+      }) + circle(71, 'class="fr-stitch"');
+    },
+    corona_remendada: function () {
+      return circle(72, 'class="fr-stitch"') + circle(82, 'class="fr-stitch lav"') +
+        '<path class="fr-crown" d="M70 32L74 6l14 16 12-22 12 22 14-16 4 26z"/><rect class="fr-patch" x="91" y="12" width="14" height="12" rx="2" transform="rotate(-8 98 18)"/>' + cross(98, 18, 3) +
+        '<circle class="fr-gem" cx="76" cy="12" r="3.2"/><circle class="fr-gem" cx="124" cy="12" r="3.2"/>';
+    },
     encaje: function () {
       return around(28, function (a) { return '<circle class="fr-lace" cx="' + n(C + 80 * Math.cos(a)) + '" cy="' + n(C + 80 * Math.sin(a)) + '" r="6.2"/>'; }) + circle(73, 'class="fr-line lav"');
     },
@@ -45,6 +71,15 @@
 
   V.frameSvg = function (id) {
     return '<svg class="fr-deco" viewBox="0 0 200 200" aria-hidden="true" focusable="false">' + (FRAMES[id] || FRAMES.puntada)() + '</svg>';
+  };
+  // Constelaciones (pasado el nivel 30): una estrella por cada 3.000 XP alrededor del marco. Se ven 12 como mucho y,
+  // desde ahí, el número («✦ 15»).
+  V.starsSvg = function (count) {
+    if (!(count > 0)) return '';
+    var shown = Math.min(12, count);
+    return '<svg class="fr-deco fr-stars" viewBox="0 0 200 200" aria-hidden="true" focusable="false">' + ring(shown, 97, function (x, y) {
+      return '<path class="fr-star" d="M' + n(x) + ' ' + n(y - 6) + 'l1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8z"/>';
+    }) + (count > 12 ? '<text class="fr-star-n" x="100" y="198" text-anchor="middle">✦ ' + count + '</text>' : '') + '</svg>';
   };
 
   // Glitch de sombra (ver rpg/shadows.js, R.shadowAura) encima del avatar: tres franjas del propio avatar desplazadas
@@ -68,10 +103,11 @@
     if (img && img.kind === 'photo') pic = '<img src="' + esc(img.data) + '" alt="">';
     else if (img && img.kind === 'url') pic = '<img src="' + esc(img.url) + '" alt="" referrerpolicy="no-referrer" decoding="async" data-symbol="' + esc(sym) + '">';
     else pic = icon(sym);
-    var inner = '<span class="av-pic' + (img ? ' has-img' : '') + '">' + pic + '</span>' + V.frameSvg(f.id);
+    var inner = '<span class="av-pic' + (img ? ' has-img' : '') + '">' + pic + '</span>' + V.frameSvg(f.id) + V.starsSvg(o.stars);
     var aura = o.aura === 'glitch' || o.aura === 'calm' ? o.aura : null;
     var label = o.label || ('Avatar con el marco ' + f.name);
     if (aura === 'glitch') label += '. Tiene una sombra sin purificar';
+    if (o.stars > 0) label += '. ' + o.stars + (o.stars === 1 ? ' estrella' : ' estrellas') + ' en su constelación';
     return '<div class="av-frame ' + (o.size || 'large') + (aura ? ' av-aura' : '') + '" data-frame="' + esc(f.id) + '" role="img" aria-label="' + esc(label) + '">' +
       inner + (aura ? glitch(inner, aura) : '') + '</div>';
   };

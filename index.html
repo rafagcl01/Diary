@@ -6,7 +6,9 @@
   <meta name="robots" content="noindex, nofollow">
   <!-- La aplicación solo puede hablar con GitHub: aunque algo fallara, el token no podría enviarse a otro sitio. -->
   <meta http-equiv="Content-Security-Policy" content="connect-src https://api.github.com; img-src 'self' data: https://*.giphy.com https://*.tenor.com https://i.imgur.com https://i.pinimg.com https://upload.wikimedia.org https://images.unsplash.com https://plus.unsplash.com https://*.googleusercontent.com https://i.redd.it https://preview.redd.it https://*.media.tumblr.com https://*.staticflickr.com https://pbs.twimg.com; object-src 'none'; base-uri 'none'">
-  <meta name="theme-color" content="#19131B">
+  <!-- Color de la barra del navegador en el móvil: el fondo del tema (prefs.js lo fija si eliges claro u oscuro a mano). -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFF5F8">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1B141E">
   <title>Mi diario</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 35C8 26.5 5 19.5 8.5 14.5c3-4.2 8.5-3.4 11.5 1.2 3-4.6 8.5-5.4 11.5-1.2 3.5 5 .5 12-11.5 20.5z' fill='%23F3C6DA' stroke='%2319131B' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M20.500 15.800l-2.800 5.200 3.800 2.800-2.400 5.600' fill='none' stroke='%2319131B' stroke-width='1.800' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <!-- Las tipografías se descargan de Google Fonts; sin internet se usan tipografías del sistema. -->
@@ -62,6 +64,7 @@
   <script src="js/views/people/form.js"></script>
   <script src="js/views/people.js"></script>
   <script src="js/views/mood.js"></script>
+  <script src="js/rpg/config.js"></script>
   <script src="js/rpg/model.js"></script>
   <script src="js/rpg/repository.js"></script>
   <script src="js/rpg/activities.js"></script>
@@ -70,11 +73,13 @@
   <script src="js/rpg/todos.js"></script>
   <script src="js/rpg/daily.js"></script>
   <script src="js/rpg/shadows.js"></script>
+  <script src="js/rpg/growth.js"></script>
   <script src="js/views/rpg/radar.js"></script>
   <script src="js/views/rpg/pickers.js"></script>
   <script src="js/views/rpg/toast.js"></script>
   <script src="js/views/rpg/activity-picker.js"></script>
   <script src="js/views/rpg/avatar.js"></script>
+  <script src="js/views/rpg/levelup.js"></script>
   <script src="js/views/rpg/boss-art.js"></script>
   <script src="js/views/rpg/activities.js"></script>
   <script src="js/views/rpg/weekly.js"></script>

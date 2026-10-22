@@ -6,17 +6,8 @@
   var PATH = 'emotions.json';
   var LIMITS = { name: 30, count: 200 };
 
-  // Galería de símbolos (los dibujos viven en icons.js).
-  D.EMOTION_SYMBOLS = [
-    { id: 'heart', label: 'Corazón' }, { id: 'mended', label: 'Corazón remendado' }, { id: 'bow', label: 'Lazo' },
-    { id: 'moon', label: 'Luna' }, { id: 'star', label: 'Estrella' }, { id: 'rose', label: 'Rosa' },
-    { id: 'eye', label: 'Ojo' }, { id: 'key', label: 'Llave' }, { id: 'locket', label: 'Relicario' },
-    { id: 'ghost', label: 'Fantasma' }, { id: 'skull', label: 'Calavera' }, { id: 'cat', label: 'Gato' },
-    { id: 'cross', label: 'Cruz' }, { id: 'candle', label: 'Vela' }, { id: 'butterfly', label: 'Mariposa' },
-    { id: 'cherry', label: 'Cerezas' }, { id: 'cloud', label: 'Nube' }, { id: 'drop', label: 'Gota' },
-    { id: 'crown', label: 'Corona' }, { id: 'sun', label: 'Sol' }, { id: 'flower', label: 'Flor' },
-    { id: 'umbrella', label: 'Paraguas' }
-  ];
+  // Símbolos: la galería única de toda la aplicación (icons.js). Los de antes siguen valiendo: estaban todos en ella.
+  D.EMOTION_SYMBOLS = App.SYMBOLS;
   D.EMOTION_LIMITS = LIMITS;
   D.isSymbol = function (id) { return D.EMOTION_SYMBOLS.some(function (s) { return s.id === id; }); };
   D.symbolLabel = function (id) {

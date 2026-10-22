@@ -43,7 +43,13 @@
       if (!res || !res.logged.length) return;
       var xp = res.logged.reduce(function (t, e) { return t + e.xp; }, 0);
       V.toast.show({ kind: 'char', title: 'Tu personaje se ha actualizado', text: '+' + xp + ' XP · ' + res.logged.map(function (e) { return e.label; }).join(', '), link: { href: '#/personaje', label: 'Ver personaje' } });
-      if (res.after > res.before) V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + res.after });
+      if (res.after > res.before) {
+        // La pantalla de subida de nivel, si está activada; si no, el aviso.
+        var repo = App.rpg && App.rpg.repo ? App.rpg.repo() : null;
+        var fallback = function () { V.toast.show({ kind: 'level', title: '¡Subes de nivel!', text: 'Ya eres nivel ' + res.after }); };
+        if (repo && V.levelUp) repo.state().then(function (s) { if (s.profile.levelUpScreen) V.levelUp.show(s, res.before, res.after); else fallback(); }, fallback);
+        else fallback();
+      }
       V.toast.events(res.events);
     }
   };
